@@ -1,0 +1,1335 @@
+from __future__ import annotations
+
+import json
+import logging
+import os
+import threading
+import time
+from pathlib import Path
+
+import requests
+from flask import Flask, Response, jsonify, request, send_file, send_from_directory
+from flask_cors import CORS
+from flask_socketio import SocketIO, emit
+
+import config as llm_config
+import xbd_store
+from ai_planner import TaskPlanner
+from geo import meters_to_latlon
+from mock_adapter import MockAdapter
+from perception import (
+    PERCEPTION_OUTPUT_DIR,
+    PerceptionResult,
+    get_perception,
+    level_for_risk,
+)
+from vlm_analyzer import VLMAnalyzer
+from world import DEFAULT_BASEMAP, WorldModel
+from xbd_map import build_annotation_geojson
+
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
+logger = logging.getLogger("disasterclaw.app")
+
+BASE_DIR = Path(__file__).resolve().parent
+FRONTEND_DIST = BASE_DIR.parent / "frontend" / "dist"
+FALLBACK_ANCHOR = {"lat": 31.2304, "lon": 121.4737, "label": "Shanghai Fallback Anchor"}
+DEFAULT_HOVER_ALTITUDE_M = 30.0
+# 默认初始瓦片：
+#   xbd 模式     → palu-tsunami_00000118_post_disaster  (~1540 destroyed，1024x1024 卫星)
+#   rescuenet 模式 → rescuenet_12215_post_disaster       (4 destroyed + 14 major，4000x3000 无人机高清)
+# 可通过 XBD_DEFAULT_TILE 环境变量显式覆盖。
+_DATASET_MODE = (os.getenv("DATASET_MODE") or "xbd").strip().lower() or "xbd"
+if _DATASET_MODE == "rescuenet":
+    _MODE_DEFAULT_TILE = "rescuenet_12215_post_disaster"
+    _MODE_DEFAULT_DISASTER = "hurricane-michael"
+else:
+    _MODE_DEFAULT_TILE = "palu-tsunami_00000118_post_disaster"
+    _MODE_DEFAULT_DISASTER = "palu-tsunami"
+
+DEFAULT_TILE_ID = os.getenv("XBD_DEFAULT_TILE", _MODE_DEFAULT_TILE)
+DEFAULT_DISASTER = os.getenv("XBD_DEFAULT_DISASTER", _MODE_DEFAULT_DISASTER)
+DEFAULT_STAGE = os.getenv("XBD_DEFAULT_STAGE", "post")
+ELEVATION_URL = os.getenv("XBD_ELEVATION_URL", "https://api.open-meteo.com/v1/elevation")
+ELEVATION_TIMEOUT = float(os.getenv("XBD_ELEVATION_TIMEOUT", "4"))
+ELEVATION_DISABLED = os.getenv("XBD_ELEVATION_DISABLE", "0").lower() in {"1", "true", "yes", "on"}
+
+app = Flask(__name__, static_folder=str(FRONTEND_DIST), static_url_path="")
+app.config["SECRET_KEY"] = os.getenv("FLASK_SECRET_KEY", "disasterclaw-dev")
+app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_UPLOAD_MB", "12")) * 1024 * 1024
+CORS(app, resources={r"/api/*": {"origins": "*"}, r"/socket.io/*": {"origins": "*"}})
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading", allow_unsafe_werkzeug=True)
+
+
+def _resolved_module_settings(module_name: str) -> dict:
+    module_cfg = llm_config.MODULE_CONFIG.get(module_name, {})
+    provider = module_cfg.get("provider") or llm_config.ACTIVE_PROVIDER
+    model = module_cfg.get("model") or llm_config.PROVIDERS.get(provider, {}).get("default_model", "")
+    return {"provider": provider, "model": model}
+
+
+def _pick_initial_anchor() -> tuple[dict, dict | None]:
+    """
+    返回 (anchor_dict, initial_tile_entry)。
+
+    优先级：
+      1. DEFAULT_TILE_ID（XBD_DEFAULT_TILE 环境变量）指定的瓦片，必须 has_georef 才使用
+      2. manifest 的默认灾区 (DEFAULT_DISASTER/STAGE) 首张 has_georef 瓦片
+      3. 任意 has_georef POST 瓦片
+      4. 回落上海（FALLBACK_ANCHOR）
+    """
+    entry: dict | None = None
+    try:
+        if DEFAULT_TILE_ID:
+            candidate = xbd_store.get_entry(DEFAULT_TILE_ID)
+            if candidate and candidate.get("has_georef"):
+                # POST_ONLY 下仍要保证候选是 POST，防止用户误配 PRE id
+                if (not xbd_store.POST_ONLY_MODE) or xbd_store._is_post(candidate):
+                    entry = candidate
+                else:
+                    logger.warning(
+                        "XBD_DEFAULT_TILE %s is pre_disaster; POST_ONLY_MODE on, falling back.",
+                        DEFAULT_TILE_ID,
+                    )
+            elif candidate:
+                logger.warning(
+                    "XBD_DEFAULT_TILE %s lacks georef, falling back.", DEFAULT_TILE_ID,
+                )
+            else:
+                logger.warning(
+                    "XBD_DEFAULT_TILE %s not found in manifest, falling back.", DEFAULT_TILE_ID,
+                )
+        if entry is None:
+            entry = xbd_store.first_georef_entry(DEFAULT_DISASTER, DEFAULT_STAGE)
+        if entry is None:
+            entry = xbd_store.first_georef_entry()
+    except Exception as exc:
+        logger.warning("unable to load xBD manifest for initial anchor: %s", exc)
+        entry = None
+
+    if entry and entry.get("bounds"):
+        bounds = entry["bounds"]
+        return {
+            "lat": (float(bounds["north"]) + float(bounds["south"])) * 0.5,
+            "lon": (float(bounds["east"]) + float(bounds["west"])) * 0.5,
+            "label": f"{entry.get('disaster') or 'xBD'} · {entry.get('tile_id')}",
+        }, entry
+    return dict(FALLBACK_ANCHOR), None
+
+
+class AppState:
+    def __init__(self):
+        self.mode = "manual"
+        self.current_robot = "UAV_1"
+        self.is_executing = False
+        self.initialized = True
+        self.hover_altitude_m = DEFAULT_HOVER_ALTITUDE_M
+
+        initial_anchor, initial_tile = _pick_initial_anchor()
+        self.world = WorldModel(
+            initial_anchor["lat"],
+            initial_anchor["lon"],
+            self.hover_altitude_m,
+            anchor_label=initial_anchor["label"],
+            basemap=DEFAULT_BASEMAP,
+        )
+        self.world.register_default_uav(self.current_robot)
+        self.adapter = MockAdapter(initial_anchor["lat"], initial_anchor["lon"], self.hover_altitude_m)
+        self.planner = TaskPlanner(self.hover_altitude_m)
+        self.log_buffer: list[dict] = []
+        self._log_lock = threading.Lock()
+        self._task_lock = threading.Lock()
+        self._stop_event = threading.Event()
+        self._sync_world_from_adapter()
+
+        summary = xbd_store.summary()
+        if summary:
+            self.push_log(
+                "success",
+                f"xBD manifest loaded: {summary.get('tiles', 0)} tiles, "
+                f"{summary.get('has_georef', 0)} georef",
+            )
+        else:
+            self.push_log(
+                "warn",
+                "xBD manifest not found — map will use fallback anchor only "
+                "(build manifest.json under backend/data/xbd/).",
+            )
+
+        if initial_tile:
+            self.world.set_active_tile(initial_tile)
+            self._sync_world_from_adapter()
+            self.push_log(
+                "info",
+                f"Initial xBD tile: {initial_tile.get('tile_id')} "
+                f"({initial_tile.get('disaster')} / {initial_tile.get('stage')})",
+            )
+
+        self.push_log("success", "DisasterClaw ready: xBD-backed real-world map + mock hover")
+        planner_cfg = _resolved_module_settings("planner")
+        vlm_cfg = _resolved_module_settings("vlm")
+        self.push_log("info", f"Planner LLM: {planner_cfg['provider']} / {planner_cfg['model']}")
+        self.push_log("info", f"Vision VLM: {vlm_cfg['provider']} / {vlm_cfg['model']}")
+
+        self._warmup_local_qwen_vl([planner_cfg, vlm_cfg])
+        self._warmup_perception()
+
+    def _warmup_perception(self) -> None:
+        """YOLO + SegFormer 懒加载线程。
+        为避免与 Qwen-VL warmup 线程并发触发 `transformers` 惰性加载
+        造成的 `HAS_TRANSFORMERS=False` 竞争，稍等后再启动。"""
+        if os.getenv("PERCEPTION_WARMUP", "1").lower() in {"0", "false", "no", "off"}:
+            return
+
+        warmup_delay = float(os.getenv("PERCEPTION_WARMUP_DELAY_S", "15"))
+
+        def _worker() -> None:
+            if warmup_delay > 0:
+                time.sleep(warmup_delay)
+            perception = get_perception()
+            try:
+                self.push_log("info", "Loading perception models (YOLO + SegFormer)")
+                perception.load()
+                self.push_log(
+                    "success",
+                    "Perception ready: YOLO + SegFormer + SceneDescriptor",
+                    {"module": "perception"},
+                )
+            except Exception as exc:
+                logger.exception("perception warmup failed")
+                self.push_log(
+                    "error",
+                    f"Perception 模型加载失败（detect_disaster 将不可用）: {exc}",
+                    {"module": "perception"},
+                )
+
+        threading.Thread(target=_worker, daemon=True, name="perception-warmup").start()
+
+    def _warmup_local_qwen_vl(self, module_cfgs: list[dict]) -> None:
+        """If any active module uses the local Qwen-VL backend, load it in a
+        background thread so the first AI task doesn't freeze the socket for
+        ~2 minutes."""
+        wants_local = any(cfg.get("provider") == "qwen_vl_local" for cfg in module_cfgs)
+        if not wants_local:
+            return
+
+        def _worker() -> None:
+            try:
+                provider_cfg = dict(llm_config.PROVIDERS["qwen_vl_local"])
+                from local_qwen_vl import get_local_qwen_vl_backend
+                backend = get_local_qwen_vl_backend(provider_cfg)
+                self.push_log("info", f"Loading local Qwen-VL: {provider_cfg.get('model_id')}")
+                backend.load()
+                self.push_log(
+                    "success",
+                    f"Local Qwen-VL ready on {backend.device}",
+                    {"module": "llm"},
+                )
+            except Exception as exc:
+                logger.exception("local Qwen-VL warmup failed")
+                self.push_log("error", f"Local Qwen-VL load failed: {exc}")
+
+        threading.Thread(target=_worker, daemon=True, name="qwen-vl-warmup").start()
+
+    def push_log(self, level: str, msg: str, extra: dict | None = None) -> None:
+        entry = {
+            "ts": round(time.time() * 1000),
+            "level": level,
+            "msg": msg,
+            **(extra or {}),
+        }
+        with self._log_lock:
+            self.log_buffer.append(entry)
+            if len(self.log_buffer) > 300:
+                self.log_buffer.pop(0)
+        socketio.emit("log", entry)
+
+    def system_status(self) -> dict:
+        return {
+            "initialized": self.initialized,
+            "mode": self.mode,
+            "current_robot": self.current_robot,
+            "is_executing": self.is_executing,
+            "hover_altitude_m": self.hover_altitude_m,
+            "anchor": self.world.get_world_state()["map"]["anchor"],
+        }
+
+    def world_state(self) -> dict:
+        return self.world.get_world_state()
+
+    def _sync_world_from_adapter(self) -> None:
+        snap = self.adapter.snapshot()
+        self.world.update_robot(
+            self.current_robot,
+            {
+                "status": "airborne",
+                "task_state": "busy" if self.is_executing else "idle",
+                "battery": snap["battery"],
+                "in_air": snap["in_air"],
+                "heading_deg": snap["heading_deg"],
+                "speed_mps": snap["speed_mps"],
+                "position": {
+                    "lat": snap["lat"],
+                    "lon": snap["lon"],
+                    "alt": snap["alt"],
+                },
+            },
+        )
+
+    def activate_xbd_tile(self, entry: dict) -> dict:
+        """切换地图活动瓦片：更新 world model、adapter 原点、UAV 位置。"""
+        self.world.set_active_tile(entry)
+        bounds = entry.get("bounds") or {}
+        anchor_lat = self.world.anchor_lat
+        anchor_lon = self.world.anchor_lon
+        if bounds:
+            anchor_lat = (float(bounds["north"]) + float(bounds["south"])) * 0.5
+            anchor_lon = (float(bounds["east"]) + float(bounds["west"])) * 0.5
+        self.adapter.reset_origin(anchor_lat, anchor_lon, alt=self.hover_altitude_m)
+        self._sync_world_from_adapter()
+        return self.world_state()
+
+    def emit_world(self) -> None:
+        socketio.emit("world_state", self.world_state())
+
+    def emit_system_status(self) -> None:
+        socketio.emit("system_status", self.system_status())
+
+
+state = AppState()
+
+
+def on_position_update(_snap: dict) -> None:
+    state._sync_world_from_adapter()
+    state.emit_world()
+
+
+def start_background_job(target, *args):
+    thread = threading.Thread(target=target, args=args, daemon=True)
+    thread.start()
+    return thread
+
+
+_PARAM_ALIASES = {
+    "latitude": "lat",
+    "lat_deg": "lat",
+    "longitude": "lon",
+    "lng": "lon",
+    "long": "lon",
+    "altitude": "alt",
+    "altitude_m": "alt",
+    "height": "alt",
+    "height_m": "alt",
+    "duration_s": "duration",
+    "duration_sec": "duration",
+    "seconds": "duration",
+    "north": "north_m",
+    "east": "east_m",
+    "up": "up_m",
+    "description": "content",
+    "report": "content",
+    "message": "content",
+    "name": "label",
+    "severity": "level",
+}
+
+
+def _normalize_params(params: dict | None) -> dict:
+    if not isinstance(params, dict):
+        return {}
+    normalized: dict = {}
+    for key, value in params.items():
+        target = _PARAM_ALIASES.get(key, key)
+        normalized.setdefault(target, value)
+    return normalized
+
+
+def _align_active_tile_for(
+    lat: float,
+    lon: float,
+    *,
+    source: str = "manual",
+    strict_post: bool = False,  # 保留参数兼容旧调用，POST_ONLY 下恒等于 True
+) -> dict | None:
+    """
+    确保目标点 (lat, lon) 落在激活的 POST 灾后瓦片内。
+
+    POST_ONLY_MODE 下全流程只搜 POST 瓦片，未命中直接返回 None（不再 fallback PRE）。
+
+    返回最终激活瓦片 entry（或 None 表示未命中/无覆盖）。
+    """
+    try:
+        world = state.world_state()
+    except Exception:
+        world = {}
+    active = (world.get("map") or {}).get("active_tile") or {}
+
+    if active and xbd_store.tile_contains(active, lat, lon):
+        return active
+
+    entry = xbd_store.find_tile_containing(
+        lat, lon, stage_priority=("post_disaster",)
+    )
+    if entry is None:
+        state.push_log(
+            "warn",
+            f"目标 ({lat:.6f}, {lon:.6f}) 不在任何 POST 灾后瓦片覆盖范围内。",
+            {"module": "tile_align", "source": source},
+        )
+        return None
+
+    if entry.get("tile_id") != active.get("tile_id"):
+        try:
+            state.activate_xbd_tile(entry)
+        except Exception as exc:  # 防御性：切瓦片失败时保留原状态
+            logger.warning("activate_xbd_tile failed: %s", exc)
+            state.push_log(
+                "warn",
+                f"自动切换瓦片失败: {exc}",
+                {"module": "tile_align", "source": source},
+            )
+            return None
+
+        state.push_log(
+            "info",
+            f"自动切换到瓦片 {entry['tile_id']} ({entry.get('stage')}) 以覆盖目标点。",
+            {"module": "tile_align", "source": source},
+        )
+    return entry
+
+
+def execute_action(action: str, params: dict, source: str = "manual") -> dict:
+    params = _normalize_params(params)
+    if action == "hover":
+        return state.adapter.hover(
+            duration=float(params.get("duration", 3.0)),
+            update_callback=on_position_update,
+            stop_event=state._stop_event,
+        )
+    if action == "fly_to_geo":
+        target_lat = float(params["lat"])
+        target_lon = float(params["lon"])
+        _align_active_tile_for(target_lat, target_lon, source=source)
+        return state.adapter.fly_to_geo(
+            lat=target_lat,
+            lon=target_lon,
+            alt=float(params.get("alt", state.hover_altitude_m)),
+            speed=float(params.get("speed", 14.0)),
+            update_callback=on_position_update,
+            stop_event=state._stop_event,
+        )
+    if action == "fly_relative":
+        north_m = float(params.get("north_m", 0.0))
+        east_m = float(params.get("east_m", 0.0))
+        up_m = float(params.get("up_m", 0.0))
+        snap = state.adapter.snapshot()
+        target_lat, target_lon = meters_to_latlon(
+            float(snap["lat"]), float(snap["lon"]), north_m, east_m
+        )
+        _align_active_tile_for(target_lat, target_lon, source=source)
+        return state.adapter.fly_relative(
+            north_m=north_m,
+            east_m=east_m,
+            up_m=up_m,
+            speed=float(params.get("speed", 12.0)),
+            update_callback=on_position_update,
+            stop_event=state._stop_event,
+        )
+    if action == "mark_target":
+        target = state.world.add_target(
+            label=params.get("label", "Map Marker"),
+            lat=float(params.get("lat", state.adapter.snapshot()["lat"])),
+            lon=float(params.get("lon", state.adapter.snapshot()["lon"])),
+            alt=float(params.get("alt", 0.0)),
+            kind=params.get("kind", "poi"),
+            source=source,
+        )
+        state.emit_world()
+        return {"success": True, "message": f"已标记 {target['label']}", "data": target}
+    if action == "report_observation":
+        snap = state.adapter.snapshot()
+        report = state.world.add_report(
+            content=params.get("content", "Mock observation report"),
+            lat=float(params.get("lat", snap["lat"])),
+            lon=float(params.get("lon", snap["lon"])),
+            level=params.get("level", "info"),
+            source=source,
+        )
+        state.emit_world()
+        return {"success": True, "message": "已写入观察报告", "data": report}
+    if action == "detect_disaster":
+        return _execute_detect_disaster(params, source)
+    return {"success": False, "message": f"未知动作: {action}"}
+
+
+def _execute_detect_disaster(params: dict, source: str) -> dict:
+    """
+    从活动 xBD 瓦片按 UAV 当前 (lat,lon,alt) 裁视场 →
+    YOLO + SegFormer + SceneDescriptor → 可选 VLM 总结 →
+    push_log + add_report + socket perception_result。
+    """
+    perception = get_perception()
+
+    snap = state.adapter.snapshot()
+    # 严格 POST-only：detect_disaster 要求 UAV 当前位置落在 POST 灾后瓦片覆盖范围内。
+    # 不允许静默回退到 PRE（否则 YOLO/Seg 看不到任何损伤）。
+    aligned = _align_active_tile_for(
+        float(snap["lat"]),
+        float(snap["lon"]),
+        source=source,
+        strict_post=True,
+    )
+    world = state.world_state()
+    active_tile = (world.get("map") or {}).get("active_tile") or {}
+
+    # manifest 里 stage 是 "post"/"pre"，必须用 alias-aware 比较，避免静默 bug
+    if aligned is None or not xbd_store._is_post(active_tile):
+        state.push_log(
+            "error",
+            f"detect_disaster 拒绝执行：UAV 当前位置 "
+            f"({snap['lat']:.6f}, {snap['lon']:.6f}) 不在任何 POST 灾后瓦片覆盖范围内。"
+            " 请先在地图上选中灾后覆盖区（POST 足迹）内的点。",
+            {"module": "perception", "source": source, "no_post_coverage": True},
+        )
+        return {
+            "success": False,
+            "message": "当前位置无 POST 灾后瓦片覆盖，detect_disaster 已中止。",
+        }
+
+    if not active_tile or not active_tile.get("tile_id"):
+        state.push_log("error", "detect_disaster: 当前未激活任何 xBD 瓦片，无法裁视场。")
+        return {"success": False, "message": "未激活任何 xBD 瓦片"}
+
+    if not perception.is_available:
+        try:
+            perception.load()
+        except Exception as exc:
+            state.push_log("error", f"detect_disaster: 视觉模型未就绪 — {exc}")
+            return {"success": False, "message": f"视觉模型未就绪: {exc}"}
+
+    patch_id = f"uav-{int(time.time() * 1000)}"
+    state.push_log(
+        "info",
+        f"detect_disaster: 在 ({snap['lat']:.6f}, {snap['lon']:.6f}) @ "
+        f"{snap['alt']:.1f}m 裁视场并运行 YOLO + SegFormer ...",
+    )
+    try:
+        result: PerceptionResult = perception.perceive_at(
+            lat=float(snap["lat"]),
+            lon=float(snap["lon"]),
+            alt=float(snap["alt"]),
+            active_tile=active_tile,
+            patch_id=patch_id,
+        )
+    except Exception as exc:
+        logger.exception("perception pipeline failed")
+        state.push_log("error", f"detect_disaster 失败: {exc}")
+        return {"success": False, "message": f"感知失败: {exc}"}
+
+    if result.degraded and result.degraded_reason:
+        state.push_log("warn", f"detect_disaster: {result.degraded_reason}")
+
+    det_counts = result.detection.get("class_counts") or {}
+    seg_stats = result.segmentation.get("stats") or {}
+    top_seg = sorted(seg_stats.items(), key=lambda kv: kv[1], reverse=True)[:3]
+    seg_top_text = ", ".join(f"{k} {v}" for k, v in top_seg) if top_seg else "无"
+    det_text = (
+        ", ".join(f"{k}:{v}" for k, v in det_counts.items())
+        if det_counts
+        else "无目标"
+    )
+    state.push_log(
+        "info",
+        f"视觉感知: YOLO {result.detection.get('num_objects', 0)} 个目标 ({det_text}); "
+        f"SegFormer top3: {seg_top_text}",
+    )
+    state.push_log(level_for_risk(result.risk_level), f"灾情判定: {result.risk_summary}")
+
+    # 可选：Qwen-VL 基于 patch + scene_text 出自然语言结论
+    vlm_text = ""
+    use_vlm = str(params.get("use_vlm_summary", True)).lower() not in {"0", "false", "no"}
+    if use_vlm:
+        try:
+            with open(result.patch_path, "rb") as f:
+                img_bytes = f.read()
+            prompt = (
+                "以下是 UAV 当前视场的结构化感知结果，请结合图像用中文两三句话概括："
+                "场景整体情况、是否受灾、建议动作。如果结果不足以判断，请明示。\n\n"
+                + result.scene_text
+            )
+            vlm_result = VLMAnalyzer().analyze_image_bytes(
+                image_bytes=img_bytes, mime_type="image/png", prompt=prompt, max_tokens=360
+            )
+            vlm_text = (vlm_result.get("analysis") or "").strip()
+            if vlm_text:
+                state.push_log(
+                    "success",
+                    f"VLM 结论: {vlm_text[:140]}{'…' if len(vlm_text) > 140 else ''}",
+                    {"module": "vlm"},
+                )
+        except Exception as exc:
+            logger.warning("VLM summary after detect_disaster failed: %s", exc)
+            state.push_log("warn", f"VLM 结论生成失败: {exc}")
+
+    # 写入 world report，让地图出一个标记点
+    report_content = result.risk_summary
+    if vlm_text:
+        report_content = f"{report_content} | VLM: {vlm_text[:160]}"
+    if result.degraded:
+        report_content = f"[degraded] {report_content}"
+    report = state.world.add_report(
+        content=report_content,
+        lat=float(snap["lat"]),
+        lon=float(snap["lon"]),
+        level=level_for_risk(result.risk_level),
+        source="perception",
+    )
+
+    payload = {
+        "patch_id": result.patch_id,
+        "patch_url": result.patch_url,
+        "overlay_url": result.overlay_url,
+        "detection_url": result.detection_url,
+        "patch_width": result.patch_width,
+        "patch_height": result.patch_height,
+        "radius_m": result.patch_radius_m,
+        "risk_level": result.risk_level,
+        "risk_summary": result.risk_summary,
+        "damaged_buildings": result.damaged_buildings,
+        "intact_buildings": result.intact_buildings,
+        "vehicles": result.vehicles,
+        "detection": {
+            "num_objects": result.detection.get("num_objects", 0),
+            "class_counts": det_counts,
+            "detections": result.detection.get("detections", [])[:50],
+        },
+        "segmentation": {
+            "num_labels": result.segmentation.get("num_labels", 0),
+            "stats": seg_stats,
+        },
+        "scene": result.scene_dict,
+        "scene_text": result.scene_text,
+        "vlm_summary": vlm_text,
+        "position": {
+            "lat": snap["lat"],
+            "lon": snap["lon"],
+            "alt": snap["alt"],
+        },
+        "report_id": report.get("id"),
+        "degraded": result.degraded,
+        "degraded_reason": result.degraded_reason or "",
+        "active_tile_id": active_tile.get("tile_id"),
+        "active_tile_stage": active_tile.get("stage"),
+        "source": source,
+        "timestamp": int(time.time() * 1000),
+        "timings": dict(result.extras or {}),
+    }
+    socketio.emit("perception_result", payload)
+    state.emit_world()
+    return {
+        "success": True,
+        "message": result.risk_summary,
+        "data": payload,
+    }
+
+
+def run_action_sequence(label: str, steps: list[dict], source: str, raw_task: str = "") -> None:
+    if not state._task_lock.acquire(blocking=False):
+        state.push_log("warn", "当前已有任务在执行，忽略新的请求")
+        return
+
+    try:
+        state.is_executing = True
+        state._stop_event.clear()
+        state._sync_world_from_adapter()
+        state.emit_system_status()
+        state.emit_world()
+        state.push_log("info", f"开始执行任务: {label}")
+
+        # bench: emit a task_started event so external benchmarks can align
+        # the wall clock with `ai_execution_report` without parsing logs.
+        task_started_ns = time.time_ns()
+        socketio.emit(
+            "task_started",
+            {
+                "label": label,
+                "raw_task": raw_task,
+                "source": source,
+                "step_count": len(steps),
+                "ts_ns": task_started_ns,
+                "ts_ms": task_started_ns // 1_000_000,
+            },
+        )
+
+        executed = []
+        for index, step in enumerate(steps, start=1):
+            if state._stop_event.is_set():
+                state.push_log("warn", "任务已停止")
+                break
+            action = step.get("action", "")
+            params = step.get("params", {})
+            reason = step.get("reason", "")
+            state.push_log("info", f"[{index}/{len(steps)}] {action} — {reason}")
+            socketio.emit(
+                "ai_thought",
+                {
+                    "iteration": index,
+                    "skill": action,
+                    "thinking": reason,
+                    "progress": f"step {index}/{len(steps)}",
+                },
+            )
+            socketio.emit(
+                "ai_thinking",
+                {
+                    "phase": "executing",
+                    "detail": f"{action}",
+                    "iteration": index,
+                    "action": {"skill": action, "parameters": params},
+                    "decision": reason,
+                },
+            )
+            step_start_ns = time.time_ns()
+            result = execute_action(action, params, source=source)
+            step_end_ns = time.time_ns()
+            step_wall_ms = (step_end_ns - step_start_ns) // 1_000_000
+            executed.append({
+                "action": action,
+                "params": params,
+                "result": result,
+                "wall_ms": step_wall_ms,
+                "step_start_ns": step_start_ns,
+                "step_end_ns": step_end_ns,
+            })
+            socketio.emit(
+                "action_result",
+                {
+                    "action": action,
+                    "params": params,
+                    "result": result,
+                    "wall_ms": step_wall_ms,
+                    "step_index": index,
+                    "step_start_ns": step_start_ns,
+                    "step_end_ns": step_end_ns,
+                },
+            )
+            level = "success" if result.get("success") else "error"
+            state.push_log(level, f"{action}: {result.get('message', '')}")
+            if not result.get("success"):
+                break
+
+        final_snap = state.adapter.snapshot()
+        succeeded = not state._stop_event.is_set() and all(
+            step["result"].get("success") for step in executed
+        )
+        status_txt = "已完成" if succeeded else ("已停止" if state._stop_event.is_set() else "部分失败")
+        final_summary = (
+            f"任务{status_txt}: {label}；共执行 {len(executed)}/{len(steps)} 步；"
+            f"UAV 当前位于 ({final_snap['lat']:.6f}, {final_snap['lon']:.6f}) "
+            f"@ {final_snap['alt']:.1f}m"
+        )
+        state.push_log("success" if succeeded else "warn", final_summary)
+        finished_ns = time.time_ns()
+        report = {
+            "ok": succeeded,
+            "task": raw_task or label,
+            "summary": final_summary,
+            "steps": executed,
+            "ts_ns": finished_ns,
+            "ts_ms": finished_ns // 1_000_000,
+            "task_started_ns": task_started_ns,
+            "wall_ms": (finished_ns - task_started_ns) // 1_000_000,
+        }
+        # benchmarks (manual + ai source) need the report; UI only listens for ai
+        if source == "ai":
+            socketio.emit("ai_execution_report", report)
+            socketio.emit("ai_thinking", {"phase": "idle", "detail": ""})
+        else:
+            # mirror to a generic channel for benchmark / manual tooling
+            socketio.emit("execution_report", report)
+    finally:
+        state.is_executing = False
+        state._sync_world_from_adapter()
+        state.emit_system_status()
+        state.emit_world()
+        state._task_lock.release()
+
+
+# ───────────────────────────── REST API ────────────────────────────────
+
+@app.route("/api/status", methods=["GET"])
+def api_status():
+    return jsonify(state.system_status())
+
+
+@app.route("/api/world", methods=["GET"])
+def api_world():
+    return jsonify(state.world_state())
+
+
+@app.route("/api/logs", methods=["GET"])
+def api_logs():
+    with state._log_lock:
+        return jsonify(state.log_buffer[-200:])
+
+
+@app.route("/api/init", methods=["POST"])
+def api_init():
+    return jsonify({"ok": True, "status": state.system_status()})
+
+
+@app.route("/api/llm/config", methods=["GET"])
+def api_llm_config():
+    modules = {
+        module_name: _resolved_module_settings(module_name)
+        for module_name in llm_config.MODULE_CONFIG
+    }
+
+    return jsonify(
+        {
+            "active_provider": llm_config.ACTIVE_PROVIDER,
+            "providers": {
+                name: {
+                    "api_type": provider_cfg.get("api_type", ""),
+                    "base_url": provider_cfg.get("base_url", ""),
+                    "default_model": provider_cfg.get("default_model", ""),
+                    "model_id": provider_cfg.get("model_id", ""),
+                    "configured": bool(provider_cfg.get("api_key") or provider_cfg.get("model_id")),
+                    "image_input_mode": provider_cfg.get("image_input_mode"),
+                }
+                for name, provider_cfg in llm_config.PROVIDERS.items()
+            },
+            "modules": modules,
+        }
+    )
+
+
+@app.route("/api/vlm/analyze", methods=["POST"])
+def api_vlm_analyze():
+    upload = request.files.get("image")
+    if upload is None:
+        return jsonify({"ok": False, "error": "missing image file field 'image'"}), 400
+
+    image_bytes = upload.read()
+    if not image_bytes:
+        return jsonify({"ok": False, "error": "empty image file"}), 400
+
+    prompt = str(request.form.get("prompt", "")).strip()
+    mime_type = upload.mimetype or "image/jpeg"
+
+    try:
+        result = VLMAnalyzer().analyze_image_bytes(
+            image_bytes=image_bytes,
+            mime_type=mime_type,
+            prompt=prompt,
+        )
+    except Exception as exc:
+        state.push_log("error", f"VLM analysis failed: {exc}")
+        return jsonify({"ok": False, "error": str(exc)}), 502
+
+    summary = result["analysis"][:120].replace("\n", " ")
+    state.push_log(
+        "success",
+        f"VLM analyzed image with {result['model']}: {summary}",
+        {"module": "vlm"},
+    )
+    return jsonify({"ok": True, **result})
+
+
+# ───────────────────────────── xBD API ─────────────────────────────────
+
+def _manifest_missing_response() -> Response:
+    hint = (
+        "Build manifest.json or symlink AerialClaw/data/xbd/manifest.json to "
+        f"{xbd_store.get_manifest_path()}"
+    )
+    return jsonify({"ok": False, "error": "xBD manifest not found", "hint": hint}), 404
+
+
+def _parse_int_arg(name: str, default: int, minimum: int | None = None, maximum: int | None = None) -> int:
+    raw = request.args.get(name)
+    if raw is None:
+        value = default
+    else:
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            value = default
+    if minimum is not None:
+        value = max(minimum, value)
+    if maximum is not None:
+        value = min(maximum, value)
+    return value
+
+
+@app.route("/api/xbd/catalog", methods=["GET"])
+def api_xbd_catalog():
+    manifest, manifest_path = xbd_store.load_cached()
+    if not manifest:
+        return _manifest_missing_response()
+
+    split = request.args.get("split") or None
+    disaster = request.args.get("disaster") or None
+    disaster_type = request.args.get("disaster_type") or None
+    stage = request.args.get("stage") or None
+    georef = xbd_store.parse_bool(request.args.get("georef"))
+    offset = _parse_int_arg("offset", 0, minimum=0)
+    limit = _parse_int_arg("limit", 200, minimum=1, maximum=2000)
+
+    items, total = xbd_store.filter_catalog(
+        split=split,
+        disaster=disaster,
+        disaster_type=disaster_type,
+        stage=stage,
+        georef=georef,
+        offset=offset,
+        limit=limit,
+    )
+    return jsonify({
+        "ok": True,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "manifest_path": manifest_path,
+        "dataset_root": manifest.get("dataset_root"),
+        "summary": manifest.get("summary", {}),
+        "items": items,
+    })
+
+
+@app.route("/api/xbd/tiles/<tile_id>", methods=["GET"])
+def api_xbd_tile(tile_id: str):
+    manifest, _ = xbd_store.load_cached()
+    if not manifest:
+        return _manifest_missing_response()
+    entry = xbd_store.get_entry(tile_id)
+    if not entry:
+        return jsonify({"ok": False, "error": f"tile '{tile_id}' not found"}), 404
+    return jsonify({"ok": True, "item": entry})
+
+
+@app.route("/api/xbd/images/<tile_id>", methods=["GET"])
+def api_xbd_image(tile_id: str):
+    manifest, _ = xbd_store.load_cached()
+    if not manifest:
+        return _manifest_missing_response()
+    entry = xbd_store.get_entry(tile_id)
+    if not entry:
+        return jsonify({"ok": False, "error": f"tile '{tile_id}' not found"}), 404
+
+    image_path = os.path.join(manifest["dataset_root"], entry["image_relpath"])
+    if not os.path.exists(image_path):
+        return jsonify({"ok": False, "error": f"image missing: {image_path}"}), 404
+    response = send_file(image_path)
+    response.headers["Cache-Control"] = "public, max-age=3600"
+    return response
+
+
+@app.route("/api/xbd/annotations/<tile_id>", methods=["GET"])
+def api_xbd_annotations(tile_id: str):
+    manifest, _ = xbd_store.load_cached()
+    if not manifest:
+        return _manifest_missing_response()
+    entry = xbd_store.get_entry(tile_id)
+    if not entry:
+        return jsonify({"ok": False, "error": f"tile '{tile_id}' not found"}), 404
+
+    label_path = os.path.join(manifest["dataset_root"], entry["label_relpath"])
+    if not os.path.exists(label_path):
+        return jsonify({"ok": False, "error": f"label missing: {label_path}"}), 404
+
+    try:
+        geojson = build_annotation_geojson(label_path, entry)
+    except Exception as exc:
+        logger.exception("failed to build annotation geojson for %s", tile_id)
+        return jsonify({"ok": False, "error": str(exc)}), 500
+
+    return jsonify({
+        "ok": True,
+        "tile_id": tile_id,
+        "item": entry,
+        "geojson": geojson,
+    })
+
+
+@app.route("/api/xbd/find-tile", methods=["GET"])
+def api_xbd_find_tile():
+    """查询覆盖 (lat, lon) 的瓦片。用于前端在 Ask AI Inspect 前做预检查。
+
+    参数：
+        lat / lon : float, 必填
+        stage     : post | pre | any （默认 post）
+    响应：
+        { ok: true, covered: bool, entry: {...} | null, stage: "post_disaster" | "pre_disaster" | null }
+    """
+    try:
+        lat = float(request.args.get("lat", ""))
+        lon = float(request.args.get("lon", ""))
+    except ValueError:
+        return jsonify({"ok": False, "error": "lat/lon 必须为数值"}), 400
+
+    stage_arg = (request.args.get("stage") or "post").lower()
+    if stage_arg == "post":
+        stage_priority = ("post_disaster",)
+    elif stage_arg == "pre":
+        stage_priority = ("pre_disaster",)
+    else:
+        stage_priority = ("post_disaster", "pre_disaster")
+
+    entry = xbd_store.find_tile_containing(lat, lon, stage_priority=stage_priority)
+
+    nearest = None
+    if entry is None:
+        # 计算最近的 POST 瓦片（中心距离），供前端提示一键跳转。
+        manifest, _ = xbd_store.load_cached()
+        if manifest:
+            best_d2 = None
+            best = None
+            for item in manifest.get("items", []):
+                if not item.get("has_georef"):
+                    continue
+                if not xbd_store._is_post(item):
+                    continue
+                b = item.get("bounds") or {}
+                try:
+                    clat = (float(b["north"]) + float(b["south"])) / 2.0
+                    clon = (float(b["east"]) + float(b["west"])) / 2.0
+                except Exception:
+                    continue
+                dlat = clat - lat
+                dlon = clon - lon
+                d2 = dlat * dlat + dlon * dlon
+                if best_d2 is None or d2 < best_d2:
+                    best_d2 = d2
+                    best = (item, clat, clon)
+            if best is not None:
+                item, clat, clon = best
+                # 粗略把度差转成公里：lat 1° ≈ 111km；lon 按 cos(lat) 缩放。
+                import math as _math
+
+                km = _math.sqrt(
+                    ((clat - lat) * 111.0) ** 2
+                    + ((clon - lon) * 111.0 * _math.cos(_math.radians(lat))) ** 2
+                )
+                nearest = {
+                    "tile_id": item.get("tile_id"),
+                    "disaster": item.get("disaster"),
+                    "disaster_type": item.get("disaster_type"),
+                    "center": {"lat": clat, "lon": clon},
+                    "distance_km": round(km, 2),
+                }
+
+    return jsonify(
+        {
+            "ok": True,
+            "covered": entry is not None,
+            "entry": entry,
+            "stage": entry.get("stage") if entry else None,
+            "nearest": nearest,
+        }
+    )
+
+
+def _damage_ranking_path() -> str:
+    """跟着当前 DATASET_MODE 走：xbd 读 data/xbd/damage_ranking.json；
+    rescuenet 模式读 data/rescuenet/damage_ranking.json。"""
+    return str(xbd_store.resolve_output_dir() / "damage_ranking.json")
+
+
+
+@app.route("/api/xbd/damage-ranking", methods=["GET"])
+def api_xbd_damage_ranking():
+    """读取 scripts/rank_damage_tiles.py 生成的排名 JSON。
+
+    查询参数：
+        limit     : int   默认 50，最多返回多少条
+        disaster  : str   可选，按 disaster 名前缀过滤
+        min_dest  : int   可选，最少 destroyed 栋数
+    """
+    ranking_path = _damage_ranking_path()
+    if not os.path.isfile(ranking_path):
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "error": (
+                        f"damage_ranking.json not found at {ranking_path}; run "
+                        "`python scripts/rank_damage_tiles.py` (xBD) or "
+                        "`python scripts/build_rescuenet_dataset.py --force` (RescueNet) to generate it."
+                    ),
+                }
+            ),
+            404,
+        )
+    try:
+        with open(ranking_path, "r", encoding="utf-8") as fp:
+            data = json.load(fp)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": f"failed to read ranking: {exc}"}), 500
+
+    items = list(data.get("items") or [])
+
+    disaster = (request.args.get("disaster") or "").strip().lower()
+    if disaster:
+        items = [row for row in items if disaster in str(row.get("disaster") or "").lower()]
+
+    try:
+        min_dest = int(request.args.get("min_dest") or 0)
+    except ValueError:
+        min_dest = 0
+    if min_dest > 0:
+        items = [row for row in items if int((row.get("counts") or {}).get("destroyed", 0)) >= min_dest]
+
+    try:
+        limit = int(request.args.get("limit") or 50)
+    except ValueError:
+        limit = 50
+    limit = max(1, min(limit, 500))
+
+    return jsonify(
+        {
+            "ok": True,
+            "total": len(items),
+            "limit": limit,
+            "generated_from": data.get("generated_from"),
+            "total_post_tiles": data.get("total_post_tiles"),
+            "weights": data.get("weights"),
+            "items": items[:limit],
+        }
+    )
+
+
+@app.route("/api/xbd/activate/<tile_id>", methods=["POST"])
+def api_xbd_activate(tile_id: str):
+    manifest, _ = xbd_store.load_cached()
+    if not manifest:
+        return _manifest_missing_response()
+    entry = xbd_store.get_entry(tile_id)
+    if not entry:
+        return jsonify({"ok": False, "error": f"tile '{tile_id}' not found"}), 404
+    if not entry.get("has_georef"):
+        return jsonify({"ok": False, "error": f"tile '{tile_id}' has no georef"}), 400
+    if xbd_store.POST_ONLY_MODE and not xbd_store._is_post(entry):
+        return jsonify({
+            "ok": False,
+            "error": (
+                f"tile '{tile_id}' is pre_disaster; POST_ONLY_MODE is enabled "
+                "(set XBD_POST_ONLY=0 to allow)."
+            ),
+        }), 400
+
+    world_state = state.activate_xbd_tile(entry)
+    state.push_log(
+        "success",
+        f"激活 xBD 瓦片 {tile_id} ({entry.get('disaster')} / {entry.get('stage')})",
+        {"module": "map", "tile_id": tile_id},
+    )
+    socketio.emit("world_state", world_state)
+    socketio.emit("system_status", state.system_status())
+    return jsonify({"ok": True, "item": entry, "world_state": world_state})
+
+
+@app.route("/api/perception/view/<path:fname>", methods=["GET"])
+def api_perception_view(fname: str):
+    """只读：serve outputs/uav_view 目录下的 patch / 可视化 PNG。"""
+    safe = os.path.basename(fname)
+    full = PERCEPTION_OUTPUT_DIR / safe
+    if not full.exists():
+        return jsonify({"ok": False, "error": f"perception file not found: {safe}"}), 404
+    response = send_from_directory(str(PERCEPTION_OUTPUT_DIR), safe)
+    response.headers["Cache-Control"] = "public, max-age=120"
+    return response
+
+
+@app.route("/api/xbd/footprints.geojson", methods=["GET"])
+def api_xbd_footprints():
+    path = xbd_store.get_footprints_path()
+    if not os.path.exists(path):
+        return jsonify({"ok": False, "error": f"footprints file missing: {path}"}), 404
+
+    # POST_ONLY_MODE 下需要把 PRE 灾前 features 过滤掉，并在服务端完成，
+    # 前端无需再做 stage 分流。
+    if xbd_store.POST_ONLY_MODE:
+        try:
+            with open(path, "r", encoding="utf-8") as fp:
+                geojson = json.load(fp)
+        except Exception as exc:
+            return jsonify({"ok": False, "error": f"footprints parse failed: {exc}"}), 500
+
+        raw_features = geojson.get("features") or []
+        kept = [
+            feat for feat in raw_features
+            if str((feat.get("properties") or {}).get("stage") or "").lower()
+            in {"post_disaster", "post"}
+        ]
+        geojson["features"] = kept
+        response = jsonify(geojson)
+        response.mimetype = "application/geo+json"
+        # POST_ONLY_MODE 状态可能被切换；短缓存 + must-revalidate 避免浏览器
+        # 继续吃老的含 PRE 的版本。
+        response.headers["Cache-Control"] = "public, max-age=60, must-revalidate"
+        return response
+
+    response = send_file(path, mimetype="application/geo+json")
+    response.headers["Cache-Control"] = "public, max-age=60, must-revalidate"
+    return response
+
+
+# ───────────────────────────── Elevation ───────────────────────────────
+
+@app.route("/api/elevation", methods=["GET"])
+def api_elevation():
+    if ELEVATION_DISABLED:
+        return jsonify({"ok": False, "elevation": None, "error": "elevation disabled"})
+
+    try:
+        lat = float(request.args.get("lat", ""))
+        lon = float(request.args.get("lon", ""))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "elevation": None, "error": "invalid lat/lon"}), 400
+
+    try:
+        resp = requests.get(
+            ELEVATION_URL,
+            params={"latitude": lat, "longitude": lon},
+            timeout=ELEVATION_TIMEOUT,
+        )
+        resp.raise_for_status()
+        payload = resp.json()
+        values = payload.get("elevation")
+        elevation = None
+        if isinstance(values, list) and values:
+            elevation = float(values[0])
+        elif isinstance(values, (int, float)):
+            elevation = float(values)
+        return jsonify({
+            "ok": elevation is not None,
+            "elevation": elevation,
+            "lat": lat,
+            "lon": lon,
+            "source": "open-meteo",
+        })
+    except Exception as exc:
+        logger.warning("elevation lookup failed: %s", exc)
+        return jsonify({
+            "ok": False,
+            "elevation": None,
+            "lat": lat,
+            "lon": lon,
+            "error": str(exc),
+        })
+
+
+# ───────────────────────────── Socket.IO ───────────────────────────────
+
+@socketio.on("connect")
+def socket_connect():
+    emit("system_status", state.system_status())
+    emit("world_state", state.world_state())
+
+
+@socketio.on("set_mode")
+def on_set_mode(data):
+    mode = (data or {}).get("mode", "manual")
+    if mode not in {"manual", "ai"}:
+        mode = "manual"
+    state.mode = mode
+    state.emit_system_status()
+
+
+@socketio.on("select_robot")
+def on_select_robot(data):
+    robot_id = (data or {}).get("robot_id", "UAV_1")
+    state.current_robot = robot_id
+    state.emit_system_status()
+
+
+@socketio.on("execute_action")
+def on_execute_action(data):
+    payload = data or {}
+    action = payload.get("action", "")
+    params = payload.get("params", {})
+    start_background_job(run_action_sequence, action, [{"action": action, "params": params, "reason": "manual action"}], "manual", action)
+
+
+def _dispatch_ai_task(task: str) -> None:
+    submit_ns = time.time_ns()
+    state.push_log("info", f"收到 AI 任务: {task}")
+    socketio.emit(
+        "ai_thinking",
+        {
+            "phase": "planning",
+            "detail": "LLM 正在规划...",
+            "submit_ns": submit_ns,
+            "submit_ms": submit_ns // 1_000_000,
+        },
+    )
+    try:
+        plan = state.planner.plan(task, state.world_state())
+    except Exception as exc:
+        logger.exception("ai_task planner crashed")
+        state.push_log("error", f"AI planner 异常: {exc}")
+        socketio.emit("ai_thinking", {"phase": "idle", "detail": ""})
+        return
+
+    plan_done_ns = time.time_ns()
+    plan_wall_ms = (plan_done_ns - submit_ns) // 1_000_000
+
+    if "（LLM 不可用" in plan.get("summary", ""):
+        state.push_log("warn", "LLM 不可用，已切换规则规划（详情见后端日志）")
+
+    steps = plan.get("steps", []) or []
+    plan_summary = plan.get("summary") or task
+    action_chain = " → ".join(
+        (step.get("action") or "?") for step in steps
+    ) or "(无步骤)"
+    state.push_log(
+        "info",
+        f"规划摘要: {plan_summary}（{len(steps)} 步: {action_chain}, 规划耗时 {plan_wall_ms} ms）",
+    )
+
+    plan_payload = dict(plan)
+    plan_payload["plan_wall_ms"] = plan_wall_ms
+    plan_payload["submit_ns"] = submit_ns
+    plan_payload["plan_done_ns"] = plan_done_ns
+    socketio.emit("ai_plan_result", plan_payload)
+    socketio.emit("ai_thinking", {"phase": "planning", "detail": plan.get("summary", "")})
+    run_action_sequence(plan_summary, steps, "ai", task)
+
+
+@socketio.on("ai_task")
+def on_ai_task(data):
+    payload = data or {}
+    task = str(payload.get("task", "")).strip()
+    if not task:
+        return
+    state.mode = "ai"
+    start_background_job(_dispatch_ai_task, task)
+
+
+@socketio.on("stop_execution")
+def on_stop_execution():
+    state._stop_event.set()
+    state.push_log("warn", "收到停止请求")
+
+
+# ───────────────────────────── Frontend ────────────────────────────────
+
+@app.route("/", defaults={"path": ""})
+@app.route("/<path:path>")
+def serve_frontend(path: str):
+    candidate = FRONTEND_DIST / path
+    if path and candidate.exists():
+        return send_from_directory(FRONTEND_DIST, path)
+    index_file = FRONTEND_DIST / "index.html"
+    if index_file.exists():
+        return send_from_directory(FRONTEND_DIST, "index.html")
+    return Response(
+        "DisasterClaw backend is running. Build frontend in ./frontend first.",
+        mimetype="text/plain",
+    )
+
+
+if __name__ == "__main__":
+    host = os.getenv("SERVER_HOST", "127.0.0.1")
+    port = int(os.getenv("SERVER_PORT", os.getenv("DISASTERCLAW_PORT", "5011")))
+    socketio.run(app, host=host, port=port, allow_unsafe_werkzeug=True)

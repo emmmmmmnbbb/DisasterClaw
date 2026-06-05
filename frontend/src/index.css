@@ -1,0 +1,75 @@
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+  --paper: #ece4d3;
+  --paper-strong: #f7f0e2;
+  --panel: rgba(252, 248, 241, 0.86);
+  --panel-strong: rgba(255, 252, 247, 0.96);
+  --line: #cbbba0;
+  --line-strong: #ab9875;
+  --ink: #1f2937;
+  --ink-soft: #5c6470;
+  --accent: #0f766e;
+  --accent-soft: #d6ece8;
+  --warning: #b45309;
+  --danger: #b91c1c;
+  --shadow: 0 16px 40px rgba(52, 42, 20, 0.08);
+  --radius: 18px;
+  --font-sans: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", "JetBrains Mono", monospace;
+}
+
+html, body, #root {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(circle at top left, rgba(15, 118, 110, 0.16), transparent 32%),
+    radial-gradient(circle at bottom right, rgba(180, 83, 9, 0.12), transparent 28%),
+    linear-gradient(180deg, #f5efe4 0%, var(--paper) 100%);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+button, input, textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+input, textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.65);
+  color: var(--ink);
+  outline: none;
+}
+
+input:focus, textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
+}
+
+textarea {
+  resize: none;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(31, 41, 55, 0.18);
+  border-radius: 999px;
+}
+

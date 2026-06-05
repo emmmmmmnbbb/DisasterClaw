@@ -1,0 +1,31 @@
+# Secrets (never commit)
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# Node / frontend
+node_modules/
+frontend/dist/
+npm-debug.log*
+
+# Runtime outputs & data (excluded from repo)
+outputs/
+runs/
+backend/outputs/
+backend/data/
+backend/runs/
+
+# Tooling / OS / editor
+.codex
+.DS_Store
+*.log
+.idea/
+.vscode/

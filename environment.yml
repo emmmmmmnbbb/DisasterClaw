@@ -1,0 +1,8 @@
+name: disasterclaw
+channels:
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - -r backend/requirements.txt

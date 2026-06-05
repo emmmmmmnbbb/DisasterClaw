@@ -1,0 +1,97 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { io } from 'socket.io-client'
+
+const API_BASE = ''
+
+export function useSocket() {
+  const socketRef = useRef(null)
+  const [connected, setConnected] = useState(false)
+  const [systemStatus, setSystemStatus] = useState({
+    initialized: false,
+    mode: 'manual',
+    current_robot: 'UAV_1',
+    is_executing: false,
+  })
+  const [worldState, setWorldState] = useState({ robots: {}, targets: [], map: { reports: [] } })
+  const [logs, setLogs] = useState([])
+  const [lastActionResult, setLastActionResult] = useState(null)
+  const [lastAiPlan, setLastAiPlan] = useState(null)
+  const [lastAiReport, setLastAiReport] = useState(null)
+  const [lastPerception, setLastPerception] = useState(null)
+
+  useEffect(() => {
+    const loadSnapshot = async () => {
+      try {
+        const [statusRes, worldRes, logsRes] = await Promise.all([
+          fetch(`${API_BASE}/api/status`),
+          fetch(`${API_BASE}/api/world`),
+          fetch(`${API_BASE}/api/logs`),
+        ])
+        if (statusRes.ok) setSystemStatus(await statusRes.json())
+        if (worldRes.ok) setWorldState(await worldRes.json())
+        if (logsRes.ok) setLogs(await logsRes.json())
+      } catch (error) {
+        console.warn('[snapshot]', error)
+      }
+    }
+
+    loadSnapshot()
+
+    const socket = io({
+      transports: ['polling'],
+      upgrade: false,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 800,
+    })
+    socketRef.current = socket
+
+    socket.on('connect', () => setConnected(true))
+    socket.on('disconnect', () => setConnected(false))
+    socket.on('system_status', setSystemStatus)
+    socket.on('world_state', setWorldState)
+    socket.on('action_result', setLastActionResult)
+    socket.on('ai_plan_result', setLastAiPlan)
+    socket.on('ai_execution_report', setLastAiReport)
+    socket.on('perception_result', setLastPerception)
+    socket.on('log', (entry) => {
+      setLogs((prev) => {
+        const next = [...prev, entry]
+        return next.length > 300 ? next.slice(-300) : next
+      })
+    })
+
+    return () => socket.disconnect()
+  }, [])
+
+  const setMode = useCallback((mode) => {
+    socketRef.current?.emit('set_mode', { mode })
+  }, [])
+
+  const executeAction = useCallback((action, params = {}) => {
+    socketRef.current?.emit('execute_action', { action, params })
+  }, [])
+
+  const submitAiTask = useCallback((task) => {
+    socketRef.current?.emit('ai_task', { task })
+  }, [])
+
+  const stopExecution = useCallback(() => {
+    socketRef.current?.emit('stop_execution')
+  }, [])
+
+  return {
+    connected,
+    systemStatus,
+    worldState,
+    logs,
+    lastActionResult,
+    lastAiPlan,
+    lastAiReport,
+    lastPerception,
+    setMode,
+    executeAction,
+    submitAiTask,
+    stopExecution,
+  }
+}
+
