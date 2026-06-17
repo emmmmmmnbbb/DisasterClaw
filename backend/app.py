@@ -24,6 +24,7 @@ from perception import (
     level_for_risk,
 )
 from vlm_analyzer import VLMAnalyzer
+from vln_navigator import Observation, VlnConfig, VlnNavigator
 from world import DEFAULT_BASEMAP, WorldModel
 from xbd_map import build_annotation_geojson
 
@@ -754,6 +755,320 @@ def run_action_sequence(label: str, steps: list[dict], source: str, raw_task: st
         state._task_lock.release()
 
 
+# ───────────────────────── VLN 语言目标导航闭环 ──────────────────────────
+#
+# 与 run_action_sequence（一次性出 plan 再顺序执行）不同，VLN 是"依观测决策"
+# 的闭环：每步 perceive_at 裁俯视视场 → VlnNavigator 对指令目标做 grounding →
+# 朝目标质心步进飞行 → 直到到达或步数预算耗尽。复用同一套 socket 事件，
+# 前端感知/轨迹/日志/报告面板无需改动。
+
+VLN_STEP_BUDGET = int(os.getenv("VLN_STEP_BUDGET", "12"))
+VLN_ARRIVAL_RADIUS_M = float(os.getenv("VLN_ARRIVAL_RADIUS_M", "35"))
+VLN_MAX_STEP_M = float(os.getenv("VLN_MAX_STEP_M", "80"))
+VLN_EXPLORE_STEP_M = float(os.getenv("VLN_EXPLORE_STEP_M", "90"))
+VLN_USE_LLM_STOP = os.getenv("VLN_USE_LLM_STOP", "0").lower() in {"1", "true", "yes", "on"}
+
+
+def _vln_perceive(source: str) -> tuple[PerceptionResult | None, dict, dict]:
+    """
+    在 UAV 当前位姿裁俯视视场并跑感知，发射 perception_result 供前端面板更新。
+
+    返回 (PerceptionResult|None, snapshot, active_tile)。
+    None 表示当前位置无 POST 瓦片覆盖或感知失败，导航应停止。
+    """
+    perception = get_perception()
+    snap = state.adapter.snapshot()
+
+    aligned = _align_active_tile_for(
+        float(snap["lat"]), float(snap["lon"]), source=source, strict_post=True
+    )
+    world = state.world_state()
+    active_tile = (world.get("map") or {}).get("active_tile") or {}
+    if aligned is None or not xbd_store._is_post(active_tile) or not active_tile.get("tile_id"):
+        return None, snap, active_tile
+
+    if not perception.is_available:
+        try:
+            perception.load()
+        except Exception as exc:
+            state.push_log("error", f"VLN: 视觉模型未就绪 — {exc}")
+            return None, snap, active_tile
+
+    patch_id = f"vln-{int(time.time() * 1000)}"
+    try:
+        result: PerceptionResult = perception.perceive_at(
+            lat=float(snap["lat"]),
+            lon=float(snap["lon"]),
+            alt=float(snap["alt"]),
+            active_tile=active_tile,
+            patch_id=patch_id,
+        )
+    except Exception as exc:
+        logger.exception("VLN perception failed")
+        state.push_log("error", f"VLN 感知失败: {exc}")
+        return None, snap, active_tile
+
+    det_counts = result.detection.get("class_counts") or {}
+    seg_stats = result.segmentation.get("stats") or {}
+    payload = {
+        "patch_id": result.patch_id,
+        "patch_url": result.patch_url,
+        "overlay_url": result.overlay_url,
+        "detection_url": result.detection_url,
+        "patch_width": result.patch_width,
+        "patch_height": result.patch_height,
+        "radius_m": result.patch_radius_m,
+        "risk_level": result.risk_level,
+        "risk_summary": result.risk_summary,
+        "damaged_buildings": result.damaged_buildings,
+        "intact_buildings": result.intact_buildings,
+        "vehicles": result.vehicles,
+        "detection": {
+            "num_objects": result.detection.get("num_objects", 0),
+            "class_counts": det_counts,
+            "detections": result.detection.get("detections", [])[:50],
+        },
+        "segmentation": {
+            "num_labels": result.segmentation.get("num_labels", 0),
+            "stats": seg_stats,
+        },
+        "scene": result.scene_dict,
+        "scene_text": result.scene_text,
+        "vlm_summary": "",
+        "position": {"lat": snap["lat"], "lon": snap["lon"], "alt": snap["alt"]},
+        "degraded": result.degraded,
+        "degraded_reason": result.degraded_reason or "",
+        "active_tile_id": active_tile.get("tile_id"),
+        "active_tile_stage": active_tile.get("stage"),
+        "source": source,
+        "timestamp": int(time.time() * 1000),
+        "timings": dict(result.extras or {}),
+    }
+    socketio.emit("perception_result", payload)
+    state.emit_world()
+    return result, snap, active_tile
+
+
+def _vln_llm_stop(instruction: str, scene_text: str, candidate: dict) -> bool | None:
+    """到达候选时让 planner LLM 复核"这是否就是指令描述的目标"。失败回退 None。"""
+    try:
+        from llm_client import get_client
+
+        client = get_client(module="planner")
+        content = client.chat(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "你在为无人机做视觉语言导航的到达确认。只输出 JSON："
+                        '{"arrived": true|false}。给定一句导航指令、当前俯视视场的结构化'
+                        "感知描述、以及一个候选目标，判断无人机是否已到达指令描述的目标上空。"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "instruction": instruction,
+                            "candidate": {
+                                "class_name": candidate.get("class_name"),
+                                "conf": candidate.get("conf"),
+                                "dist_m": round(float(candidate.get("offset", (0, 0, 0))[2]), 1),
+                            },
+                            "scene": scene_text[:600],
+                        },
+                        ensure_ascii=False,
+                    ),
+                },
+            ],
+            temperature=0.0,
+            max_tokens=64,
+        )
+        match = re.search(r"\{[\s\S]*\}", content)
+        if not match:
+            return None
+        return bool(json.loads(match.group(0)).get("arrived"))
+    except Exception as exc:
+        logger.warning("VLN LLM stop-confirm failed: %s", exc)
+        return None
+
+
+def run_vln_episode(instruction: str, source: str = "ai") -> None:
+    if not state._task_lock.acquire(blocking=False):
+        state.push_log("warn", "当前已有任务在执行，忽略新的 VLN 指令")
+        return
+
+    navigator = VlnNavigator(
+        config=VlnConfig(
+            step_budget=VLN_STEP_BUDGET,
+            arrival_radius_m=VLN_ARRIVAL_RADIUS_M,
+            max_step_m=VLN_MAX_STEP_M,
+            explore_step_m=VLN_EXPLORE_STEP_M,
+            use_llm_stop=VLN_USE_LLM_STOP,
+        ),
+        llm_stop_fn=_vln_llm_stop if VLN_USE_LLM_STOP else None,
+    )
+    parsed = navigator.reset(instruction)
+
+    arrived = False
+    executed: list[dict] = []
+    task_started_ns = time.time_ns()
+    try:
+        state.is_executing = True
+        state._stop_event.clear()
+        state._sync_world_from_adapter()
+        state.emit_system_status()
+        state.emit_world()
+
+        target_label = parsed.get("target_label")
+        dir_name = parsed.get("direction_name")
+        plan_summary = (
+            f"VLN 语言目标导航：寻找「{target_label}」"
+            + (f"（方向先验：{dir_name}）" if dir_name else "")
+            + f"，步数预算 {navigator.config.step_budget}。"
+        )
+        state.push_log("info", f"收到 VLN 指令: {instruction}")
+        state.push_log("info", plan_summary)
+        socketio.emit(
+            "task_started",
+            {
+                "label": plan_summary,
+                "raw_task": instruction,
+                "source": source,
+                "step_count": navigator.config.step_budget,
+                "ts_ns": task_started_ns,
+                "ts_ms": task_started_ns // 1_000_000,
+            },
+        )
+        socketio.emit(
+            "ai_plan_result",
+            {
+                "summary": plan_summary,
+                "steps": [
+                    {"action": "vln_loop", "reason": f"目标类别: {', '.join(parsed.get('target_classes') or []) or '未识别'}"}
+                ],
+                "vln": True,
+                "submit_ns": task_started_ns,
+            },
+        )
+        socketio.emit("ai_thinking", {"phase": "planning", "detail": plan_summary})
+
+        while not navigator.budget_exhausted():
+            if state._stop_event.is_set():
+                state.push_log("warn", "VLN 已停止")
+                break
+
+            result, snap, active_tile = _vln_perceive(source)
+            if result is None:
+                state.push_log(
+                    "error",
+                    "VLN 中止：当前位置无 POST 灾后瓦片覆盖或感知不可用，无法继续导航。",
+                )
+                break
+
+            obs = Observation.from_perception(result)
+            decision = navigator.step(obs, snap)
+            step_idx = navigator.step_index
+
+            state.push_log("info", f"[VLN {step_idx}/{navigator.config.step_budget}] {decision.thought}")
+            socketio.emit(
+                "ai_thought",
+                {
+                    "iteration": step_idx,
+                    "skill": decision.action,
+                    "thinking": decision.reason,
+                    "progress": f"step {step_idx}/{navigator.config.step_budget}",
+                    "matched": decision.matched,
+                    "target_dist_m": decision.target_dist_m,
+                },
+            )
+            socketio.emit(
+                "ai_thinking",
+                {
+                    "phase": "executing",
+                    "detail": decision.action,
+                    "iteration": step_idx,
+                    "action": {"skill": decision.action, "parameters": decision.params},
+                    "decision": decision.reason,
+                },
+            )
+
+            if decision.action == "stop" or decision.arrived:
+                arrived = True
+                state.push_log("success", f"VLN 到达: {decision.reason}")
+                break
+
+            step_start_ns = time.time_ns()
+            result_exec = execute_action(decision.action, decision.params, source=source)
+            step_end_ns = time.time_ns()
+            executed.append({
+                "action": decision.action,
+                "params": decision.params,
+                "result": result_exec,
+                "reason": decision.reason,
+                "matched": decision.matched,
+                "wall_ms": (step_end_ns - step_start_ns) // 1_000_000,
+                "step_start_ns": step_start_ns,
+                "step_end_ns": step_end_ns,
+            })
+            socketio.emit(
+                "action_result",
+                {
+                    "action": decision.action,
+                    "params": decision.params,
+                    "result": result_exec,
+                    "wall_ms": (step_end_ns - step_start_ns) // 1_000_000,
+                    "step_index": step_idx,
+                    "step_start_ns": step_start_ns,
+                    "step_end_ns": step_end_ns,
+                },
+            )
+            if not result_exec.get("success"):
+                state.push_log("error", f"VLN 飞行失败，中止: {result_exec.get('message', '')}")
+                break
+
+        final_snap = state.adapter.snapshot()
+        summary = navigator.summarize(arrived, final_snap)
+        # 收尾写一条 world report，让地图落一个标记点
+        state.world.add_report(
+            content=summary,
+            lat=float(final_snap["lat"]),
+            lon=float(final_snap["lon"]),
+            level="success" if arrived else "warn",
+            source="vln",
+        )
+        state.push_log("success" if arrived else "warn", summary)
+
+        finished_ns = time.time_ns()
+        report = {
+            "ok": arrived,
+            "task": instruction,
+            "summary": summary,
+            "steps": executed,
+            "arrived": arrived,
+            "vln_history": navigator.history,
+            "ts_ns": finished_ns,
+            "ts_ms": finished_ns // 1_000_000,
+            "task_started_ns": task_started_ns,
+            "wall_ms": (finished_ns - task_started_ns) // 1_000_000,
+        }
+        if source == "ai":
+            socketio.emit("ai_execution_report", report)
+            socketio.emit("ai_thinking", {"phase": "idle", "detail": ""})
+        else:
+            socketio.emit("execution_report", report)
+    except Exception as exc:
+        logger.exception("VLN episode crashed")
+        state.push_log("error", f"VLN 异常: {exc}")
+        socketio.emit("ai_thinking", {"phase": "idle", "detail": ""})
+    finally:
+        state.is_executing = False
+        state._sync_world_from_adapter()
+        state.emit_system_status()
+        state.emit_world()
+        state._task_lock.release()
+
+
 # ───────────────────────────── REST API ────────────────────────────────
 
 @app.route("/api/status", methods=["GET"])
@@ -1304,6 +1619,16 @@ def on_ai_task(data):
         return
     state.mode = "ai"
     start_background_job(_dispatch_ai_task, task)
+
+
+@socketio.on("vln_task")
+def on_vln_task(data):
+    payload = data or {}
+    instruction = str(payload.get("instruction") or payload.get("task") or "").strip()
+    if not instruction:
+        return
+    state.mode = "ai"
+    start_background_job(run_vln_episode, instruction)
 
 
 @socketio.on("stop_execution")

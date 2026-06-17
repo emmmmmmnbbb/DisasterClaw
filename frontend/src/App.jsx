@@ -20,6 +20,7 @@ export default function App() {
     setMode,
     executeAction,
     submitAiTask,
+    submitVlnTask,
     stopExecution,
   } = useSocket()
 
@@ -31,6 +32,11 @@ export default function App() {
     setMode('ai')
     submitAiTask(task)
   }, [setMode, submitAiTask])
+
+  const handleSubmitVlnTask = useCallback((instruction) => {
+    setMode('ai')
+    submitVlnTask(instruction)
+  }, [setMode, submitVlnTask])
 
   const handleFlyToPoint = useCallback((point) => {
     setMode('manual')
@@ -143,6 +149,7 @@ export default function App() {
           lastAiPlan={lastAiPlan}
           lastAiReport={lastAiReport}
           onSubmitAiTask={handleSubmitAiTask}
+          onSubmitVlnTask={handleSubmitVlnTask}
           onStop={stopExecution}
           onHover={handleHover}
           onFlyToPoint={handleFlyToPoint}

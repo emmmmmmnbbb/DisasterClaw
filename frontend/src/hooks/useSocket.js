@@ -75,6 +75,10 @@ export function useSocket() {
     socketRef.current?.emit('ai_task', { task })
   }, [])
 
+  const submitVlnTask = useCallback((instruction) => {
+    socketRef.current?.emit('vln_task', { instruction })
+  }, [])
+
   const stopExecution = useCallback(() => {
     socketRef.current?.emit('stop_execution')
   }, [])
@@ -91,6 +95,7 @@ export function useSocket() {
     setMode,
     executeAction,
     submitAiTask,
+    submitVlnTask,
     stopExecution,
   }
 }

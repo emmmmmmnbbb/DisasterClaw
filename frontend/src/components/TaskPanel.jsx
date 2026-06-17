@@ -29,6 +29,7 @@ export default function TaskPanel({
   lastAiPlan,
   lastAiReport,
   onSubmitAiTask,
+  onSubmitVlnTask,
   onStop,
   onHover,
   onFlyToPoint,
@@ -36,6 +37,7 @@ export default function TaskPanel({
   onInspectPoint,
 }) {
   const [draft, setDraft] = useState('飞到当前地图中心附近进行低空观察，并给出简短态势汇报。')
+  const [vlnDraft, setVlnDraft] = useState('飞到北侧寻找完全损毁的建筑。')
 
   useEffect(() => {
     if (!selectedPoint) return
@@ -75,6 +77,35 @@ export default function TaskPanel({
             </button>
             <button className="btn btn-soft" onClick={onHover}>
               Hover
+            </button>
+          </div>
+        </div>
+
+        <div style={{ padding: 16, borderRadius: 18, background: 'var(--panel-strong)', border: '1px solid rgba(171,152,117,0.24)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>VLN 语言目标导航</div>
+            <span style={{ color: 'var(--ink-soft)', fontSize: 11 }}>闭环 · BEV</span>
+          </div>
+          <div style={{ color: 'var(--ink-soft)', fontSize: 12, marginBottom: 8, lineHeight: 1.5 }}>
+            用一句话描述要找的目标（如"完全损毁建筑/车辆/积水"）和方向，无人机会逐步感知并自主飞向目标。
+          </div>
+          <textarea
+            rows={3}
+            value={vlnDraft}
+            onChange={(event) => setVlnDraft(event.target.value)}
+            placeholder='例如："飞到北侧寻找完全损毁的建筑。"'
+          />
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <button className="btn btn-accent" onClick={() => onSubmitVlnTask(vlnDraft)} disabled={!vlnDraft.trim() || !onSubmitVlnTask}>
+              Run VLN
+            </button>
+            <button
+              className="btn btn-danger"
+              onClick={onStop}
+              disabled={!systemStatus.is_executing}
+              style={{ padding: '4px 10px', fontSize: 12 }}
+            >
+              Stop
             </button>
           </div>
         </div>
