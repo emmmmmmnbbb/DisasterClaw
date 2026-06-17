@@ -54,11 +54,26 @@ bash scripts/run_frontend.sh
 
 | 变量 | 默认 | 含义 |
 | --- | --- | --- |
+| `VLN_GROUNDER` | vlm | 目标判读后端：`vlm`(VLM 视觉判读，开放词汇) / `yolo`(仅 YOLO 6 类) / `hybrid`(YOLO 命中优先，否则 VLM) |
+| `VLN_VLM_MAX_TOKENS` | 200 | VLM grounding 单次回答上限 |
 | `VLN_STEP_BUDGET` | 12 | 最大决策步数 |
 | `VLN_ARRIVAL_RADIUS_M` | 35 | 目标质心进入此半径视为到达 |
 | `VLN_MAX_STEP_M` | 80 | 单步朝目标移动上限（防越界/跳瓦片） |
 | `VLN_EXPLORE_STEP_M` | 90 | 未命中时的搜索步长 |
 | `VLN_USE_LLM_STOP` | 0 | 到达候选时是否让 planner LLM 复核（控时延，默认关） |
+
+## grounding 后端说明
+
+每步的"目标在不在 / 在哪 / 是否到达"判断由 `VLN_GROUNDER` 决定：
+
+- `vlm`（默认）：把当前俯视 patch + 指令交给 VLM（`VLMAnalyzer`，即 `.env` 配的
+  本地 Qwen-VL 或 OpenAI 兼容 VLM），返回 `{present,x,y,arrived}`。**开放词汇**，
+  不受 YOLO 6 类限制，能判 YOLO 检不出的目标；代价是每步一次 VLM 推理，较慢。
+- `yolo`：仅用 YOLO 类别质心（原行为），快但只认 6 类，且卫星图域偏移下召回低。
+- `hybrid`：YOLO 命中就用 YOLO（快），否则回退 VLM（兼顾速度与覆盖）。
+
+> VLM 判读的归一化坐标 (x,y) 与 YOLO 框质心走同一套几何换算（→ 米偏移 → `fly_relative`），
+> 到达判定也统一用 `VLN_ARRIVAL_RADIUS_M`，外加 VLM 自报的 `arrived`。
 
 ## 已知局限（PoC）
 

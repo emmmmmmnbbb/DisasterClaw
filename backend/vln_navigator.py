@@ -87,6 +87,7 @@ class Observation:
     risk_level: str = "none"
     scene_text: str = ""
     degraded: bool = False
+    patch_path: str = ""        # 当前俯视 patch 的本地路径（供 VLM grounder 读取）
 
     @classmethod
     def from_perception(cls, result) -> "Observation":
@@ -99,7 +100,24 @@ class Observation:
             risk_level=str(getattr(result, "risk_level", "none") or "none"),
             scene_text=str(getattr(result, "scene_text", "") or ""),
             degraded=bool(getattr(result, "degraded", False)),
+            patch_path=str(getattr(result, "patch_path", "") or ""),
         )
+
+
+@dataclass
+class GroundHit:
+    """一次 grounding 的结果：目标是否在视场内、归一化中心、是否到达。
+
+    norm_xy 为目标中心的归一化坐标，左上 (0,0)、右下 (1,1)；YOLO 与 VLM 两种
+    grounder 都统一输出该格式，几何换算（→ 米偏移）在导航器内共享。
+    """
+    present: bool
+    norm_xy: Optional[tuple[float, float]] = None
+    arrived: bool = False
+    label: str = ""
+    conf: float = 0.0
+    reason: str = ""
+    source: str = ""            # "yolo" / "vlm" / "hybrid:*"
 
 
 @dataclass
@@ -170,16 +188,70 @@ def parse_instruction(instruction: str) -> dict:
     }
 
 
+def ground_with_yolo(
+    observation: "Observation",
+    target_classes: list[str],
+    min_box_area_frac: float = 0.0008,
+) -> Optional[GroundHit]:
+    """基于 YOLO 检测框做 grounding：选出匹配目标类别中最显著的框，输出归一化中心。
+
+    退化视场（裁到整图 / 贴边 clamp）时几何不可信，返回 None（交由调用方探索）。
+    """
+    obs = observation
+    if obs.degraded or obs.patch_width <= 0 or obs.patch_height <= 0:
+        return None
+    if not target_classes:
+        return None
+
+    pw, ph = obs.patch_width, obs.patch_height
+    patch_area = float(pw * ph) or 1.0
+
+    best = None
+    best_score = -1.0
+    for det in obs.detections:
+        cls = det.get("class_name")
+        if cls not in target_classes:
+            continue
+        bbox = det.get("bbox") or det.get("bbox_xyxy")
+        if not bbox or len(bbox) < 4:
+            continue
+        x1, y1, x2, y2 = (float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3]))
+        area = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+        if area / patch_area < min_box_area_frac:
+            continue
+        cx_px = (x1 + x2) * 0.5
+        cy_px = (y1 + y2) * 0.5
+        conf = float(det.get("conf", 0.0))
+        dist_center = math.hypot(cx_px / pw - 0.5, cy_px / ph - 0.5)
+        score = area / patch_area + 0.3 * conf - 0.2 * dist_center
+        if score > best_score:
+            best_score = score
+            best = GroundHit(
+                present=True,
+                norm_xy=(cx_px / pw, cy_px / ph),
+                label=cls,
+                conf=conf,
+                reason=f"YOLO 命中 {cls} (conf {conf:.2f}, 面积 {area / patch_area:.1%})",
+                source="yolo",
+            )
+    return best
+
+
 class VlnNavigator:
     """单条指令的导航闭环状态机（每条 episode 用一个实例）。"""
 
     def __init__(
         self,
         config: Optional[VlnConfig] = None,
+        grounder: Optional[Callable[[dict, "Observation"], Optional[GroundHit]]] = None,
         llm_stop_fn: Optional[Callable[[str, str, dict], Optional[bool]]] = None,
         locate_ground_fn: Optional[Callable[[str, str], Optional[list]]] = None,
     ):
         self.config = config or VlnConfig()
+        # grounder(parsed, observation) -> GroundHit|None
+        #   注入式 grounding 后端：None 时默认用进程内 YOLO（ground_with_yolo）。
+        #   app 层据此切换 yolo / vlm / hybrid（见 run_vln_episode）。
+        self._grounder = grounder
         # llm_stop_fn(instruction, scene_text, candidate) -> True/False/None
         #   返回 None 表示"无意见"，回退到启发式。
         self._llm_stop_fn = llm_stop_fn
@@ -229,20 +301,36 @@ class VlnNavigator:
         self.step_index += 1
         target_classes = self.parsed.get("target_classes") or []
 
-        # 1) 目标 grounding：在检测里找匹配类别的框
-        candidate = self._best_target(observation, target_classes)
+        # 1) 目标 grounding：注入式后端（VLM/hybrid）优先，否则进程内 YOLO。
+        hit: Optional[GroundHit] = None
+        if self._grounder is not None:
+            try:
+                hit = self._grounder(self.parsed, observation)
+            except Exception:
+                hit = None
+        else:
+            hit = ground_with_yolo(observation, target_classes, self.config.min_box_area_frac)
 
-        if candidate is not None:
-            north_m, east_m, dist_m = candidate["offset"]
-            label = candidate["class_name"]
-            # 1a) 到达判定：目标已进入视场中心半径
-            if dist_m <= self.config.arrival_radius_m:
-                if self._confirm_stop(observation, candidate):
+        usable = (
+            hit is not None
+            and hit.present
+            and hit.norm_xy is not None
+            and not observation.degraded
+            and observation.patch_radius_m > 0
+        )
+        if usable:
+            north_m, east_m, dist_m = self._offset_from_norm(hit.norm_xy, observation.patch_radius_m)
+            label = hit.label or self.parsed.get("target_label")
+            src = f"[{hit.source}]" if hit.source else ""
+            # 1a) 到达判定：grounder 直接判到达，或目标已进入视场中心半径。
+            if hit.arrived or dist_m <= self.config.arrival_radius_m:
+                cand = {"class_name": label, "conf": hit.conf, "offset": (north_m, east_m, dist_m)}
+                if self._confirm_stop(observation, cand):
                     dec = Decision(
                         action="stop",
                         params={},
-                        reason=f"目标「{label}」已进入视场中心（偏移 {dist_m:.0f}m≤{self.config.arrival_radius_m:.0f}m），判定到达。",
-                        thought=f"step{self.step_index}: 命中 {label}，质心偏移 N{north_m:+.0f}/E{east_m:+.0f}m，到达。",
+                        reason=f"{src}目标「{label}」已位于视场中心（偏移 {dist_m:.0f}m），判定到达。{hit.reason}",
+                        thought=f"step{self.step_index}: {src}命中 {label}，偏移 N{north_m:+.0f}/E{east_m:+.0f}m，到达。",
                         arrived=True,
                         matched=True,
                         target_offset_m=(north_m, east_m),
@@ -250,13 +338,13 @@ class VlnNavigator:
                     )
                     self._log(dec)
                     return dec
-            # 1b) 未到达：朝目标质心步进（限幅，避免越界/跳瓦片）
+            # 1b) 未到达：朝目标步进（限幅，避免越界/跳瓦片）。
             mn, me = self._clamp_step(north_m, east_m, self.config.max_step_m)
             dec = Decision(
                 action="fly_relative",
                 params={"north_m": round(mn, 1), "east_m": round(me, 1), "up_m": 0.0, "speed": 12.0},
-                reason=f"已 grounding 到「{label}」（约 {dist_m:.0f}m，方位 N{north_m:+.0f}/E{east_m:+.0f}m），朝其前进。",
-                thought=f"step{self.step_index}: 命中 {label}，朝质心步进 N{mn:+.0f}/E{me:+.0f}m。",
+                reason=f"{src}已 grounding 到「{label}」（约 {dist_m:.0f}m，方位 N{north_m:+.0f}/E{east_m:+.0f}m），朝其前进。{hit.reason}",
+                thought=f"step{self.step_index}: {src}命中 {label}，朝目标步进 N{mn:+.0f}/E{me:+.0f}m。",
                 matched=True,
                 target_offset_m=(north_m, east_m),
                 target_dist_m=dist_m,
@@ -271,6 +359,8 @@ class VlnNavigator:
             bits.append(f"方向先验 {self.parsed['direction_name']}")
         if observation.risk_level not in ("none", ""):
             bits.append(f"当前视场风险 {observation.risk_level}")
+        if hit is not None and hit.reason:
+            bits.append(hit.reason)
         extra = ("；" + "，".join(bits)) if bits else ""
         dec = Decision(
             action="fly_relative",
@@ -286,50 +376,16 @@ class VlnNavigator:
         return self.step_index >= self.config.step_budget
 
     # ── 内部工具 ────────────────────────────────────────────────────
-    def _best_target(self, obs: Observation, target_classes: list[str]) -> Optional[dict]:
-        if obs.degraded or obs.patch_width <= 0 or obs.patch_height <= 0 or obs.patch_radius_m <= 0:
-            # 退化视场（裁到整图 / 贴边 clamp）时中心不对齐 UAV，方位不可信 → 当作未命中。
-            return None
-        if not target_classes:
-            return None
+    @staticmethod
+    def _offset_from_norm(norm_xy: tuple[float, float], radius_m: float) -> tuple[float, float, float]:
+        """归一化中心 (x,y) → 相对无人机的 (north_m, east_m, dist_m)。
 
-        pw, ph = obs.patch_width, obs.patch_height
-        patch_area = float(pw * ph) or 1.0
-        # 俯视 patch 半边 ≈ patch_radius_m，故每像素米数：
-        mpp_x = (2.0 * obs.patch_radius_m) / pw
-        mpp_y = (2.0 * obs.patch_radius_m) / ph
-
-        best = None
-        best_score = -1.0
-        for det in obs.detections:
-            cls = det.get("class_name")
-            if cls not in target_classes:
-                continue
-            bbox = det.get("bbox") or det.get("bbox_xyxy")
-            if not bbox or len(bbox) < 4:
-                continue
-            x1, y1, x2, y2 = (float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3]))
-            area = max(0.0, x2 - x1) * max(0.0, y2 - y1)
-            if area / patch_area < self.config.min_box_area_frac:
-                continue
-            cx_px = (x1 + x2) * 0.5
-            cy_px = (y1 + y2) * 0.5
-            east_m = (cx_px - pw * 0.5) * mpp_x
-            north_m = -(cy_px - ph * 0.5) * mpp_y
-            dist_m = math.hypot(north_m, east_m)
-            conf = float(det.get("conf", 0.0))
-            # 评分：面积越大、置信越高、离中心越近越优先。
-            score = area / patch_area + 0.3 * conf - 0.0005 * dist_m
-            if score > best_score:
-                best_score = score
-                best = {
-                    "class_name": cls,
-                    "conf": conf,
-                    "bbox": [x1, y1, x2, y2],
-                    "offset": (north_m, east_m, dist_m),
-                    "area_frac": area / patch_area,
-                }
-        return best
+        俯视 patch 半边 ≈ radius_m，故全宽对应 2*radius_m 米；图像 y 向下为南。
+        """
+        nx, ny = norm_xy
+        east_m = (nx - 0.5) * 2.0 * radius_m
+        north_m = -(ny - 0.5) * 2.0 * radius_m
+        return north_m, east_m, math.hypot(north_m, east_m)
 
     @staticmethod
     def _clamp_step(north_m: float, east_m: float, max_step_m: float) -> tuple[float, float]:

@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react'
+
 function formatTime(ts) {
   if (!ts) return '--'
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
@@ -5,11 +7,31 @@ function formatTime(ts) {
 
 export default function LogPanel({ logs }) {
   const recent = (logs || []).slice(-120)
+  const scrollRef = useRef(null)
+  const pinnedRef = useRef(true)
+
+  const handleScroll = () => {
+    const el = scrollRef.current
+    if (!el) return
+    pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48
+  }
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el && pinnedRef.current) {
+      el.scrollTop = el.scrollHeight
+    }
+  }, [recent.length])
 
   return (
     <section className="log-panel" style={{ padding: 18 }}>
       <div className="section-title">Mission Log</div>
-      <div className="panel-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div
+        ref={scrollRef}
+        onScroll={handleScroll}
+        className="panel-scroll"
+        style={{ display: 'flex', flexDirection: 'column', gap: 10 }}
+      >
         {recent.length === 0 ? (
           <div style={{ color: 'var(--ink-soft)' }}>No events yet.</div>
         ) : (

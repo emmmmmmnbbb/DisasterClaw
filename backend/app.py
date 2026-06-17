@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import threading
 import time
 from pathlib import Path
@@ -24,7 +25,13 @@ from perception import (
     level_for_risk,
 )
 from vlm_analyzer import VLMAnalyzer
-from vln_navigator import Observation, VlnConfig, VlnNavigator
+from vln_navigator import (
+    GroundHit,
+    Observation,
+    VlnConfig,
+    VlnNavigator,
+    ground_with_yolo,
+)
 from world import DEFAULT_BASEMAP, WorldModel
 from xbd_map import build_annotation_geojson
 
@@ -767,6 +774,99 @@ VLN_ARRIVAL_RADIUS_M = float(os.getenv("VLN_ARRIVAL_RADIUS_M", "35"))
 VLN_MAX_STEP_M = float(os.getenv("VLN_MAX_STEP_M", "80"))
 VLN_EXPLORE_STEP_M = float(os.getenv("VLN_EXPLORE_STEP_M", "90"))
 VLN_USE_LLM_STOP = os.getenv("VLN_USE_LLM_STOP", "0").lower() in {"1", "true", "yes", "on"}
+# grounding 后端：vlm（默认，用 VLM 判读，开放词汇）/ yolo（仅 YOLO 类别）/ hybrid（YOLO 命中优先，否则 VLM）。
+VLN_GROUNDER = (os.getenv("VLN_GROUNDER", "vlm") or "vlm").strip().lower()
+VLN_VLM_MAX_TOKENS = int(os.getenv("VLN_VLM_MAX_TOKENS", "200"))
+
+_VLN_GROUND_SYS_PROMPT = (
+    "你是无人机俯视(nadir)视场的视觉判读器。给你的是无人机正下方的俯视影像，"
+    "以及一句导航指令。请判断影像中是否存在指令所描述的目标，并给出它在影像中的"
+    "大致中心位置（归一化坐标：左上为 (0,0)，右下为 (1,1)）。"
+    "只输出严格 JSON，不要任何多余文字："
+    '{"present": true/false, "x": 0~1, "y": 0~1, "arrived": true/false, "reason": "简述"}。'
+    "present 表示目标是否出现在画面中；arrived 表示目标已大致位于画面中心(无人机已在其正上方)；"
+    "若不存在则 present=false 且可省略 x/y。"
+)
+
+
+def _vln_vlm_ground(parsed: dict, obs: Observation) -> GroundHit | None:
+    """用 VLM 对当前俯视 patch 做开放词汇 grounding。"""
+    patch_path = getattr(obs, "patch_path", "") or ""
+    if not patch_path or not os.path.exists(patch_path):
+        return GroundHit(present=False, reason="VLM grounder: 无可用 patch 图像", source="vlm")
+    instruction = parsed.get("raw", "")
+    target_label = parsed.get("target_label", "")
+    prompt = (
+        f"导航指令: {instruction}\n"
+        f"要寻找的目标: {target_label}\n"
+        "请只回答 JSON。"
+    )
+    try:
+        with open(patch_path, "rb") as f:
+            img_bytes = f.read()
+        out = VLMAnalyzer().analyze_image_bytes(
+            image_bytes=img_bytes,
+            mime_type="image/png",
+            prompt=prompt,
+            system_prompt=_VLN_GROUND_SYS_PROMPT,
+            max_tokens=VLN_VLM_MAX_TOKENS,
+        )
+        text = (out.get("analysis") or "").strip()
+    except Exception as exc:
+        logger.warning("VLN VLM grounder failed: %s", exc)
+        return GroundHit(present=False, reason=f"VLM 调用失败: {exc}", source="vlm")
+
+    match = re.search(r"\{[\s\S]*\}", text)
+    if not match:
+        return GroundHit(present=False, reason=f"VLM 未返回 JSON: {text[:60]}", source="vlm")
+    try:
+        data = json.loads(match.group(0))
+    except Exception:
+        return GroundHit(present=False, reason=f"VLM JSON 解析失败: {text[:60]}", source="vlm")
+
+    present = bool(data.get("present"))
+    if not present:
+        return GroundHit(present=False, reason=str(data.get("reason", "VLM: 未发现目标"))[:80], source="vlm")
+
+    def _norm(v) -> float:
+        try:
+            v = float(v)
+        except Exception:
+            return 0.5
+        if v > 1.0:  # 容错：模型可能输出 0~100 或 0~1000
+            v = v / (1000.0 if v > 100.0 else 100.0)
+        return min(max(v, 0.0), 1.0)
+
+    nx, ny = _norm(data.get("x", 0.5)), _norm(data.get("y", 0.5))
+    return GroundHit(
+        present=True,
+        norm_xy=(nx, ny),
+        arrived=bool(data.get("arrived")),
+        label=target_label or "目标",
+        conf=1.0,
+        reason="VLM: " + str(data.get("reason", ""))[:80],
+        source="vlm",
+    )
+
+
+def _make_vln_grounder(mode: str):
+    """按模式构造 grounder：yolo→None(导航器内置)，vlm→VLM，hybrid→YOLO 优先否则 VLM。"""
+    if mode == "yolo":
+        return None
+    if mode == "vlm":
+        return _vln_vlm_ground
+
+    def _hybrid(parsed: dict, obs: Observation) -> GroundHit | None:
+        hit = ground_with_yolo(obs, parsed.get("target_classes") or [])
+        if hit is not None and hit.present:
+            hit.source = "hybrid:yolo"
+            return hit
+        vh = _vln_vlm_ground(parsed, obs)
+        if vh is not None:
+            vh.source = "hybrid:vlm"
+        return vh
+
+    return _hybrid
 
 
 def _vln_perceive(source: str) -> tuple[PerceptionResult | None, dict, dict]:
@@ -906,6 +1006,7 @@ def run_vln_episode(instruction: str, source: str = "ai") -> None:
             explore_step_m=VLN_EXPLORE_STEP_M,
             use_llm_stop=VLN_USE_LLM_STOP,
         ),
+        grounder=_make_vln_grounder(VLN_GROUNDER),
         llm_stop_fn=_vln_llm_stop if VLN_USE_LLM_STOP else None,
     )
     parsed = navigator.reset(instruction)
@@ -925,7 +1026,7 @@ def run_vln_episode(instruction: str, source: str = "ai") -> None:
         plan_summary = (
             f"VLN 语言目标导航：寻找「{target_label}」"
             + (f"（方向先验：{dir_name}）" if dir_name else "")
-            + f"，步数预算 {navigator.config.step_budget}。"
+            + f"，grounding={VLN_GROUNDER}，步数预算 {navigator.config.step_budget}。"
         )
         state.push_log("info", f"收到 VLN 指令: {instruction}")
         state.push_log("info", plan_summary)
