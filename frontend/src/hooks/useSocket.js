@@ -18,6 +18,8 @@ export function useSocket() {
   const [lastAiPlan, setLastAiPlan] = useState(null)
   const [lastAiReport, setLastAiReport] = useState(null)
   const [lastPerception, setLastPerception] = useState(null)
+  const [semanticMap, setSemanticMap] = useState(null)
+  const [vlnThought, setVlnThought] = useState(null)
 
   useEffect(() => {
     const loadSnapshot = async () => {
@@ -53,6 +55,14 @@ export function useSocket() {
     socket.on('ai_plan_result', setLastAiPlan)
     socket.on('ai_execution_report', setLastAiReport)
     socket.on('perception_result', setLastPerception)
+    // VLN（语言导航）相关：语义地图快照 + 每步思考/grounding/复核状态
+    socket.on('semantic_map', setSemanticMap)
+    socket.on('ai_thought', setVlnThought)
+    socket.on('task_started', () => {
+      // 新任务开始：清空上一次 VLN 状态，避免残留误导
+      setVlnThought(null)
+      setSemanticMap(null)
+    })
     socket.on('log', (entry) => {
       setLogs((prev) => {
         const next = [...prev, entry]
@@ -92,6 +102,8 @@ export function useSocket() {
     lastAiPlan,
     lastAiReport,
     lastPerception,
+    semanticMap,
+    vlnThought,
     setMode,
     executeAction,
     submitAiTask,

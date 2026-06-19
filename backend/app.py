@@ -27,6 +27,8 @@ from perception import (
 from semantic_map import SemanticMap
 from stmr_matrix import build_stmr
 from hspm_planner import HspmConfig, HspmNavigator
+from recheck import RecheckConfig, RecheckController
+from memory_graph import MemoryGraph, text_match_scorer
 from vlm_analyzer import VLMAnalyzer
 from vln_navigator import (
     GroundHit,
@@ -880,6 +882,28 @@ VLN_PLANNER = (os.getenv("VLN_PLANNER", "legacy") or "legacy").strip().lower()
 # HSPM 的 STMR 文字矩阵窗口（米）与网格数；越大视野越广但 token 越多。
 HSPM_STMR_WINDOW_M = float(os.getenv("HSPM_STMR_WINDOW_M", "200"))
 HSPM_STMR_GRID_N = int(os.getenv("HSPM_STMR_GRID_N", "20"))
+# P2：灾情不确定性驱动主动复核（默认关，VLN_RECHECK=1 开）。
+VLN_RECHECK = os.getenv("VLN_RECHECK", "0").lower() in {"1", "true", "yes", "on"}
+VLN_RECHECK_DESCEND_M = float(os.getenv("VLN_RECHECK_DESCEND_M", "20"))
+VLN_RECHECK_ALT_MIN_M = float(os.getenv("VLN_RECHECK_ALT_MIN_M", "30"))
+VLN_RECHECK_MAX = int(os.getenv("VLN_RECHECK_MAX", "2"))          # 同一位置最多复核次数
+VLN_RECHECK_MAX_TOTAL = int(os.getenv("VLN_RECHECK_MAX_TOTAL", "8"))  # 单 episode 复核机动总上限
+# P3：记忆拓扑图 + LM-Nav 图搜索（默认关，VLN_MEMORY=1 开）。
+VLN_MEMORY = os.getenv("VLN_MEMORY", "0").lower() in {"1", "true", "yes", "on"}
+VLN_MEMORY_PATH = os.getenv("VLN_MEMORY_PATH", str(BASE_DIR / "outputs" / "memory_graph.json"))
+VLN_MEMORY_MERGE_M = float(os.getenv("VLN_MEMORY_MERGE_M", "15"))
+VLN_MEMORY_MIN_SCORE = float(os.getenv("VLN_MEMORY_MIN_SCORE", "0.34"))
+VLN_MEMORY_MAX_HOPS = int(os.getenv("VLN_MEMORY_MAX_HOPS", "6"))
+
+# 进程内缓存的记忆图（懒加载，跨 episode/任务复用并落盘）。
+_memory_graph: MemoryGraph | None = None
+
+
+def get_memory_graph() -> MemoryGraph:
+    global _memory_graph
+    if _memory_graph is None:
+        _memory_graph = MemoryGraph.load(VLN_MEMORY_PATH, merge_radius_m=VLN_MEMORY_MERGE_M)
+    return _memory_graph
 VLN_VLM_MAX_TOKENS = int(os.getenv("VLN_VLM_MAX_TOKENS", "200"))
 # P0：2D 地理语义地图栅格边长（米）；与 STMR 默认 5m/格对齐。设 0/off 可关闭建图。
 SEMANTIC_MAP_CELL_M = float(os.getenv("SEMANTIC_MAP_CELL_M", "5"))
@@ -990,6 +1014,66 @@ def _make_hspm_navigator() -> HspmNavigator:
         llm_chat=llm_chat,
         stmr_provider=_stmr_provider,
     )
+
+
+def _vln_memory_prefly(landmarks: list[str], source: str) -> bool:
+    """P3：相似指令命中记忆图时，沿"熟路"航点预飞到已知目标附近。
+
+    返回是否实际预飞过（用于日志）。预飞不消耗 navigator 步数预算，飞完照常进入
+    grounding 精定位循环。
+    """
+    graph = get_memory_graph()
+    if graph.stats()["nodes"] == 0:
+        return False
+    snap = state.adapter.snapshot()
+    plan = graph.plan(
+        landmarks, float(snap["lat"]), float(snap["lon"]),
+        scorer=text_match_scorer, min_score=VLN_MEMORY_MIN_SCORE,
+    )
+    if not plan:
+        state.push_log("info", "[VLN 记忆] 记忆图中无匹配熟路，转入常规探索。")
+        return False
+
+    wps = plan["waypoints"]
+    state.push_log(
+        "info",
+        f"[VLN 记忆] 命中记忆图（{plan['mode']}，目标「{plan['target_label']}」匹配分 "
+        f"{plan['target_score']}），沿熟路预飞最多 {min(len(wps), VLN_MEMORY_MAX_HOPS)} 跳。",
+    )
+    flown = 0
+    for i, wp in enumerate(wps):
+        if state._stop_event.is_set() or flown >= VLN_MEMORY_MAX_HOPS:
+            break
+        cur = state.adapter.snapshot()
+        n, e = latlon_to_meters(float(cur["lat"]), float(cur["lon"]), wp["lat"], wp["lon"])
+        if (n * n + e * e) ** 0.5 < 20.0:
+            continue  # 跳过离当前太近的航点（如起点节点本身）
+        if not _post_covered(wp["lat"], wp["lon"]):
+            continue  # 熟路航点已脱离当前 POST 覆盖，跳过
+        res = execute_action(
+            "fly_to_geo",
+            {
+                "lat": wp["lat"], "lon": wp["lon"],
+                "alt": wp.get("alt") or state.hover_altitude_m, "speed": 14.0,
+            },
+            source=source,
+        )
+        if not res.get("success"):
+            break
+        flown += 1
+        socketio.emit(
+            "ai_thought",
+            {
+                "iteration": 0,
+                "skill": "memory_fly",
+                "thinking": f"沿记忆图熟路飞往航点 {i + 1}/{len(wps)}（{plan['mode']}）",
+                "progress": f"memory {flown}/{min(len(wps), VLN_MEMORY_MAX_HOPS)}",
+                "matched": False,
+            },
+        )
+    if flown:
+        state.push_log("success", f"[VLN 记忆] 熟路预飞完成 {flown} 跳，转入精定位。")
+    return flown > 0
 
 
 def _make_vln_grounder(mode: str):
@@ -1193,8 +1277,21 @@ def run_vln_episode(instruction: str, source: str = "ai") -> None:
     else:
         state.semantic_map = None
 
+    # P2：灾情不确定性驱动复核控制器（按位置去重、带预算）。
+    rechecker: RecheckController | None = None
+    if VLN_RECHECK:
+        rechecker = RecheckController(
+            RecheckConfig(
+                descend_step_m=VLN_RECHECK_DESCEND_M,
+                alt_min_m=VLN_RECHECK_ALT_MIN_M,
+                max_rechecks=VLN_RECHECK_MAX,
+            )
+        )
+    recheck_total = 0  # 本 episode 已执行的复核机动数（全局上限防失控）
+
     arrived = False
     executed: list[dict] = []
+    trajectory: list[dict] = []  # P3：本 episode 观测轨迹（成功后写入记忆图）
     last_good_pos: tuple[float, float, float] | None = None  # 最近一次成功观测的 (lat,lon,alt)
     oob_recover = 0  # 连续脱离 POST 覆盖的次数
     task_started_ns = time.time_ns()
@@ -1240,6 +1337,17 @@ def run_vln_episode(instruction: str, source: str = "ai") -> None:
         )
         socketio.emit("ai_thinking", {"phase": "planning", "detail": plan_summary})
 
+        # ── P3：记忆拓扑图 LM-Nav 预飞 ───────────────────────────────
+        # 相似指令命中记忆图 → 先沿"熟路"飞到已知目标节点附近，再进入精定位循环。
+        if VLN_MEMORY:
+            try:
+                _vln_memory_prefly(
+                    landmarks=landmarks or [parsed.get("target_phrase") or instruction],
+                    source=source,
+                )
+            except Exception as exc:
+                logger.warning("memory prefly failed: %s", exc)
+
         while not navigator.budget_exhausted():
             if state._stop_event.is_set():
                 state.push_log("warn", "VLN 已停止")
@@ -1275,7 +1383,95 @@ def run_vln_episode(instruction: str, source: str = "ai") -> None:
             oob_recover = 0
             last_good_pos = (float(snap["lat"]), float(snap["lon"]), float(snap["alt"]))
 
+            # P3：记录轨迹观测点（成功到达后写入记忆图）。
+            trajectory.append({
+                "lat": float(snap["lat"]),
+                "lon": float(snap["lon"]),
+                "alt": float(snap["alt"]),
+                "labels": dict(result.detection.get("class_counts", {})),
+                "risk": result.risk_level,
+                "summary": result.risk_summary,
+            })
+
             obs = Observation.from_perception(result)
+
+            # ── P2：灾情不确定性驱动主动复核 ──────────────────────────
+            # 看到疑似受灾目标但没把握 → 先降高+飞近再确认，不急着往下走。
+            if rechecker is not None and recheck_total < VLN_RECHECK_MAX_TOTAL:
+                rc = rechecker.assess(
+                    lat=float(snap["lat"]),
+                    lon=float(snap["lon"]),
+                    alt=float(snap["alt"]),
+                    risk_level=result.risk_level,
+                    detections=result.detection.get("detections", []),
+                    patch_radius_m=float(result.patch_radius_m),
+                    patch_width=int(result.patch_width),
+                    patch_height=int(result.patch_height),
+                    degraded=bool(result.degraded),
+                )
+                if rc.kind == "recheck" and rc.params is not None:
+                    recheck_total += 1
+                    # 可疑目标位置（相对 UAV 偏移投影）写入 candidate_goals（待复核）。
+                    off = rc.target_offset_m or (0.0, 0.0)
+                    susp_lat, susp_lon = meters_to_latlon(
+                        float(snap["lat"]), float(snap["lon"]), off[0], off[1]
+                    )
+                    smap = getattr(state, "semantic_map", None)
+                    if smap is not None:
+                        try:
+                            smap.add_candidate_goal(
+                                susp_lat, susp_lon, rc.label or "疑似受灾目标",
+                                conf=1.0 - rc.uncertainty, risk=result.risk_level,
+                            )
+                            socketio.emit("semantic_map", smap.snapshot())
+                        except Exception as exc:
+                            logger.debug("candidate_goal write failed: %s", exc)
+                    # 防越界：若居中目标飞出 POST 覆盖，则只降高、不水平移动。
+                    p = dict(rc.params)
+                    dlat, dlon = meters_to_latlon(
+                        float(snap["lat"]), float(snap["lon"]),
+                        float(p.get("north_m", 0.0)), float(p.get("east_m", 0.0)),
+                    )
+                    if not _post_covered(dlat, dlon):
+                        p["north_m"], p["east_m"] = 0.0, 0.0
+                    state.push_log("warn", f"[VLN 复核 {recheck_total}] {rc.reason}")
+                    socketio.emit(
+                        "ai_thought",
+                        {
+                            "iteration": navigator.step_index,
+                            "skill": "recheck",
+                            "thinking": rc.reason,
+                            "progress": f"recheck {recheck_total}/{VLN_RECHECK_MAX_TOTAL}",
+                            "matched": False,
+                            "uncertainty": rc.uncertainty,
+                        },
+                    )
+                    res_exec = execute_action("fly_relative", p, source=source)
+                    executed.append({
+                        "action": "recheck", "params": p, "result": res_exec,
+                        "reason": rc.reason, "uncertainty": rc.uncertainty,
+                    })
+                    if not res_exec.get("success"):
+                        state.push_log("error", f"VLN 复核机动失败，转常规导航: {res_exec.get('message','')}")
+                    else:
+                        continue  # 降高后重新感知，再决策
+                elif rc.kind == "resolve":
+                    smap = getattr(state, "semantic_map", None)
+                    if smap is not None:
+                        try:
+                            smap.add_candidate_goal(
+                                float(snap["lat"]), float(snap["lon"]),
+                                f"{rc.label or '受灾目标'}[{rc.status}]",
+                                conf=1.0 - rc.uncertainty, risk=result.risk_level,
+                            )
+                            socketio.emit("semantic_map", smap.snapshot())
+                        except Exception as exc:
+                            logger.debug("candidate_goal resolve write failed: %s", exc)
+                    state.push_log(
+                        level_for_risk(result.risk_level),
+                        f"[VLN 复核定论] {rc.reason}",
+                    )
+
             decision = navigator.step(obs, snap)
             step_idx = navigator.step_index
 
@@ -1354,7 +1550,31 @@ def run_vln_episode(instruction: str, source: str = "ai") -> None:
                 break
 
         final_snap = state.adapter.snapshot()
+
+        # P3：成功到达则把本次轨迹沉淀进记忆图并落盘（越用越熟）。
+        if VLN_MEMORY and arrived and trajectory:
+            try:
+                graph = get_memory_graph()
+                graph.add_trajectory(
+                    trajectory,
+                    instruction=instruction,
+                    landmarks=(parsed.get("landmarks") or [parsed.get("target_phrase") or instruction]),
+                    success=True,
+                )
+                graph.save(VLN_MEMORY_PATH)
+                state.push_log("info", f"[VLN 记忆] 轨迹已沉淀进记忆图：{graph.stats()}")
+            except Exception as exc:
+                logger.warning("memory graph record failed: %s", exc)
+
         summary = navigator.summarize(arrived, final_snap)
+        if rechecker is not None:
+            rstats = rechecker.stats()
+            if rstats["resolved"] or recheck_total:
+                summary += (
+                    f" 复核 {recheck_total} 次机动、定论 {rstats['resolved']} 处"
+                    f"（确认 {rstats['confirmed']} / 排除 {rstats['dismissed']} / 存疑 {rstats['inconclusive']}），"
+                    f"平均不确定性下降 {rstats['avg_uncertainty_reduction']}。"
+                )
         # 收尾写一条 world report，让地图落一个标记点
         state.world.add_report(
             content=summary,
@@ -1373,6 +1593,9 @@ def run_vln_episode(instruction: str, source: str = "ai") -> None:
             "steps": executed,
             "arrived": arrived,
             "vln_history": navigator.history,
+            "recheck": rechecker.stats() if rechecker is not None else None,
+            "recheck_log": rechecker.resolved_log if rechecker is not None else [],
+            "memory": (get_memory_graph().stats() if VLN_MEMORY else None),
             "ts_ns": finished_ns,
             "ts_ms": finished_ns // 1_000_000,
             "task_started_ns": task_started_ns,
@@ -1418,6 +1641,23 @@ def api_semantic_map():
         return jsonify({"active": False, "map": None})
     full = request.args.get("full", "0").lower() in {"1", "true", "yes", "on"}
     return jsonify({"active": True, "map": smap.to_dict() if full else smap.snapshot()})
+
+
+@app.route("/api/memory_graph", methods=["GET"])
+def api_memory_graph():
+    """P3：返回记忆拓扑图（VLN_MEMORY 关闭时 enabled=False）。
+
+    ?full=1 返回完整节点/边，否则只返回统计。
+    """
+    if not VLN_MEMORY:
+        return jsonify({"enabled": False, "stats": None})
+    graph = get_memory_graph()
+    full = request.args.get("full", "0").lower() in {"1", "true", "yes", "on"}
+    return jsonify({
+        "enabled": True,
+        "stats": graph.stats(),
+        "graph": graph.to_dict() if full else None,
+    })
 
 
 @app.route("/api/logs", methods=["GET"])

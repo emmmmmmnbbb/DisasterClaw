@@ -81,15 +81,19 @@
 **目标**：让"灾情判断的把握程度"指挥飞行——没把握就飞近/换高度再确认。
 
 **改动**
-- [ ] 在导航决策层（HSPM motion 之后）加一个"复核触发器"：当 grounding 置信度低、
-  或 `perception.risk_level` 可疑（如 moderate 且证据弱）时，插入"下降高度 + 飞近 + 重新感知"动作。
-- [ ] 复核前后对比 `risk_level`/置信度，写回 P0 地图（候选目的地层升/降级），并在报告里说明复核结论。
-- [ ] 用 `VLN_RECHECK=1` 开关；设最大复核次数与高度下限，防止死循环。
+- [x] 新增 `backend/recheck.py`：`RecheckController` 按位置去重、带预算的复核状态机。
+  不确定性 = 0.5×risk暧昧度 + 0.5×(1−证据conf)；`risk_level='low'`（"轻度受灾或可疑"）最不确定、`'high'` 最笃定。
+  触发后产出"**降高 + 飞近居中**"机动——利用 `patch半径 = alt×factor`，降高=视场变小=GSD 更细=看得更清。
+- [x] 复核闭环：到"把握足够 / 预算耗尽 / 到高度下限"后定论 confirmed/dismissed/inconclusive，
+  连同**不确定性下降量**写回 P0 地图 `candidate_goals` 层（待复核→定论），并进 `summary`/报告（`recheck`/`recheck_log`）。
+- [x] 在 `run_vln_episode` 用 `VLN_RECHECK=1` 开关（默认关）；`VLN_RECHECK_MAX`（单点次数）+
+  `VLN_RECHECK_MAX_TOTAL`（episode 总上限）+ `VLN_RECHECK_ALT_MIN_M`（高度下限）三重防死循环；复核机动同样走 POST 防越界。
 
 **怎么测（验收点）**
-- 构造一个低置信/边界场景（远距离小目标），验证**触发复核**，且复核后置信度或判定**发生更新**。
-- 防回归：高置信场景**不触发**复核（不浪费步数）。
-- 指标：记录"复核带来的不确定性下降"，作为 C2 的核心实验数据。
+- [x] 单元测试 `backend/tests/test_recheck.py`（8/8）：不确定性评分、best_evidence、低置信触发复核（降高+居中）、
+  高置信不触发、预算耗尽/高度下限定论、改善路径 confirmed（不确定性下降 0.65）、degraded 仅降高。
+- [ ] 端到端（需起后端 + 模型，`VLN_RECHECK=1`）：低置信小目标场景触发复核并更新判定；高置信不触发（留待联调）。
+- 指标：`report.recheck.avg_uncertainty_reduction` 作为 C2 的核心实验数据。
 
 ---
 
@@ -98,14 +102,20 @@
 **目标**：跨步骤/跨任务复用走过的路，支持大范围长程巡查，少做无用搜索。
 
 **改动**
-- [ ] 新增 `backend/memory_graph.py`：把成功轨迹的航点存成 **2D 拓扑图**（节点含 lat/lon + 观测摘要，
-  边按距离加权；阈值合并邻近节点）。
-- [ ] grounding 打分 `P(节点|地标)`（用 VLM/CLIP 或现有 grounder），用 **LM-Nav 式图搜索**选最优 walk。
-- [ ] motion-level 优先查记忆图走熟路，查不到再回退 P1 的探索式规划。
+- [x] 新增 `backend/memory_graph.py`：`MemoryGraph` 把成功轨迹存成 **2D 拓扑图**（节点 lat/lon +
+  观测摘要：目标类别/risk/到过的指令&地标；边按地表距离加权；`merge_radius_m` 阈值合并邻近点），
+  **跨任务 JSON 持久化**（save/load，"越用越熟"）。
+- [x] grounding 打分 `P(节点|地标)`：默认 `text_match_scorer`（字符 bigram 相似，可换 VLM/CLIP）；
+  `plan()` 用 **LM-Nav 式**为最终地标匹配目标节点 + Dijkstra 串出 walk（起点近→走熟路 `graph_walk`，远→`direct` 直飞）。
+- [x] 在 `run_vln_episode` 用 `VLN_MEMORY=1` 开关：episode 开始 `_vln_memory_prefly` 命中则沿熟路预飞到目标附近
+  （带 POST 防越界、`VLN_MEMORY_MAX_HOPS` 上限、跳过过近航点），再进入 P1 grounding 精定位；
+  成功到达后把轨迹沉淀进图并落盘。查不到熟路 → 行为与 P1 一致（不退化）。新增 `GET /api/memory_graph(?full=1)`。
 
 **怎么测（验收点）**
-- 同一区域跑第二条相似指令：**命中记忆图**、到达步数较首次**明显下降**。
-- 防回归：全新区域无记忆时，行为与 P1 一致（不退化）。
+- [x] 单元测试 `backend/tests/test_memory_graph.py`（6/6）：阈值合并/新建、Dijkstra 最短路、地标匹配、
+  plan 命中给 walk / 无关指令返回 None、起点远→direct、序列化往返后仍可规划。
+- [ ] 端到端（需起后端 + 模型，`VLN_MEMORY=1`）：同区域跑第二条相似指令**命中记忆图、步数较首次下降**；
+  全新区域无记忆**不退化**（留待联调）。
 
 ---
 

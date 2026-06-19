@@ -20,16 +20,21 @@ function topEntries(obj, n = 4) {
     .slice(0, n)
 }
 
-export default function PerceptionPanel({ perception }) {
+export default function PerceptionPanel({ perception, semanticMap, vlnThought }) {
   const [imageKind, setImageKind] = useState('patch') // patch / detection / overlay
+
+  // 以语义地图作为 VLN 强信号（默认开启）；避免普通 AI 任务的 ai_thought 误触发。
+  const hasVln = !!semanticMap
 
   if (!perception) {
     return (
       <section className="perception-panel" style={panelStyle}>
         <div className="section-title">Perception</div>
+        {hasVln && <VlnStatus semanticMap={semanticMap} thought={vlnThought} />}
         <div style={{ color: 'var(--ink-soft)', fontSize: 13 }}>
-          尚未运行 detect_disaster。发一个带“检测 / 受灾 / 评估”关键词的 AI 任务，
-          UAV 到位后会跑 YOLO + SegFormer 并在此显示结果。
+          {hasVln
+            ? 'VLN 语言导航进行中，等待首帧感知结果（YOLO + SegFormer）……'
+            : '尚未运行 detect_disaster。发一个带“检测 / 受灾 / 评估”关键词的 AI 任务，或一条 VLN 语言导航指令，UAV 到位后会在此显示结果。'}
         </div>
       </section>
     )
@@ -74,6 +79,8 @@ export default function PerceptionPanel({ perception }) {
           {risk.label}
         </span>
       </div>
+
+      {hasVln && <VlnStatus semanticMap={semanticMap} thought={vlnThought} />}
 
       <div style={{ display: 'grid', gridTemplateColumns: '180px minmax(0, 1fr)', gap: 12, minHeight: 0, flex: 1 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
@@ -192,6 +199,116 @@ export default function PerceptionPanel({ perception }) {
   )
 }
 
+const SKILL_META = {
+  fly_relative: { label: '飞行', color: '#2361a3' },
+  hover: { label: '悬停', color: 'var(--ink-soft)' },
+  stop: { label: '到达', color: 'var(--accent)' },
+  recheck: { label: '复核', color: 'var(--warning)' },
+}
+
+function VlnStatus({ semanticMap, thought }) {
+  const stats = semanticMap?.stats || {}
+  const instruction = semanticMap?.instruction || ''
+  const objects = semanticMap?.objects || []
+  const candidates = objects.filter((o) => o.layer === 'candidate_goals')
+
+  const skill = thought?.skill
+  const skillMeta = SKILL_META[skill] || { label: skill || '—', color: 'var(--ink-soft)' }
+  const matched = thought?.matched
+  const dist = thought?.target_dist_m
+  const uncertainty = thought?.uncertainty
+
+  const statChips = [
+    { label: '步', value: stats.step_count },
+    { label: '已探索格', value: stats.explored_cells },
+    { label: '地标', value: stats.landmarks },
+    { label: '物体', value: stats.surrounding_objects },
+    { label: '候选', value: stats.candidate_goals },
+  ].filter((c) => c.value != null)
+
+  return (
+    <div style={vlnWrapStyle}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <span style={vlnBadgeStyle}>VLN 语言导航</span>
+        {instruction ? (
+          <span style={{ fontSize: 12, color: 'var(--ink)', fontWeight: 600 }}>「{instruction}」</span>
+        ) : (
+          <span style={{ fontSize: 11, color: 'var(--ink-soft)' }}>等待指令 / 语义地图…</span>
+        )}
+      </div>
+
+      {thought && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', fontSize: 11 }}>
+          {thought.progress && <span style={vlnPillStyle}>{thought.progress}</span>}
+          <span style={{ ...vlnPillStyle, color: skillMeta.color, borderColor: skillMeta.color }}>
+            {skillMeta.label}
+          </span>
+          {matched != null && (
+            <span
+              style={{
+                ...vlnPillStyle,
+                color: matched ? 'var(--accent)' : 'var(--ink-soft)',
+                borderColor: matched ? 'var(--accent)' : 'rgba(171,152,117,0.4)',
+              }}
+            >
+              {matched ? `命中目标${dist != null ? ` ~${Number(dist).toFixed(0)}m` : ''}` : '搜索中'}
+            </span>
+          )}
+        </div>
+      )}
+
+      {uncertainty != null && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 10, color: 'var(--warning)', whiteSpace: 'nowrap' }}>
+            复核不确定性
+          </span>
+          <div style={{ flex: 1, height: 6, borderRadius: 3, background: 'rgba(171,152,117,0.2)', overflow: 'hidden' }}>
+            <div
+              style={{
+                width: `${Math.round(Math.min(Math.max(uncertainty, 0), 1) * 100)}%`,
+                height: '100%',
+                background: 'var(--warning)',
+              }}
+            />
+          </div>
+          <span style={{ fontSize: 10, color: 'var(--ink-soft)' }}>{Number(uncertainty).toFixed(2)}</span>
+        </div>
+      )}
+
+      {thought?.thinking && (
+        <div style={{ fontSize: 11, color: 'var(--ink-soft)', lineHeight: 1.45 }}>{thought.thinking}</div>
+      )}
+
+      {statChips.length > 0 && (
+        <div style={chipRowStyle}>
+          {statChips.map((c) => (
+            <span key={c.label} style={{ ...chipStyle, background: 'rgba(35,97,163,0.08)' }}>
+              {c.label} <b style={{ marginLeft: 3 }}>{c.value}</b>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {candidates.length > 0 && (
+        <div>
+          <div style={labelStyle}>候选 / 复核目标</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3, maxHeight: 84, overflow: 'auto' }}>
+            {candidates.slice(0, 6).map((o, i) => (
+              <div key={`${o.gi},${o.gj},${i}`} style={candidateRowStyle}>
+                <span style={{ color: 'var(--ink)', fontWeight: 600 }}>{o.class_name}</span>
+                <span style={{ color: 'var(--ink-soft)' }}>
+                  {o.risk && o.risk !== 'none' ? `risk ${o.risk} · ` : ''}
+                  conf {Number(o.conf || 0).toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function MetricsRow({ damaged, intact, vehicles, totalDet, totalSeg }) {
   const cells = [
     { label: '受损建筑', value: damaged, tint: damaged > 0 ? 'var(--danger)' : undefined },
@@ -241,6 +358,48 @@ const labelStyle = {
 }
 
 const chipRowStyle = { display: 'flex', flexWrap: 'wrap', gap: 4 }
+
+const vlnWrapStyle = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  padding: '8px 10px',
+  borderRadius: 8,
+  background: 'rgba(35, 97, 163, 0.06)',
+  border: '1px solid rgba(35, 97, 163, 0.2)',
+  flex: 'none',
+}
+
+const vlnBadgeStyle = {
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: '0.04em',
+  padding: '2px 8px',
+  borderRadius: 10,
+  color: '#fff',
+  background: '#2361a3',
+}
+
+const vlnPillStyle = {
+  fontSize: 11,
+  padding: '2px 8px',
+  borderRadius: 10,
+  background: 'rgba(255,255,255,0.7)',
+  border: '1px solid rgba(171,152,117,0.4)',
+  color: 'var(--ink)',
+  whiteSpace: 'nowrap',
+}
+
+const candidateRowStyle = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  gap: 8,
+  fontSize: 11,
+  padding: '3px 8px',
+  borderRadius: 6,
+  background: 'rgba(255,255,255,0.55)',
+  border: '1px solid rgba(171,152,117,0.25)',
+}
 
 const chipStyle = {
   fontSize: 11,

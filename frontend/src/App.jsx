@@ -17,6 +17,8 @@ export default function App() {
     lastAiPlan,
     lastAiReport,
     lastPerception,
+    semanticMap,
+    vlnThought,
     setMode,
     executeAction,
     submitAiTask,
@@ -159,7 +161,11 @@ export default function App() {
       </div>
 
       <div className="bottom-row">
-        <PerceptionPanel perception={lastPerception} />
+        <PerceptionPanel
+          perception={lastPerception}
+          semanticMap={semanticMap}
+          vlnThought={vlnThought}
+        />
         <LogPanel logs={logs} />
       </div>
     </div>
