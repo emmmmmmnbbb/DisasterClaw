@@ -16,7 +16,7 @@ from flask_socketio import SocketIO, emit
 import config as llm_config
 import xbd_store
 from ai_planner import TaskPlanner
-from geo import meters_to_latlon
+from geo import latlon_to_meters, meters_to_latlon
 from mock_adapter import MockAdapter
 from perception import (
     PERCEPTION_OUTPUT_DIR,
@@ -24,6 +24,9 @@ from perception import (
     get_perception,
     level_for_risk,
 )
+from semantic_map import SemanticMap
+from stmr_matrix import build_stmr
+from hspm_planner import HspmConfig, HspmNavigator
 from vlm_analyzer import VLMAnalyzer
 from vln_navigator import (
     GroundHit,
@@ -31,6 +34,7 @@ from vln_navigator import (
     VlnConfig,
     VlnNavigator,
     ground_with_yolo,
+    parse_ground_xy,
 )
 from world import DEFAULT_BASEMAP, WorldModel
 from xbd_map import build_annotation_geojson
@@ -147,6 +151,8 @@ class AppState:
         self._log_lock = threading.Lock()
         self._task_lock = threading.Lock()
         self._stop_event = threading.Event()
+        # P0：当前 episode 的 2D 地理语义地图（run_vln_episode 开始时重建；None 表示无活动地图）
+        self.semantic_map: SemanticMap | None = None
         self._sync_world_from_adapter()
 
         summary = xbd_store.summary()
@@ -178,13 +184,87 @@ class AppState:
         self.push_log("info", f"Planner LLM: {planner_cfg['provider']} / {planner_cfg['model']}")
         self.push_log("info", f"Vision VLM: {vlm_cfg['provider']} / {vlm_cfg['model']}")
 
+        # 在任何 warmup 线程启动前，主线程同步完整导入一次重型 ML 库，避免
+        # qwen-vl-warmup 与 perception-warmup 两线程并发首次 import 时撞上
+        # accelerate 的循环导入（"partially initialized module"），导致 VLM /
+        # SegFormer 永久加载失败。
+        self._eager_import_ml_libs()
+
+        self._prime_ml_imports()
         self._warmup_local_qwen_vl([planner_cfg, vlm_cfg])
         self._warmup_perception()
 
+    def _prime_ml_imports(self) -> None:
+        """Resolve transformers/accelerate lazy submodules once, synchronously,
+        in the main thread.
+
+        transformers 5.x uses lazy `_LazyModule` loading. When the Qwen-VL and
+        perception warmup threads both perform the *first* import concurrently,
+        Python hits a "partially initialized module" circular import inside
+        `accelerate.hooks` and both model stacks fail to load. Importing the heavy
+        symbols here (before any warmup thread starts) makes the threaded imports
+        pure cache hits, eliminating the race."""
+        if os.getenv("PRIME_ML_IMPORTS", "1").lower() in {"0", "false", "no", "off"}:
+            return
+        try:
+            import accelerate  # noqa: F401
+            from accelerate.hooks import AlignDevicesHook, add_hook_to_module  # noqa: F401
+            import transformers  # noqa: F401
+            from transformers import (  # noqa: F401
+                AutoModelForImageTextToText,
+                AutoProcessor,
+                SegformerForSemanticSegmentation,
+                SegformerImageProcessor,
+            )
+        except Exception as exc:
+            logger.warning("ML import priming failed (warmups may race): %s", exc)
+
+    def _eager_import_ml_libs(self) -> None:
+        """主线程同步预导入 transformers / accelerate，消除并发首次导入的循环导入竞态。
+
+        逐项触发会形成循环依赖链的子模块（accelerate.hooks / big_modeling、
+        transformers.generation），确保它们在 sys.modules 中被完整初始化。
+        失败只记录告警，不阻断启动（YOLO 仍可用）。
+        """
+        t0 = time.time()
+        try:
+            import accelerate  # noqa: F401
+            from accelerate.hooks import AlignDevicesHook, add_hook_to_module  # noqa: F401
+            from accelerate.big_modeling import dispatch_model  # noqa: F401
+            import transformers  # noqa: F401
+            from transformers.generation import GenerationMixin  # noqa: F401
+            from transformers import (  # noqa: F401
+                AutoModelForImageTextToText,
+                AutoProcessor,
+                SegformerForSemanticSegmentation,
+                SegformerImageProcessor,
+            )
+            # 同步修正 segformer_tool 可能在早期并发下捕获到的 HAS_TRANSFORMERS=False
+            try:
+                import sys as _sys
+                _seg = _sys.modules.get("segformer_tool")
+                if _seg is not None:
+                    _seg.HAS_TRANSFORMERS = True
+            except Exception:
+                pass
+            self.push_log(
+                "success",
+                f"ML libs preloaded (transformers {transformers.__version__}, "
+                f"accelerate {accelerate.__version__}) in {time.time() - t0:.1f}s",
+                {"module": "startup"},
+            )
+        except Exception as exc:
+            logger.exception("eager ML lib preload failed")
+            self.push_log(
+                "warn",
+                f"预导入 transformers/accelerate 失败（VLM/SegFormer 可能不可用，YOLO 仍可用）: {exc}",
+                {"module": "startup"},
+            )
+
     def _warmup_perception(self) -> None:
         """YOLO + SegFormer 懒加载线程。
-        为避免与 Qwen-VL warmup 线程并发触发 `transformers` 惰性加载
-        造成的 `HAS_TRANSFORMERS=False` 竞争，稍等后再启动。"""
+        transformers 惰性加载已由 `_prime_ml_imports` 在主线程预解析，
+        此处线程内导入均为缓存命中，不再与 Qwen-VL warmup 竞争。"""
         if os.getenv("PERCEPTION_WARMUP", "1").lower() in {"0", "false", "no", "off"}:
             return
 
@@ -552,6 +632,24 @@ def _execute_detect_disaster(params: dict, source: str) -> dict:
     )
     state.push_log(level_for_risk(result.risk_level), f"灾情判定: {result.risk_summary}")
 
+    # P0：若当前有活动语义地图（如 VLN episode 中的人工巡检），也把这次观测并入。
+    smap = getattr(state, "semantic_map", None)
+    if smap is not None:
+        try:
+            smap.mark_observation(
+                uav_lat=float(snap["lat"]),
+                uav_lon=float(snap["lon"]),
+                radius_m=float(result.patch_radius_m),
+                detections=result.detection.get("detections", []),
+                degraded=bool(result.degraded),
+                risk_level=result.risk_level,
+                patch_width=int(result.patch_width),
+                patch_height=int(result.patch_height),
+            )
+            socketio.emit("semantic_map", smap.snapshot())
+        except Exception as exc:
+            logger.warning("semantic_map update (detect_disaster) failed: %s", exc)
+
     # 可选：Qwen-VL 基于 patch + scene_text 出自然语言结论
     vlm_text = ""
     use_vlm = str(params.get("use_vlm_summary", True)).lower() not in {"0", "false", "no"}
@@ -776,30 +874,44 @@ VLN_EXPLORE_STEP_M = float(os.getenv("VLN_EXPLORE_STEP_M", "90"))
 VLN_USE_LLM_STOP = os.getenv("VLN_USE_LLM_STOP", "0").lower() in {"1", "true", "yes", "on"}
 # grounding 后端：vlm（默认，用 VLM 判读，开放词汇）/ yolo（仅 YOLO 类别）/ hybrid（YOLO 命中优先，否则 VLM）。
 VLN_GROUNDER = (os.getenv("VLN_GROUNDER", "vlm") or "vlm").strip().lower()
+# P1：规划器后端。legacy（默认，贪心朝质心 + 螺旋探索）/ hspm（CityNavAgent 式
+# landmark→OROI→motion 三层 + STMR 文字矩阵驱动的 LLM 常识推理）。
+VLN_PLANNER = (os.getenv("VLN_PLANNER", "legacy") or "legacy").strip().lower()
+# HSPM 的 STMR 文字矩阵窗口（米）与网格数；越大视野越广但 token 越多。
+HSPM_STMR_WINDOW_M = float(os.getenv("HSPM_STMR_WINDOW_M", "200"))
+HSPM_STMR_GRID_N = int(os.getenv("HSPM_STMR_GRID_N", "20"))
 VLN_VLM_MAX_TOKENS = int(os.getenv("VLN_VLM_MAX_TOKENS", "200"))
+# P0：2D 地理语义地图栅格边长（米）；与 STMR 默认 5m/格对齐。设 0/off 可关闭建图。
+SEMANTIC_MAP_CELL_M = float(os.getenv("SEMANTIC_MAP_CELL_M", "5"))
+SEMANTIC_MAP_ENABLED = os.getenv("SEMANTIC_MAP", "1").lower() not in {"0", "false", "no", "off"}
 
+# grounding 提示（已实测）：不要让小 VLM 输出 present 布尔——它会无视自身描述默认 false。
+# 改为"看得到就给坐标、看不到就回‘没有’"，由是否解析出坐标来判定 present。
 _VLN_GROUND_SYS_PROMPT = (
-    "你是无人机俯视(nadir)视场的视觉判读器。给你的是无人机正下方的俯视影像，"
-    "以及一句导航指令。请判断影像中是否存在指令所描述的目标，并给出它在影像中的"
-    "大致中心位置（归一化坐标：左上为 (0,0)，右下为 (1,1)）。"
-    "只输出严格 JSON，不要任何多余文字："
-    '{"present": true/false, "x": 0~1, "y": 0~1, "arrived": true/false, "reason": "简述"}。'
-    "present 表示目标是否出现在画面中；arrived 表示目标已大致位于画面中心(无人机已在其正上方)；"
-    "若不存在则 present=false 且可省略 x/y。"
+    "你是无人机俯视(nadir)视场的视觉判读器，擅长在卫星/航拍俯视图里定位目标。"
+    "给你一张无人机正下方的俯视影像和一个要找的目标。"
+    "只要画面里能看到该目标（哪怕只是疑似、或只露出一部分）就算看到，"
+    "要给出它中心的归一化坐标，格式严格为 x,y 两个 0~1 之间的小数"
+    "（x：最左0 最右1；y：最上0 最下1），例如 0.32,0.78。"
+    "如果画面里完全没有该目标，就只回答两个字：没有。"
+    "不要输出任何坐标或‘没有’以外的文字、解释或标点。"
 )
 
 
 def _vln_vlm_ground(parsed: dict, obs: Observation) -> GroundHit | None:
-    """用 VLM 对当前俯视 patch 做开放词汇 grounding。"""
+    """用 VLM 对当前俯视 patch 做开放词汇 grounding（坐标-or-没有 范式）。"""
     patch_path = getattr(obs, "patch_path", "") or ""
     if not patch_path or not os.path.exists(patch_path):
         return GroundHit(present=False, reason="VLM grounder: 无可用 patch 图像", source="vlm")
-    instruction = parsed.get("raw", "")
-    target_label = parsed.get("target_label", "")
+    # 用开放词汇短语（保留"蓝色"等修饰），回退到 target_label / 原指令。
+    target = (
+        parsed.get("target_phrase")
+        or parsed.get("target_label")
+        or parsed.get("raw", "")
+    )
     prompt = (
-        f"导航指令: {instruction}\n"
-        f"要寻找的目标: {target_label}\n"
-        "请只回答 JSON。"
+        f"要找的目标：{target}\n"
+        "看得到就只输出坐标 x,y；完全看不到就只回答：没有。"
     )
     try:
         with open(patch_path, "rb") as f:
@@ -816,36 +928,67 @@ def _vln_vlm_ground(parsed: dict, obs: Observation) -> GroundHit | None:
         logger.warning("VLN VLM grounder failed: %s", exc)
         return GroundHit(present=False, reason=f"VLM 调用失败: {exc}", source="vlm")
 
-    match = re.search(r"\{[\s\S]*\}", text)
-    if not match:
-        return GroundHit(present=False, reason=f"VLM 未返回 JSON: {text[:60]}", source="vlm")
-    try:
-        data = json.loads(match.group(0))
-    except Exception:
-        return GroundHit(present=False, reason=f"VLM JSON 解析失败: {text[:60]}", source="vlm")
-
-    present = bool(data.get("present"))
-    if not present:
-        return GroundHit(present=False, reason=str(data.get("reason", "VLM: 未发现目标"))[:80], source="vlm")
-
-    def _norm(v) -> float:
-        try:
-            v = float(v)
-        except Exception:
-            return 0.5
-        if v > 1.0:  # 容错：模型可能输出 0~100 或 0~1000
-            v = v / (1000.0 if v > 100.0 else 100.0)
-        return min(max(v, 0.0), 1.0)
-
-    nx, ny = _norm(data.get("x", 0.5)), _norm(data.get("y", 0.5))
+    xy = parse_ground_xy(text)
+    if xy is None:
+        return GroundHit(present=False, reason=f"VLM: 未发现「{target}」({text[:30]})", source="vlm")
+    # 到达交给导航器按距离判定（VLM 自报到达不可靠），这里只给位置。
     return GroundHit(
         present=True,
-        norm_xy=(nx, ny),
-        arrived=bool(data.get("arrived")),
-        label=target_label or "目标",
+        norm_xy=xy,
+        arrived=False,
+        label=target or "目标",
         conf=1.0,
-        reason="VLM: " + str(data.get("reason", ""))[:80],
+        reason=f"VLM 命中「{target}」于 ({xy[0]:.2f},{xy[1]:.2f})",
         source="vlm",
+    )
+
+
+def _post_covered(lat: float, lon: float) -> bool:
+    """目标点是否落在某张 POST 灾后瓦片覆盖内（VLN 防越界用）。"""
+    try:
+        return xbd_store.find_tile_containing(
+            lat, lon, stage_priority=("post_disaster",)
+        ) is not None
+    except Exception:
+        return False
+
+
+def _make_hspm_navigator() -> HspmNavigator:
+    """构造 P1 HSPM 分层规划器：复用 VLN 的 grounder + STMR(地图) + planner LLM。"""
+    # planner LLM（landmark 拆解 / OROI 推理）；不可用则 HSPM 回退到短语 + 方向先验。
+    llm_chat = None
+    try:
+        from llm_client import get_client
+        _client = get_client(module="planner")
+        llm_chat = _client.chat  # 签名 (messages, temperature, max_tokens) 与 HSPM 期望一致
+    except Exception as exc:
+        logger.warning("HSPM planner LLM 不可用，退化为短语+方向先验：%s", exc)
+
+    def _stmr_provider(snap: dict):
+        smap = getattr(state, "semantic_map", None)
+        if smap is None:
+            return None
+        try:
+            return build_stmr(
+                smap, float(snap["lat"]), float(snap["lon"]),
+                window_m=HSPM_STMR_WINDOW_M, grid_n=HSPM_STMR_GRID_N,
+            )
+        except Exception as exc:
+            logger.debug("build_stmr failed: %s", exc)
+            return None
+
+    # HSPM grounder 用开放词汇短语，默认走 VLM（landmark 是自由短语，YOLO 类别覆盖不到）。
+    grounder = _make_vln_grounder("vlm" if VLN_GROUNDER == "yolo" else VLN_GROUNDER)
+    return HspmNavigator(
+        config=HspmConfig(
+            step_budget=VLN_STEP_BUDGET,
+            arrival_radius_m=VLN_ARRIVAL_RADIUS_M,
+            max_step_m=VLN_MAX_STEP_M,
+            explore_step_m=VLN_EXPLORE_STEP_M,
+        ),
+        grounder=grounder,
+        llm_chat=llm_chat,
+        stmr_provider=_stmr_provider,
     )
 
 
@@ -945,6 +1088,26 @@ def _vln_perceive(source: str) -> tuple[PerceptionResult | None, dict, dict]:
         "timings": dict(result.extras or {}),
     }
     socketio.emit("perception_result", payload)
+
+    # P0：把这次观测写入 2D 地理语义地图（探索区 + 检测框投影），并推送精简地图状态。
+    smap = getattr(state, "semantic_map", None)
+    if smap is not None:
+        try:
+            written = smap.mark_observation(
+                uav_lat=float(snap["lat"]),
+                uav_lon=float(snap["lon"]),
+                radius_m=float(result.patch_radius_m),
+                detections=result.detection.get("detections", []),
+                degraded=bool(result.degraded),
+                risk_level=result.risk_level,
+                patch_width=int(result.patch_width),
+                patch_height=int(result.patch_height),
+            )
+            socketio.emit("semantic_map", smap.snapshot())
+            logger.debug("semantic_map updated: %s", written)
+        except Exception as exc:
+            logger.warning("semantic_map update failed: %s", exc)
+
     state.emit_world()
     return result, snap, active_tile
 
@@ -998,21 +1161,42 @@ def run_vln_episode(instruction: str, source: str = "ai") -> None:
         state.push_log("warn", "当前已有任务在执行，忽略新的 VLN 指令")
         return
 
-    navigator = VlnNavigator(
-        config=VlnConfig(
-            step_budget=VLN_STEP_BUDGET,
-            arrival_radius_m=VLN_ARRIVAL_RADIUS_M,
-            max_step_m=VLN_MAX_STEP_M,
-            explore_step_m=VLN_EXPLORE_STEP_M,
-            use_llm_stop=VLN_USE_LLM_STOP,
-        ),
-        grounder=_make_vln_grounder(VLN_GROUNDER),
-        llm_stop_fn=_vln_llm_stop if VLN_USE_LLM_STOP else None,
-    )
+    if VLN_PLANNER == "hspm":
+        navigator = _make_hspm_navigator()
+    else:
+        navigator = VlnNavigator(
+            config=VlnConfig(
+                step_budget=VLN_STEP_BUDGET,
+                arrival_radius_m=VLN_ARRIVAL_RADIUS_M,
+                max_step_m=VLN_MAX_STEP_M,
+                explore_step_m=VLN_EXPLORE_STEP_M,
+                use_llm_stop=VLN_USE_LLM_STOP,
+            ),
+            grounder=_make_vln_grounder(VLN_GROUNDER),
+            llm_stop_fn=_vln_llm_stop if VLN_USE_LLM_STOP else None,
+        )
     parsed = navigator.reset(instruction)
+
+    # P0：为本次 episode 建一张全新的 2D 地理语义地图，以当前 UAV 位置为原点累积。
+    if SEMANTIC_MAP_ENABLED:
+        try:
+            init_snap = state.adapter.snapshot()
+            state.semantic_map = SemanticMap(
+                origin_lat=float(init_snap["lat"]),
+                origin_lon=float(init_snap["lon"]),
+                cell_size_m=SEMANTIC_MAP_CELL_M,
+                instruction=instruction,
+            )
+        except Exception as exc:
+            logger.warning("semantic_map init failed: %s", exc)
+            state.semantic_map = None
+    else:
+        state.semantic_map = None
 
     arrived = False
     executed: list[dict] = []
+    last_good_pos: tuple[float, float, float] | None = None  # 最近一次成功观测的 (lat,lon,alt)
+    oob_recover = 0  # 连续脱离 POST 覆盖的次数
     task_started_ns = time.time_ns()
     try:
         state.is_executing = True
@@ -1023,8 +1207,10 @@ def run_vln_episode(instruction: str, source: str = "ai") -> None:
 
         target_label = parsed.get("target_label")
         dir_name = parsed.get("direction_name")
+        landmarks = parsed.get("landmarks") or []
+        goal_desc = (" → ".join(landmarks)) if landmarks else target_label
         plan_summary = (
-            f"VLN 语言目标导航：寻找「{target_label}」"
+            f"VLN 语言目标导航（{VLN_PLANNER}）：寻找「{goal_desc}」"
             + (f"（方向先验：{dir_name}）" if dir_name else "")
             + f"，grounding={VLN_GROUNDER}，步数预算 {navigator.config.step_budget}。"
         )
@@ -1061,15 +1247,54 @@ def run_vln_episode(instruction: str, source: str = "ai") -> None:
 
             result, snap, active_tile = _vln_perceive(source)
             if result is None:
+                # 脱离 POST 覆盖（或感知不可用）。不再直接中止：
+                #   - 起点就没覆盖 → 确实无法导航，结束；
+                #   - 否则飞回上一个有效观测点重试，连续多次才结束。
+                if last_good_pos is None:
+                    state.push_log(
+                        "error",
+                        "VLN 中止：起点不在任何 POST 灾后瓦片覆盖范围内，无法导航。",
+                    )
+                    break
+                oob_recover += 1
+                if oob_recover > 3:
+                    state.push_log("warn", "VLN：多次脱离 POST 覆盖，结束本次导航。")
+                    break
                 state.push_log(
-                    "error",
-                    "VLN 中止：当前位置无 POST 灾后瓦片覆盖或感知不可用，无法继续导航。",
+                    "warn",
+                    f"VLN：当前位置脱离 POST 覆盖，返回上一个有效观测点 "
+                    f"({last_good_pos[0]:.6f}, {last_good_pos[1]:.6f}) 重试。",
                 )
-                break
+                execute_action(
+                    "fly_to_geo",
+                    {"lat": last_good_pos[0], "lon": last_good_pos[1], "alt": last_good_pos[2]},
+                    source=source,
+                )
+                continue
+
+            oob_recover = 0
+            last_good_pos = (float(snap["lat"]), float(snap["lon"]), float(snap["alt"]))
 
             obs = Observation.from_perception(result)
             decision = navigator.step(obs, snap)
             step_idx = navigator.step_index
+
+            # 防越界：若这一步会飞出 POST 覆盖，改朝当前瓦片中心回拉，保持在覆盖内继续搜索。
+            if decision.action == "fly_relative":
+                nm = float(decision.params.get("north_m", 0.0))
+                em = float(decision.params.get("east_m", 0.0))
+                dlat, dlon = meters_to_latlon(float(snap["lat"]), float(snap["lon"]), nm, em)
+                if not _post_covered(dlat, dlon):
+                    rn, re_ = latlon_to_meters(
+                        float(snap["lat"]), float(snap["lon"]),
+                        state.world.anchor_lat, state.world.anchor_lon,
+                    )
+                    rn, re_ = VlnNavigator._clamp_step(rn, re_, navigator.config.max_step_m)
+                    decision.params["north_m"] = round(rn, 1)
+                    decision.params["east_m"] = round(re_, 1)
+                    note = f"原方向将飞出 POST 覆盖，改朝瓦片中心回拉 N{rn:+.0f}/E{re_:+.0f}m。"
+                    decision.reason = note + " " + decision.reason
+                    decision.thought = f"step{step_idx}: 防越界，{note}"
 
             state.push_log("info", f"[VLN {step_idx}/{navigator.config.step_budget}] {decision.thought}")
             socketio.emit(
@@ -1180,6 +1405,19 @@ def api_status():
 @app.route("/api/world", methods=["GET"])
 def api_world():
     return jsonify(state.world_state())
+
+
+@app.route("/api/semantic_map", methods=["GET"])
+def api_semantic_map():
+    """P0：返回当前 episode 的 2D 地理语义地图（无活动地图时返回 null）。
+
+    ?full=1 返回完整序列化（含每格），否则返回精简 snapshot。
+    """
+    smap = getattr(state, "semantic_map", None)
+    if smap is None:
+        return jsonify({"active": False, "map": None})
+    full = request.args.get("full", "0").lower() in {"1", "true", "yes", "on"}
+    return jsonify({"active": True, "map": smap.to_dict() if full else smap.snapshot()})
 
 
 @app.route("/api/logs", methods=["GET"])

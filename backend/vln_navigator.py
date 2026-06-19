@@ -132,8 +132,72 @@ class Decision:
     target_dist_m: Optional[float] = None
 
 
+# 提取开放词汇目标短语时要剥掉的动作/方向/方位停用词。
+# 目的：保留"蓝色的建筑"这类带修饰的开放词汇目标，不被 YOLO 类别词典改写。
+_PHRASE_STOPWORDS = [
+    "飞到", "飞往", "飞向", "前往", "去往", "去", "到", "请", "帮我",
+    "寻找", "找到", "找一找", "找找", "找", "搜索", "搜寻", "定位",
+    "查看", "看看", "看一看", "看", "检查", "巡查", "侦察", "确认", "复核", "观察",
+    "有没有", "是否有", "是否", "有无", "附近", "周围", "一带", "方向", "方位",
+    "侧", "边", "面", "的地方", "区域附近",
+    "东北", "西北", "东南", "西南", "北", "南", "东", "西",
+    "northeast", "northwest", "southeast", "southwest",
+    "north", "south", "east", "west", "fly", "go", "find", "search",
+    "look for", "locate", "inspect", "check", "to the", "the", "a ", "an ",
+]
+
+
+def extract_target_phrase(instruction: str) -> str:
+    """从指令里抽取"开放词汇目标短语"，剥掉动作/方向/方位停用词。
+
+    例："飞到北侧寻找蓝色的建筑。" → "蓝色的建筑"
+    剥不干净也无妨：目的是把"蓝色"这类修饰保留给 VLM grounding，避免被
+    parse_instruction 的 YOLO 类别词典改写丢失。剥空时回退原指令。
+    """
+    text = (instruction or "").strip()
+    phrase = text
+    # 去标点
+    for ch in "。．.,，、!！?？;；:：\n\t":
+        phrase = phrase.replace(ch, " ")
+    low = phrase.lower()
+    # 逐个剥停用词（按长度降序，先剥长词，避免"北侧"被"北"切碎残留"侧"）
+    for kw in sorted(_PHRASE_STOPWORDS, key=len, reverse=True):
+        if not kw.strip():
+            continue
+        low = low.replace(kw.lower(), " ")
+    cleaned = " ".join(low.split()).strip(" 的之了")
+    return cleaned if cleaned else text
+
+
+def parse_ground_xy(text: str) -> Optional[tuple[float, float]]:
+    """从 VLM grounding 回答里解析归一化坐标 (x, y)。
+
+    范式（已实测）：模型"看得到→输出 x,y；看不到→回‘没有’"。
+    解析不到坐标、或明确否定且无数字时返回 None（视为未命中）。
+    """
+    t = (text or "").strip()
+    if not t:
+        return None
+    if re.search(r"没有|没看到|未[发见]|无目标|none|not\s+found|no\b", t, re.IGNORECASE):
+        if not re.search(r"\d", t):
+            return None
+
+    def _norm(v: float) -> float:
+        if v > 1.0:  # 容错：模型可能输出 0~100 或 0~1000
+            v = v / (1000.0 if v > 100.0 else 100.0)
+        return min(max(v, 0.0), 1.0)
+
+    nums = re.findall(r"-?\d+(?:\.\d+)?", t)
+    if len(nums) >= 2:
+        try:
+            return _norm(float(nums[0])), _norm(float(nums[1]))
+        except Exception:
+            return None
+    return None
+
+
 def parse_instruction(instruction: str) -> dict:
-    """指令 → {target_classes, target_label, direction, direction_name}。"""
+    """指令 → {target_classes, target_label, target_phrase, direction, direction_name}。"""
     text = (instruction or "").strip()
     low = text.lower()
 
@@ -179,10 +243,14 @@ def parse_instruction(instruction: str) -> dict:
             break
 
     target_label = "、".join(target_classes) if target_classes else (matched_labels[0] if matched_labels else "")
+    # 开放词汇短语：保留指令里的修饰（颜色/材质等），供 VLM grounding 用，
+    # 不被上面的 YOLO 类别词典改写覆盖。
+    target_phrase = extract_target_phrase(text)
     return {
         "raw": text,
         "target_classes": target_classes,
         "target_label": target_label or "(未识别明确目标)",
+        "target_phrase": target_phrase,
         "direction": direction,
         "direction_name": _DIRECTION_NAME.get(direction or (0.0, 0.0), ""),
     }
