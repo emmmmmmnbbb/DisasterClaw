@@ -52,6 +52,8 @@ YOLO_WEIGHTS = os.getenv(
     "/home/lc/Langchain-Chatchat/tools/mars/results/yolo/runs/train/mars_det_yolov8n4/weights/best.pt",
 )
 YOLO_CONF_THRESHOLD = float(os.getenv("YOLO_CONF_THRESHOLD", "0.25"))
+# 推理分辨率：xBD 域内权重在 1024² 卫星图上训练，小目标需大 imgsz；RescueNet 旧权重用 640。
+YOLO_IMGSZ = int(os.getenv("YOLO_IMGSZ", "640"))
 SEGFORMER_MODEL = os.getenv(
     "SEGFORMER_MODEL", "nvidia/segformer-b2-finetuned-ade-512-512"
 )
@@ -74,7 +76,10 @@ PERCEPTION_MAX_RADIUS_M = float(os.getenv("PERCEPTION_MAX_RADIUS_M", "300"))
 PERCEPTION_MIN_PATCH_PX = int(os.getenv("PERCEPTION_MIN_PATCH_PX", "256"))
 PERCEPTION_MAX_PATCH_PX = int(os.getenv("PERCEPTION_MAX_PATCH_PX", "1024"))
 
-# RescueNet type_* → 中文标签，与 rs_agent_system.config.YOLO_LABEL_MAP 一致
+# 检测器 raw class_name → 中文标签。兼容两套权重：
+#   - RescueNet（低空斜拍）：type_* 索引名
+#   - xBD 域内微调（卫星正射）：英文 damage subtype（gen_xbd_yolo_dataset.py 的类名）
+# perception._detect 用 .get(raw, raw) 兜底，grounding 按中文类匹配，故只需在此加映射。
 YOLO_LABEL_MAP: dict[str, str] = {
     "type_2": "无损伤建筑",
     "type_3": "轻微损伤建筑",
@@ -82,6 +87,11 @@ YOLO_LABEL_MAP: dict[str, str] = {
     "type_5": "完全损毁建筑",
     "type_6": "车辆",
     "type_10": "水池/积水区域",
+    # xBD 域内检测器类名
+    "no-damage": "无损伤建筑",
+    "minor-damage": "轻微损伤建筑",
+    "major-damage": "严重损伤建筑",
+    "destroyed": "完全损毁建筑",
 }
 ADE20K_LABELS_ZH: dict[str, str] = {
     "wall": "墙体",
@@ -285,6 +295,7 @@ class DisasterPerception:
                 weights=YOLO_WEIGHTS,
                 device=device_arg,
                 conf=YOLO_CONF_THRESHOLD,
+                imgsz=YOLO_IMGSZ,
             )
             logger.info("[Perception] loading SegFormer: %s", SEGFORMER_MODEL)
             self._segformer = SegFormerTool(

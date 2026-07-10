@@ -21,7 +21,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from hspm_planner import HspmConfig, HspmNavigator, plan_landmarks, reason_oroi  # noqa: E402
 from vln_navigator import GroundHit, Observation  # noqa: E402
 
-SNAP = {"lat": 31.2304, "lon": 121.4737, "alt": 80.0}
+# alt 低于 arrival_confirm_alt_m(22)，使"到达"用例直接确认（不触发降高核验分支）。
+SNAP = {"lat": 31.2304, "lon": 121.4737, "alt": 18.0}
 
 
 def _obs(patch_radius_m: float = 60.0, degraded: bool = False) -> Observation:

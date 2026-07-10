@@ -140,6 +140,7 @@ _PHRASE_STOPWORDS = [
     "查看", "看看", "看一看", "看", "检查", "巡查", "侦察", "确认", "复核", "观察",
     "有没有", "是否有", "是否", "有无", "附近", "周围", "一带", "方向", "方位",
     "侧", "边", "面", "的地方", "区域附近",
+    "先到", "先去", "先", "再前往", "再到", "再去", "再", "然后", "接着", "之后", "最后", "并",
     "东北", "西北", "东南", "西南", "北", "南", "东", "西",
     "northeast", "northwest", "southeast", "southwest",
     "north", "south", "east", "west", "fly", "go", "find", "search",
@@ -391,6 +392,7 @@ class VlnNavigator:
             label = hit.label or self.parsed.get("target_label")
             src = f"[{hit.source}]" if hit.source else ""
             # 1a) 到达判定：grounder 直接判到达，或目标已进入视场中心半径。
+            # 注：曾试"降高确认到达"治早停，实测会缩小视场丢失近处目标、SR 反降，已回退。
             if hit.arrived or dist_m <= self.config.arrival_radius_m:
                 cand = {"class_name": label, "conf": hit.conf, "offset": (north_m, east_m, dist_m)}
                 if self._confirm_stop(observation, cand):

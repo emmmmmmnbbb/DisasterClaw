@@ -231,17 +231,26 @@ class MemoryGraph:
         scorer: Scorer = text_match_scorer,
         min_score: float = 0.34,
         start_attach_m: float = 60.0,
+        max_dist_m: float = 0.0,
     ) -> Optional[dict]:
         """LM-Nav 式规划：为（最终）地标找最佳记忆节点，串出一条 walk。
 
         - 用最终地标（landmarks[-1]）匹配目标节点；分数 < min_score → 返回 None（交回探索）。
         - 起点若靠近某节点（≤ start_attach_m）→ Dijkstra 走熟路；否则直飞目标节点。
+        - `max_dist_m > 0` 时启用**地理门控**：匹配到的目标节点若离起点超过该距离，
+          视为"别的区域的同名地标"（如跨灾种），返回 None 交回探索——防止预飞跨区域乱飞。
         返回 {waypoints:[{lat,lon,alt}], target_score, target_label, node_ids, mode}。
         """
         if not self._nodes or not landmarks:
             return None
         goal_phrase = landmarks[-1]
-        matches = self.match_nodes(goal_phrase, scorer, top_k=1)
+        # 文本匹配取 top-k，再按地理门控筛掉跨区域的同名节点，取仍合格者中的最高分。
+        matches = self.match_nodes(goal_phrase, scorer, top_k=5)
+        if max_dist_m and max_dist_m > 0:
+            matches = [
+                (nd, sc) for nd, sc in matches
+                if _dist_m(start_lat, start_lon, nd["lat"], nd["lon"]) <= max_dist_m
+            ]
         if not matches or matches[0][1] < min_score:
             return None
         goal_node, score = matches[0]

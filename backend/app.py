@@ -894,6 +894,8 @@ VLN_MEMORY_PATH = os.getenv("VLN_MEMORY_PATH", str(BASE_DIR / "outputs" / "memor
 VLN_MEMORY_MERGE_M = float(os.getenv("VLN_MEMORY_MERGE_M", "15"))
 VLN_MEMORY_MIN_SCORE = float(os.getenv("VLN_MEMORY_MIN_SCORE", "0.34"))
 VLN_MEMORY_MAX_HOPS = int(os.getenv("VLN_MEMORY_MAX_HOPS", "6"))
+# 地理门控：匹配到的记忆目标节点离起点超过此距离则视为"别区域同名地标"，不预飞（防跨灾种乱飞）。
+VLN_MEMORY_MAX_DIST_M = float(os.getenv("VLN_MEMORY_MAX_DIST_M", "1500"))
 
 # 进程内缓存的记忆图（懒加载，跨 episode/任务复用并落盘）。
 _memory_graph: MemoryGraph | None = None
@@ -905,6 +907,13 @@ def get_memory_graph() -> MemoryGraph:
         _memory_graph = MemoryGraph.load(VLN_MEMORY_PATH, merge_radius_m=VLN_MEMORY_MERGE_M)
     return _memory_graph
 VLN_VLM_MAX_TOKENS = int(os.getenv("VLN_VLM_MAX_TOKENS", "200"))
+# VLM grounding 裁剪复核（实验开关，默认关）：粗命中后裁目标周边小窗"数字放大"再精定位一次，
+# 映射回原 patch 坐标。本意纠正"偏中心/低精度"，但 A/B 实测（B1×8 题）系统性变差：
+# 中位 NE 99m→151m（5 题更差/1 题更好）——高空 patch 本身低分辨率，放大只放大模糊，
+# 且二次 VLM 易改选裁剪窗内的相邻建筑。故默认 0；置 VLN_VLM_REFINE=1 可复现该实验。
+VLN_VLM_REFINE = os.getenv("VLN_VLM_REFINE", "0").lower() not in {"0", "false", "no", "off"}
+VLN_VLM_REFINE_WIN = float(os.getenv("VLN_VLM_REFINE_WIN", "0.34"))  # 裁剪窗口边长占原图比例
+VLN_VLM_REFINE_UPSCALE = int(os.getenv("VLN_VLM_REFINE_UPSCALE", "512"))  # 裁剪后放大到的边长(px)
 # P0：2D 地理语义地图栅格边长（米）；与 STMR 默认 5m/格对齐。设 0/off 可关闭建图。
 SEMANTIC_MAP_CELL_M = float(os.getenv("SEMANTIC_MAP_CELL_M", "5"))
 SEMANTIC_MAP_ENABLED = os.getenv("SEMANTIC_MAP", "1").lower() not in {"0", "false", "no", "off"}
@@ -920,6 +929,51 @@ _VLN_GROUND_SYS_PROMPT = (
     "如果画面里完全没有该目标，就只回答两个字：没有。"
     "不要输出任何坐标或‘没有’以外的文字、解释或标点。"
 )
+
+
+def _vlm_refine_xy(
+    patch_path: str, target: str, x0: float, y0: float
+) -> tuple[float, float] | None:
+    """裁剪复核：以粗命中点 (x0,y0) 为中心裁一小窗 + 放大，让 VLM 在清晰大图上精定位一次，
+    再把窗内坐标映射回原 patch 的归一化坐标。失败/未命中返回 None（调用方回退粗定位）。
+    """
+    try:
+        import io
+        from PIL import Image
+        img = Image.open(patch_path).convert("RGB")
+        W, H = img.size
+        if W <= 0 or H <= 0:
+            return None
+        ww = max(64, int(W * VLN_VLM_REFINE_WIN))
+        wh = max(64, int(H * VLN_VLM_REFINE_WIN))
+        cx, cy = x0 * W, y0 * H
+        left = int(min(max(cx - ww / 2.0, 0), max(W - ww, 0)))
+        top = int(min(max(cy - wh / 2.0, 0), max(H - wh, 0)))
+        crop = img.crop((left, top, left + ww, top + wh))
+        up = VLN_VLM_REFINE_UPSCALE
+        crop = crop.resize((up, up))  # 数字放大，让小目标占更大比例
+        buf = io.BytesIO()
+        crop.save(buf, format="PNG")
+        out = VLMAnalyzer().analyze_image_bytes(
+            image_bytes=buf.getvalue(),
+            mime_type="image/png",
+            prompt=(
+                f"这是放大后的局部俯视影像。要找的目标：{target}\n"
+                "看得到就只输出它中心的坐标 x,y；完全看不到就只回答：没有。"
+            ),
+            system_prompt=_VLN_GROUND_SYS_PROMPT,
+            max_tokens=VLN_VLM_MAX_TOKENS,
+        )
+        xyc = parse_ground_xy((out.get("analysis") or "").strip())
+    except Exception as exc:
+        logger.debug("VLM refine failed: %s", exc)
+        return None
+    if xyc is None:
+        return None
+    # 窗内归一化 → 原 patch 归一化
+    gx = (left + xyc[0] * ww) / W
+    gy = (top + xyc[1] * wh) / H
+    return (min(max(gx, 0.0), 1.0), min(max(gy, 0.0), 1.0))
 
 
 def _vln_vlm_ground(parsed: dict, obs: Observation) -> GroundHit | None:
@@ -955,6 +1009,16 @@ def _vln_vlm_ground(parsed: dict, obs: Observation) -> GroundHit | None:
     xy = parse_ground_xy(text)
     if xy is None:
         return GroundHit(present=False, reason=f"VLM: 未发现「{target}」({text[:30]})", source="vlm")
+    # 裁剪复核：在目标周边小窗放大后再精定位一次，纠正"偏中心/低精度"导致的假到达。
+    reason = f"VLM 命中「{target}」于 ({xy[0]:.2f},{xy[1]:.2f})"
+    if VLN_VLM_REFINE:
+        refined = _vlm_refine_xy(patch_path, target, xy[0], xy[1])
+        if refined is not None:
+            reason = (
+                f"VLM 命中「{target}」粗({xy[0]:.2f},{xy[1]:.2f})→"
+                f"精({refined[0]:.2f},{refined[1]:.2f})"
+            )
+            xy = refined
     # 到达交给导航器按距离判定（VLM 自报到达不可靠），这里只给位置。
     return GroundHit(
         present=True,
@@ -962,7 +1026,7 @@ def _vln_vlm_ground(parsed: dict, obs: Observation) -> GroundHit | None:
         arrived=False,
         label=target or "目标",
         conf=1.0,
-        reason=f"VLM 命中「{target}」于 ({xy[0]:.2f},{xy[1]:.2f})",
+        reason=reason,
         source="vlm",
     )
 
@@ -1029,6 +1093,7 @@ def _vln_memory_prefly(landmarks: list[str], source: str) -> bool:
     plan = graph.plan(
         landmarks, float(snap["lat"]), float(snap["lon"]),
         scorer=text_match_scorer, min_score=VLN_MEMORY_MIN_SCORE,
+        max_dist_m=VLN_MEMORY_MAX_DIST_M,
     )
     if not plan:
         state.push_log("info", "[VLN 记忆] 记忆图中无匹配熟路，转入常规探索。")
@@ -1046,8 +1111,12 @@ def _vln_memory_prefly(landmarks: list[str], source: str) -> bool:
             break
         cur = state.adapter.snapshot()
         n, e = latlon_to_meters(float(cur["lat"]), float(cur["lon"]), wp["lat"], wp["lon"])
-        if (n * n + e * e) ** 0.5 < 20.0:
+        hop_d = (n * n + e * e) ** 0.5
+        if hop_d < 20.0:
             continue  # 跳过离当前太近的航点（如起点节点本身）
+        if hop_d > VLN_MEMORY_MAX_DIST_M:
+            state.push_log("warn", f"[VLN 记忆] 熟路航点距当前 {hop_d:.0f}m 超门控，跳过（防跨区域乱飞）。")
+            continue
         if not _post_covered(wp["lat"], wp["lon"]):
             continue  # 熟路航点已脱离当前 POST 覆盖，跳过
         res = execute_action(
@@ -1240,10 +1309,15 @@ def _vln_llm_stop(instruction: str, scene_text: str, candidate: dict) -> bool | 
         return None
 
 
-def run_vln_episode(instruction: str, source: str = "ai") -> None:
+def run_vln_episode(instruction: str, source: str = "ai") -> dict | None:
+    """运行一次 VLN episode。
+
+    返回最终 report dict（也通过 socket 广播）；忙时返回 {"ok": False, "error": "busy"}，
+    异常时返回带 error 字段的 report。无头评测（run_vln_episode_headless）依赖该返回值。
+    """
     if not state._task_lock.acquire(blocking=False):
         state.push_log("warn", "当前已有任务在执行，忽略新的 VLN 指令")
-        return
+        return {"ok": False, "error": "busy", "task": instruction}
 
     if VLN_PLANNER == "hspm":
         navigator = _make_hspm_navigator()
@@ -1294,6 +1368,8 @@ def run_vln_episode(instruction: str, source: str = "ai") -> None:
     trajectory: list[dict] = []  # P3：本 episode 观测轨迹（成功后写入记忆图）
     last_good_pos: tuple[float, float, float] | None = None  # 最近一次成功观测的 (lat,lon,alt)
     oob_recover = 0  # 连续脱离 POST 覆盖的次数
+    path_len_m = 0.0  # 累计实际飞行水平路径长（SPL 用）
+    report: dict | None = None
     task_started_ns = time.time_ns()
     try:
         state.is_executing = True
@@ -1301,6 +1377,10 @@ def run_vln_episode(instruction: str, source: str = "ai") -> None:
         state._sync_world_from_adapter()
         state.emit_system_status()
         state.emit_world()
+
+        # 路径长度累计起点（含 P3 记忆预飞段）
+        _ep_start = state.adapter.snapshot()
+        prev_pos = (float(_ep_start["lat"]), float(_ep_start["lon"]))
 
         target_label = parsed.get("target_label")
         dir_name = parsed.get("direction_name")
@@ -1382,6 +1462,12 @@ def run_vln_episode(instruction: str, source: str = "ai") -> None:
 
             oob_recover = 0
             last_good_pos = (float(snap["lat"]), float(snap["lon"]), float(snap["alt"]))
+
+            # SPL：累计相邻观测点之间的水平飞行距离（含预飞/复核机动）。
+            _cur = (float(snap["lat"]), float(snap["lon"]))
+            _n, _e = latlon_to_meters(prev_pos[0], prev_pos[1], _cur[0], _cur[1])
+            path_len_m += (_n * _n + _e * _e) ** 0.5
+            prev_pos = _cur
 
             # P3：记录轨迹观测点（成功到达后写入记忆图）。
             trajectory.append({
@@ -1550,6 +1636,11 @@ def run_vln_episode(instruction: str, source: str = "ai") -> None:
                 break
 
         final_snap = state.adapter.snapshot()
+        # 补最后一段（最后一次决策机动后到终点的位移）
+        _fn, _fe = latlon_to_meters(
+            prev_pos[0], prev_pos[1], float(final_snap["lat"]), float(final_snap["lon"])
+        )
+        path_len_m += (_fn * _fn + _fe * _fe) ** 0.5
 
         # P3：成功到达则把本次轨迹沉淀进记忆图并落盘（越用越熟）。
         if VLN_MEMORY and arrived and trajectory:
@@ -1591,11 +1682,31 @@ def run_vln_episode(instruction: str, source: str = "ai") -> None:
             "task": instruction,
             "summary": summary,
             "steps": executed,
+            "steps_executed": len(executed),
             "arrived": arrived,
             "vln_history": navigator.history,
             "recheck": rechecker.stats() if rechecker is not None else None,
             "recheck_log": rechecker.resolved_log if rechecker is not None else [],
             "memory": (get_memory_graph().stats() if VLN_MEMORY else None),
+            # ── P4 评测所需字段 ────────────────────────────────────────
+            "final_pos": {
+                "lat": float(final_snap["lat"]),
+                "lon": float(final_snap["lon"]),
+                "alt": float(final_snap["alt"]),
+            },
+            "path_len_m": round(path_len_m, 2),
+            "landmarks": landmarks,
+            "target_label": target_label,
+            "target_classes": parsed.get("target_classes") or [],
+            "planner": VLN_PLANNER,
+            "grounder": VLN_GROUNDER,
+            "trajectory": trajectory,
+            "config": {
+                "step_budget": navigator.config.step_budget,
+                "arrival_radius_m": navigator.config.arrival_radius_m,
+                "recheck": bool(VLN_RECHECK),
+                "memory": bool(VLN_MEMORY),
+            },
             "ts_ns": finished_ns,
             "ts_ms": finished_ns // 1_000_000,
             "task_started_ns": task_started_ns,
@@ -1610,12 +1721,55 @@ def run_vln_episode(instruction: str, source: str = "ai") -> None:
         logger.exception("VLN episode crashed")
         state.push_log("error", f"VLN 异常: {exc}")
         socketio.emit("ai_thinking", {"phase": "idle", "detail": ""})
+        report = {"ok": False, "task": instruction, "error": str(exc), "arrived": False}
     finally:
         state.is_executing = False
         state._sync_world_from_adapter()
         state.emit_system_status()
         state.emit_world()
         state._task_lock.release()
+
+    return report
+
+
+def run_vln_episode_headless(
+    instruction: str,
+    start: dict,
+    source: str = "bench",
+) -> dict:
+    """无头评测入口：把 UAV 放到指定起点后同步跑一次 VLN episode，返回 report dict。
+
+    与 run_vln_episode 共享同一套感知 / 规划 / 复核 / 记忆逻辑（真实模型），只是：
+      - 调用方先指定起点 start={"lat","lon","alt"}，本函数负责对齐 POST 瓦片并定位 UAV；
+      - 同步阻塞返回 report（含 final_pos / path_len_m / arrived / steps / recheck / memory），
+        供 bench_vln_navigation.py 计算 NE / SR / SPL 等指标；
+      - 不依赖前端：socket 广播在无客户端时为 no-op，互不影响。
+
+    起点未被任何 POST 瓦片覆盖时，返回 {"ok": False, "error": "start_not_covered"}。
+    """
+    try:
+        lat = float(start["lat"])
+        lon = float(start["lon"])
+        alt = float(start.get("alt", state.hover_altitude_m))
+    except (KeyError, TypeError, ValueError) as exc:
+        return {"ok": False, "error": f"bad_start: {exc}", "task": instruction}
+
+    entry = xbd_store.find_tile_containing(lat, lon, stage_priority=("post_disaster",))
+    if entry is None:
+        return {"ok": False, "error": "start_not_covered", "task": instruction,
+                "start": {"lat": lat, "lon": lon, "alt": alt}}
+
+    # 对齐活动瓦片（设置 world / adapter 原点到瓦片中心），再把 UAV 精确放到起点。
+    state.activate_xbd_tile(entry)
+    state.adapter.reset_origin(lat, lon, alt=alt)
+    state._sync_world_from_adapter()
+
+    report = run_vln_episode(instruction, source=source)
+    if isinstance(report, dict):
+        report.setdefault("tile_id", entry.get("tile_id"))
+        report.setdefault("disaster", entry.get("disaster"))
+        report["start"] = {"lat": lat, "lon": lon, "alt": alt}
+    return report or {"ok": False, "error": "no_report", "task": instruction}
 
 
 # ───────────────────────────── REST API ────────────────────────────────
