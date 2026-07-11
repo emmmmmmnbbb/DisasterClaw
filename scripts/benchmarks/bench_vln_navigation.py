@@ -37,12 +37,40 @@ sys.path.insert(0, str(BACKEND))  # 必须在 import app 之前，app 内有 `fr
 DEFAULT_TESTSET = BACKEND / "data" / "benchmarks" / "vln_testset.json"
 RUNS_DIR = REPO_ROOT / "runs" / "benchmarks"
 
-# 配置 → (planner, recheck, memory)
+# 配置 → (planner, recheck, memory[, recheck_extra][, oroi_score][, change_perception])
+# recheck_extra 覆盖 RecheckConfig 的 uncertainty_mode/trigger_mode 等字段（P5 E11）；
+# oroi_score 开 VLN_OROI_SCORE（P4.5/E12）；change_perception 开 VLN_CHANGE_PERCEPTION（P5 前提）。
 CONFIGS = {
     "B0": {"planner": "legacy", "recheck": False, "memory": False, "desc": "baseline 关键词+贪心"},
     "B1": {"planner": "hspm", "recheck": False, "memory": False, "desc": "+HSPM 三层规划"},
     "B2": {"planner": "hspm", "recheck": True, "memory": False, "desc": "+不确定性复核"},
     "B3": {"planner": "hspm", "recheck": True, "memory": True, "desc": "+记忆拓扑图"},
+    # E11 — 复核策略六选一（固定 planner=hspm, memory=False，只切 recheck 策略）。
+    # 注意：configs 键会被 CLI 解析强制 .upper()，故键本身必须全大写。
+    "E11_NONE": {"planner": "hspm", "recheck": False, "memory": False,
+                 "desc": "E11: 不复核（=B1）"},
+    "E11_RANDOM": {"planner": "hspm", "recheck": True, "memory": False,
+                   "recheck_extra": {"trigger_mode": "random", "random_prob": 0.5},
+                   "desc": "E11: 随机复核 p=0.5"},
+    "E11_FIXED": {"planner": "hspm", "recheck": True, "memory": False,
+                  "recheck_extra": {"trigger_mode": "fixed"},
+                  "desc": "E11: 固定降高复核（有证据必复核）"},
+    "E11_HEURISTIC": {"planner": "hspm", "recheck": True, "memory": False,
+                      "recheck_extra": {"uncertainty_mode": "heuristic", "trigger_mode": "threshold"},
+                      "desc": "E11: 现有启发式（=B2）"},
+    "E11_ENTROPY": {"planner": "hspm", "recheck": True, "memory": False,
+                    "change_perception": True,
+                    "recheck_extra": {"uncertainty_mode": "entropy", "trigger_mode": "threshold"},
+                    "desc": "E11: 校准熵驱动（阈值触发）"},
+    "E11_INFOGAIN": {"planner": "hspm", "recheck": True, "memory": False,
+                     "change_perception": True,
+                     "recheck_extra": {"uncertainty_mode": "entropy", "trigger_mode": "info_gain"},
+                     "desc": "E11: 校准熵 + 信息增益触发"},
+    # E12 — OROI 打分融合 A/B（固定 B1，只切 VLN_OROI_SCORE）。
+    "E12_OFF": {"planner": "hspm", "recheck": False, "memory": False,
+                "desc": "E12: OROI 自由选择（=B1，off）"},
+    "E12_ON": {"planner": "hspm", "recheck": False, "memory": False, "oroi_score": True,
+               "desc": "E12: OROI 打分融合（VLN_OROI_SCORE=1）"},
 }
 
 
@@ -96,7 +124,18 @@ def set_seed(seed: int) -> None:
 
 
 def apply_config(app, cfg: dict, grounder: str, mem_path: str) -> None:
-    """运行期切换 app 的模块级开关。"""
+    """运行期切换 app（以及 perception）的模块级开关。
+
+    P5/E11/E12 扩展：除 planner/recheck/memory 三个原有开关外，还支持
+        - recheck_extra: dict，覆盖 VLN_UNCERTAINTY_MODE / VLN_RECHECK_TRIGGER /
+          VLN_RECHECK_MIN_INFO_GAIN / VLN_RECHECK_RANDOM_PROB / VLN_RECHECK_RANDOM_SEED；
+          未出现的字段重置为 app 模块的默认值（避免上一个配置的开关"漏"到下一个）。
+        - oroi_score: bool，切 VLN_OROI_SCORE（C3/E12）。
+        - change_perception: bool，切 perception.VLN_CHANGE_PERCEPTION（P5 前提，
+          entropy/info_gain 模式没有 class_probs 会自动退化 heuristic，但 E11 要对比
+          "真的有校准概率"的效果，必须显式开）。
+    没在 CONFIGS 里显式设置的开关，一律回落默认值，保证配置之间互不串味。
+    """
     app.VLN_PLANNER = cfg["planner"]
     app.VLN_RECHECK = bool(cfg["recheck"])
     app.VLN_MEMORY = bool(cfg["memory"])
@@ -104,6 +143,17 @@ def apply_config(app, cfg: dict, grounder: str, mem_path: str) -> None:
     app.VLN_MEMORY_PATH = mem_path
     # 重置记忆图单例，避免跨配置/跨 run 串味
     app._memory_graph = None
+
+    extra = cfg.get("recheck_extra") or {}
+    app.VLN_UNCERTAINTY_MODE = extra.get("uncertainty_mode", "heuristic")
+    app.VLN_RECHECK_TRIGGER = extra.get("trigger_mode", "threshold")
+    app.VLN_RECHECK_MIN_INFO_GAIN = float(extra.get("min_info_gain", 0.05))
+    app.VLN_RECHECK_RANDOM_PROB = float(extra.get("random_prob", 0.5))
+    app.VLN_RECHECK_RANDOM_SEED = int(extra.get("random_seed", 0))
+    app.VLN_OROI_SCORE = bool(cfg.get("oroi_score", False))
+
+    import perception
+    perception.VLN_CHANGE_PERCEPTION = bool(cfg.get("change_perception", False))
 
 
 def _predicted_class(report: dict) -> str | None:

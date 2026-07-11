@@ -1,4 +1,4 @@
-"""
+r"""
 backend/recheck.py — 灾情不确定性驱动的主动复核（P2，创新主线 C2）
 
 核心思想：让"对灾情判断的把握程度"指挥飞行。看到疑似受灾目标但没把握时，
@@ -7,9 +7,23 @@ backend/recheck.py — 灾情不确定性驱动的主动复核（P2，创新主�
     perception 里 patch 半径 = clamp(MIN, alt × factor, MAX)，
     所以降高度 → 视场变小 → 地面分辨率(GSD)变细 → 复核能看得更清。
 
-不确定性来源：
-    - risk_level：'low'（"轻度受灾或可疑"）最暧昧 → 不确定性最高；'high' 最笃定 → 最低。
-    - 证据置信度：受灾相关检测框（受损建筑 / 积水）里最高的 conf，越低越不确定。
+不确定性来源（两种模式，`RecheckConfig.uncertainty_mode` 切换）：
+    - heuristic（默认，向后兼容）：risk_level 暧昧度 + 证据 conf 查表组合。
+    - entropy（P5，对应文档第六节"升级接口"）：分布熵 U_t = -Σ p_i log p_i /
+      log(K)，p 取自 perception.py 在 `VLN_CHANGE_PERCEPTION=1` 时暴露的
+      `class_probs`（4 类损伤的校准 softmax）；没有 class_probs 时自动退化
+      为 heuristic，不会因为某一帧缺概率分布而崩。
+
+触发/收尾逻辑（`RecheckConfig.trigger_mode` 四选一，供 E11 六选一对照做基线）：
+    - threshold（默认，向后兼容）：`unc >= trigger` 就触发复核。
+    - info_gain（P5）：把"复核（降高+居中）"和"维持（不复核）"当成两个候选动作，
+      用 GSD-置信度校准曲线的简化确定性代理估计复核动作的期望后验熵下降
+      \(H(P_t) - \mathbb E H(P_{t+1}^{descend})\)（"维持"动作的期望熵下降恒为 0），
+      仅当该增益超过 `min_info_gain` 才复核——等价于 \(a_t^\star=\arg\max_a
+      [H(P_t)-\mathbb E H(P_{t+1}^a)]\) 在两候选动作间取值。
+    - fixed（E11 对照基线"固定降高复核"）：只要有可疑证据就必复核，不看不确定性。
+    - random（E11 对照基线"随机复核"）：以固定概率 `random_prob` 决定是否复核，
+      用同一 seed 复现；作为"复核策略本身有没有信息量"的下界对照。
 
 闭环：复核到"把握足够 / 预算耗尽 / 到高度下限"后定论——
     confirmed（确认受灾）/ dismissed（证据消退，排除）/ inconclusive（仍存疑），
@@ -22,6 +36,7 @@ backend/recheck.py — 灾情不确定性驱动的主动复核（P2，创新主�
 from __future__ import annotations
 
 import math
+import random
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -43,9 +58,15 @@ def _clamp(v: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, v))
 
 
-def best_evidence(detections: Optional[list[dict]]) -> tuple[float, str, Optional[list]]:
-    """受灾相关检测里 conf 最高的 (conf, class_name, bbox)；无则 (0.0, '', None)。"""
-    best_conf, best_cls, best_bbox = 0.0, "", None
+def best_evidence(
+    detections: Optional[list[dict]],
+) -> tuple[float, str, Optional[list], Optional[dict]]:
+    """受灾相关检测里 conf 最高的 (conf, class_name, bbox, class_probs)；无则 (0.0, '', None, None)。
+
+    class_probs 是 perception.py 在 `VLN_CHANGE_PERCEPTION=1` 时才会附加的字段
+    （4 类损伤的校准 softmax），没开该开关时恒为 None。
+    """
+    best_conf, best_cls, best_bbox, best_probs = 0.0, "", None, None
     for det in detections or []:
         cls = det.get("class_name", "")
         if cls not in EVIDENCE_CLASSES:
@@ -55,26 +76,88 @@ def best_evidence(detections: Optional[list[dict]]) -> tuple[float, str, Optiona
             best_conf = conf
             best_cls = cls
             best_bbox = det.get("bbox") or det.get("bbox_xyxy")
-    return best_conf, best_cls, best_bbox
+            best_probs = det.get("class_probs")
+    return best_conf, best_cls, best_bbox, best_probs
 
 
-def uncertainty_score(risk_level: str, evidence_conf: float, has_evidence: bool) -> float:
-    """不确定性评分 ∈ [0,1]：risk 暧昧度与证据低置信度各占一半。"""
+def entropy_uncertainty(class_probs: dict[str, float]) -> float:
+    """归一化 Shannon 熵 ∈ [0,1]：U_t = -Σ p_i log p_i / log(K)。
+
+    K = len(class_probs)；K<=1 或概率全 0 时返回 0（没有分布可言，视为无不确定性，
+    由调用方结合 has_evidence 决定是否真的当作"无需复核"）。
+    """
+    probs = [max(0.0, float(p)) for p in class_probs.values()]
+    total = sum(probs)
+    k = len(probs)
+    if k <= 1 or total <= 0.0:
+        return 0.0
+    h = 0.0
+    for p in probs:
+        p_norm = p / total
+        if p_norm > 0.0:
+            h -= p_norm * math.log(p_norm)
+    return round(_clamp(h / math.log(k), 0.0, 1.0), 3)
+
+
+def uncertainty_score(
+    risk_level: str,
+    evidence_conf: float,
+    has_evidence: bool,
+    class_probs: Optional[dict[str, float]] = None,
+    mode: str = "heuristic",
+) -> float:
+    """不确定性评分 ∈ [0,1]。
+
+    mode="heuristic"（默认，向后兼容）：risk 暧昧度与证据低置信度各占一半。
+    mode="entropy"（P5）：class_probs 给定时用校准熵 entropy_uncertainty()；
+        class_probs 缺失时自动退化为 heuristic 公式（不因某一帧没有概率分布而崩）。
+    """
     if not has_evidence:
         return 0.0
+    if mode == "entropy" and class_probs:
+        return entropy_uncertainty(class_probs)
     risk_unc = _RISK_UNCERTAINTY.get(risk_level, 0.5)
     return round(0.5 * risk_unc + 0.5 * (1.0 - _clamp(evidence_conf, 0.0, 1.0)), 3)
+
+
+def expected_gsd_gain_ratio(alt: float, descend_step_m: float, alt_min_m: float) -> float:
+    """GSD-置信度校准曲线的简化确定性代理（P5 待确认 5：未来可换真正的贝叶斯/蒙特卡洛版）。
+
+    降高复核后视场半径变小 → 地面分辨率(GSD)变细；用"降高后/降高前的剩余高度比"近似
+    "降高后预期熵 / 当前熵"的比例——已到高度下限时比例=1（降不动，预期没有增益）。
+    """
+    if alt <= alt_min_m:
+        return 1.0
+    alt_after = max(alt - descend_step_m, alt_min_m)
+    return _clamp(alt_after / max(alt, 1e-6), 0.0, 1.0)
+
+
+def info_gain_descend(entropy_now: float, alt: float, descend_step_m: float, alt_min_m: float) -> float:
+    """"降高居中复核"动作的期望信息增益 H(P_t) - E[H(P_{t+1}^{descend})]。
+
+    对照动作"维持（不复核）"的期望信息增益恒为 0（观测不变，熵不变）；
+    因此 arg max_a[...] 退化为"该增益是否超过 min_info_gain"的判断。
+    """
+    ratio = expected_gsd_gain_ratio(alt, descend_step_m, alt_min_m)
+    expected_after = entropy_now * ratio
+    return max(0.0, round(entropy_now - expected_after, 3))
 
 
 @dataclass
 class RecheckConfig:
     conf_threshold: float = 0.5      # 证据置信度"够格"阈值
-    trigger: float = 0.5             # 触发复核的不确定性阈值
+    trigger: float = 0.5             # 触发复核的不确定性阈值（trigger_mode="threshold" 时用）
     descend_step_m: float = 20.0     # 每次复核下降的高度
     alt_min_m: float = 30.0          # 高度下限（防止贴地）
     max_rechecks: int = 2            # 同一位置最多复核次数
     recenter_max_m: float = 40.0     # 复核单步水平居中的最大位移
     cell_m: float = 20.0             # 复核去重的位置量化格
+    # P5：升级接口开关，默认值向后兼容（等价于升级前的行为）。
+    uncertainty_mode: str = "heuristic"   # "heuristic" | "entropy"
+    trigger_mode: str = "threshold"       # "threshold" | "info_gain" | "fixed" | "random"
+    min_info_gain: float = 0.05           # trigger_mode="info_gain" 时的最小期望熵下降
+    random_prob: float = 0.5              # trigger_mode="random" 时的复核概率
+    random_seed: int = 0                  # trigger_mode="random" 时的可复现随机种子
 
 
 @dataclass
@@ -99,11 +182,32 @@ class RecheckController:
         # key=量化位置 → {count, unc0, label}
         self._state: dict[tuple[int, int], dict] = {}
         self.resolved_log: list[dict] = []  # 供报告/评测：每次定论的不确定性下降
+        self._rng = random.Random(self.config.random_seed)  # trigger_mode="random" 专用
 
     def _key(self, lat: float, lon: float) -> tuple[int, int]:
         # 用经纬度的粗量化做去重（episode 内百米级，误差无所谓）。
         scale = self.config.cell_m / 111_000.0  # 约略：1 度纬度 ≈ 111km
         return (int(round(lat / scale)), int(round(lon / scale)))
+
+    def _should_recheck(self, unc: float, alt: float) -> bool:
+        """P5：触发判断，`trigger_mode` 二选一。
+
+        threshold：原有阈值判断（向后兼容）。
+        info_gain：只有当"降高居中"动作的期望信息增益超过 min_info_gain 才复核，
+            等价于在 {descend_center, hold} 两候选动作里 arg max 期望熵下降。
+        fixed（E11 基线）：有可疑证据就必复核，不管不确定性数值。
+        random（E11 基线）：以固定概率决定，不看任何信号——用来验证"复核策略
+            是不是真的有信息量"，而不是随便动就有效果。
+        """
+        cfg = self.config
+        if cfg.trigger_mode == "info_gain":
+            gain = info_gain_descend(unc, alt, cfg.descend_step_m, cfg.alt_min_m)
+            return gain > cfg.min_info_gain
+        if cfg.trigger_mode == "fixed":
+            return True
+        if cfg.trigger_mode == "random":
+            return self._rng.random() < cfg.random_prob
+        return unc >= cfg.trigger
 
     def assess(
         self,
@@ -120,18 +224,21 @@ class RecheckController:
     ) -> RecheckOutcome:
         """评估当前观测：跳过 / 触发复核机动 / 定论。"""
         cfg = self.config
-        conf, label, bbox = best_evidence(detections)
+        conf, label, bbox, class_probs = best_evidence(detections)
         has_detection_evidence = bool(label)
         has_evidence = has_detection_evidence or (risk_level not in ("none", ""))
         # 仅分割出水体等、无检测框时，conf 视为低（更不确定）
         eff_conf = conf if has_detection_evidence else 0.3
-        unc = uncertainty_score(risk_level, eff_conf, has_evidence)
+        unc = uncertainty_score(
+            risk_level, eff_conf, has_evidence,
+            class_probs=class_probs, mode=cfg.uncertainty_mode,
+        )
 
         key = self._key(lat, lon)
         rec = self._state.get(key)
 
         # ── 1) 把握足够 / 无可疑目标 ────────────────────────────────
-        if not has_evidence or unc < cfg.trigger:
+        if not has_evidence or not self._should_recheck(unc, alt):
             if rec is not None:
                 # 之前在此处复核过，现在已经有把握 → 定论
                 before = rec["unc0"]

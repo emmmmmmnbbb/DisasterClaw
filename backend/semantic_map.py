@@ -290,6 +290,41 @@ class SemanticMap:
                     })
             return out
 
+    def frontier_score(
+        self,
+        lat: float,
+        lon: float,
+        bearing_vec: tuple[float, float],
+        probe_m: float = 60.0,
+        n_samples: int = 4,
+    ) -> float:
+        """C3（HSPM 运动层工程改进，OROI 打分融合用）：给定当前位置与方向单位向量
+        (north,east)，估计沿该方向探索能带来的"未探索覆盖增益" ∈ [0,1]。
+
+        做法：沿方向等距采样 n_samples 个探测点（距离从 probe_m/n_samples 到
+        probe_m），统计落入未探索格子的比例——分越高说明这个方向"新地方"越多，
+        越值得去看，用于替代"LLM 自由选一个方位"里缺失的空间覆盖信号。
+        全地图尚无探索记录时（刚起飞）任何方向都视为全新，返回 1.0。
+        """
+        with self._lock:
+            if not self._explored:
+                return 1.0
+            dn, de = bearing_vec
+            norm = math.hypot(dn, de) or 1.0
+            dn, de = dn / norm, de / norm
+            cn0, ce0 = latlon_to_meters(self.origin_lat, self.origin_lon, lat, lon)
+            cell = self.cell_size_m
+            unexplored = 0
+            for i in range(1, n_samples + 1):
+                dist = probe_m * i / n_samples
+                cn = cn0 + dn * dist
+                ce = ce0 + de * dist
+                gi = int(math.floor(cn / cell))
+                gj = int(math.floor(ce / cell))
+                if (gi, gj) not in self._explored:
+                    unexplored += 1
+            return unexplored / n_samples
+
     def explored_bounds(self) -> Optional[dict]:
         """已探索区的经纬度包围盒（用于前端聚焦 / 调试）。"""
         with self._lock:

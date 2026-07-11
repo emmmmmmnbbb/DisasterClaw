@@ -8,6 +8,8 @@ scripts/benchmarks/bench_report.py — P4 成绩单聚合（多 run → 表）
     3) E3 复核价值：B1(无复核) vs B2(复核) → ΔU/judge_acc/步数代价
     4) E6 跨灾种：配置 × 灾种 → SR/NE
     5) （若多 run 含不同 grounder）E2 grounder 对比：按 grounder 聚合
+    6) P6：配置两两 SR 差异的 bootstrap 95% CI + 配对检验（paired permutation test），
+       给消融结论一个"差异是不是噪声"的显著性判断，不再只看点估计。
 
 用法：
     # 单个 E1 run（一个目录里就含 B0~B3 全部 episode）
@@ -15,12 +17,15 @@ scripts/benchmarks/bench_report.py — P4 成绩单聚合（多 run → 表）
     # 多个 run 合并（如 E1 + 各 grounder 的 E2）
     python scripts/benchmarks/bench_report.py runs/benchmarks/<r1> runs/benchmarks/<r2> ...
     # 不传参 = 自动取最新一个 run
+    # 关闭 P6 显著性表（题量很小时 CI 区间没有意义，可跳过）： --no-significance
 输出：在第一个 run 目录写 report.md（也打印到 stdout）。
 """
 
 from __future__ import annotations
 
+import argparse
 import json
+import random
 import statistics as st
 import sys
 from collections import defaultdict
@@ -33,9 +38,26 @@ CONFIG_DESC = {
     "B1": "+HSPM 三层规划",
     "B2": "+不确定性复核",
     "B3": "+记忆拓扑图",
+    "E11_NONE": "E11: 不复核（=B1）",
+    "E11_RANDOM": "E11: 随机复核 p=0.5",
+    "E11_FIXED": "E11: 固定降高复核",
+    "E11_HEURISTIC": "E11: 现有启发式（=B2）",
+    "E11_ENTROPY": "E11: 校准熵驱动",
+    "E11_INFOGAIN": "E11: 校准熵+信息增益触发",
+    "E12_OFF": "E12: OROI 自由选择（=B1）",
+    "E12_ON": "E12: OROI 打分融合",
 }
 CONFIG_ORDER = ["B0", "B1", "B2", "B3"]
 DIFF_ORDER = ["easy", "medium", "hard"]
+
+
+def config_order(by_cfg: dict) -> list[str]:
+    """B0~B3 在前（保持原有顺序，若存在），其余任意配置名（如 E11_*/E12_*）
+    按首次出现顺序追加——支持 bench_vln_navigation.py 里新增的 E11/E12/E13 配置，
+    不再要求 report.py 提前认识每一个新配置名。"""
+    known = [c for c in CONFIG_ORDER if c in by_cfg]
+    others = [c for c in by_cfg if c not in CONFIG_ORDER]
+    return known + others
 
 
 def _mean(xs: list) -> float | None:
@@ -93,9 +115,7 @@ def table_main(eps: list[dict]) -> list[str]:
     L = ["## 主消融表（E1）", "",
          "| 配置 | 说明 | n | SR | semSR | NE(m) | semNE(m) | SPL | Steps | ΔU | judge_acc |",
          "|---|---|---|---|---|---|---|---|---|---|---|"]
-    for c in CONFIG_ORDER:
-        if c not in by_cfg:
-            continue
+    for c in config_order(by_cfg):
         a = agg(by_cfg[c])
         L.append(f"| {c} | {CONFIG_DESC.get(c,'')} | {a['n']} | {_fmt(a['SR'])} | {_fmt(a['semSR'])} | "
                  f"{_fmt(a['NE'])} | {_fmt(a['semNE'])} | {_fmt(a['SPL'])} | {_fmt(a['Steps'])} | "
@@ -110,9 +130,7 @@ def table_difficulty(eps: list[dict]) -> list[str]:
          "| 配置 | " + " | ".join(f"{d} SR" for d in DIFF_ORDER) + " | "
          + " | ".join(f"{d} NE" for d in DIFF_ORDER) + " |",
          "|---|" + "---|" * (2 * len(DIFF_ORDER))]
-    for c in CONFIG_ORDER:
-        if c not in by_cfg:
-            continue
+    for c in config_order(by_cfg):
         bd = group_by(by_cfg[c], "difficulty")
         srs = [_rate([r.get("success") for r in bd.get(d, [])]) for d in DIFF_ORDER]
         nes = [_mean([r.get("ne_m") for r in bd.get(d, [])]) for d in DIFF_ORDER]
@@ -149,9 +167,7 @@ def table_disaster(eps: list[dict]) -> list[str]:
     if len(disasters) < 2:
         return []
     L = ["## E6 跨灾种（SR / NE，按配置）", ""]
-    for c in CONFIG_ORDER:
-        if c not in by_cfg:
-            continue
+    for c in config_order(by_cfg):
         bd = group_by(by_cfg[c], "disaster")
         L.append(f"### {c}")
         L.append("| 灾种 | n | SR | NE(m) |")
@@ -189,10 +205,112 @@ def table_grounder(eps: list[dict]) -> list[str]:
     return L
 
 
+def bootstrap_ci(
+    values: list[float], n_resamples: int = 2000, alpha: float = 0.05, seed: int = 42,
+) -> tuple[float, float, float]:
+    """P6：均值的 bootstrap 95% CI（默认）。返回 (point_estimate, lo, hi)。
+
+    values 为空/长度<2 时退化返回 (point, point, point)（区间宽度 0，标明"无法估计"）。
+    """
+    xs = [x for x in values if x is not None]
+    if len(xs) < 2:
+        point = xs[0] if xs else 0.0
+        return point, point, point
+    rng = random.Random(seed)
+    n = len(xs)
+    point = sum(xs) / n
+    means = []
+    for _ in range(n_resamples):
+        sample = [xs[rng.randrange(n)] for _ in range(n)]
+        means.append(sum(sample) / n)
+    means.sort()
+    lo_idx = int((alpha / 2) * n_resamples)
+    hi_idx = int((1 - alpha / 2) * n_resamples) - 1
+    lo = means[max(0, lo_idx)]
+    hi = means[min(n_resamples - 1, hi_idx)]
+    return point, lo, hi
+
+
+def paired_permutation_test(
+    a: list[float], b: list[float], n_perm: int = 2000, seed: int = 42,
+) -> float | None:
+    """P6：配对置换检验（paired permutation test），返回双尾 p 值。
+
+    针对同一批题目在两个配置下的差值 d_i = a_i - b_i，随机对每个 d_i 翻符号做
+    n_perm 次重排，统计 |mean(d_perm)| >= |mean(d_obs)| 的比例——不需要假设正态性，
+    比 t 检验更适合 SR(0/1) 这类指标，也适合样本量不大的场景。
+    a/b 必须等长且按题目一一配对（同一 id 顺序）；长度<2 或全同则返回 None。
+    """
+    if len(a) != len(b) or len(a) < 2:
+        return None
+    diffs = [ai - bi for ai, bi in zip(a, b) if ai is not None and bi is not None]
+    if len(diffs) < 2:
+        return None
+    obs = abs(sum(diffs) / len(diffs))
+    if obs == 0:
+        return 1.0
+    rng = random.Random(seed)
+    n = len(diffs)
+    count = 0
+    for _ in range(n_perm):
+        signed = sum(d if rng.random() < 0.5 else -d for d in diffs)
+        if abs(signed / n) >= obs:
+            count += 1
+    return count / n_perm
+
+
+def table_significance(eps: list[dict]) -> list[str]:
+    """P6：主配置两两 SR 差异的 bootstrap CI + 配对检验。"""
+    by_cfg = group_by(eps, "config")
+    present = config_order(by_cfg)
+    if len(present) < 2:
+        return []
+
+    L = ["## P6 显著性：配置两两 SR 差异（bootstrap 95% CI + 配对检验）", ""]
+    L.append("| 配置 | SR (95% CI) | n |")
+    L.append("|---|---|---|")
+    for c in present:
+        srs = [1.0 if r.get("success") else 0.0 for r in by_cfg[c]]
+        point, lo, hi = bootstrap_ci(srs)
+        L.append(f"| {c} | {point:.3f} ({lo:.3f}, {hi:.3f}) | {len(srs)} |")
+    L.append("")
+
+    L.append("| 配置对 | ΔSR | p (配对置换检验) | 说明 |")
+    L.append("|---|---|---|---|")
+    by_id_cfg: dict[str, dict[str, float]] = defaultdict(dict)
+    for r in eps:
+        rid = r.get("id")
+        cfg = r.get("config")
+        if rid is None or cfg is None:
+            continue
+        by_id_cfg[rid][cfg] = 1.0 if r.get("success") else 0.0
+    for i, c1 in enumerate(present):
+        for c2 in present[i + 1:]:
+            a, b = [], []
+            for rid, vals in by_id_cfg.items():
+                if c1 in vals and c2 in vals:
+                    a.append(vals[c1])
+                    b.append(vals[c2])
+            if len(a) < 2:
+                continue
+            p = paired_permutation_test(a, b)
+            delta = round(sum(a) / len(a) - sum(b) / len(b), 3)
+            sig = "显著 (p<0.05)" if (p is not None and p < 0.05) else "不显著"
+            L.append(f"| {c1} vs {c2} | {delta:+.3f} | {_fmt(round(p, 4) if p is not None else None)} | {sig} (n={len(a)}) |")
+    L.append("")
+    L.append("> 题量较小时 CI 很宽、p 值不稳定，属正常现象；扩题库规模（E13）后应重跑本表。")
+    L.append("")
+    return L
+
+
 def main() -> int:
-    args = sys.argv[1:]
-    if args:
-        run_dirs = [Path(a) if Path(a).is_absolute() else (REPO_ROOT / a) for a in args]
+    ap = argparse.ArgumentParser()
+    ap.add_argument("run_dirs", nargs="*")
+    ap.add_argument("--no-significance", action="store_true", help="跳过 P6 bootstrap CI/配对检验表")
+    args = ap.parse_args()
+
+    if args.run_dirs:
+        run_dirs = [Path(a) if Path(a).is_absolute() else (REPO_ROOT / a) for a in args.run_dirs]
     else:
         runs = sorted([d for d in RUNS_DIR.iterdir() if d.is_dir()], key=lambda p: p.name)
         if not runs:
@@ -213,6 +331,8 @@ def main() -> int:
     out += table_difficulty(eps)
     out += table_grounder(eps)
     out += table_disaster(eps)
+    if not args.no_significance:
+        out += table_significance(eps)
 
     text = "\n".join(out)
     report_path = run_dirs[0] / "report.md"

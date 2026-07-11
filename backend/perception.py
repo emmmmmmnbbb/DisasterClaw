@@ -76,6 +76,22 @@ PERCEPTION_MAX_RADIUS_M = float(os.getenv("PERCEPTION_MAX_RADIUS_M", "300"))
 PERCEPTION_MIN_PATCH_PX = int(os.getenv("PERCEPTION_MIN_PATCH_PX", "256"))
 PERCEPTION_MAX_PATCH_PX = int(os.getenv("PERCEPTION_MAX_PATCH_PX", "1024"))
 
+# P5：双时相变化感知开关（默认关，不影响现有 YOLO-only 路径/对照基线）。
+# 开启后，_detect 会为每个建筑类检测框额外算一份校准过的 4 类概率分布
+# `class_probs`（供 recheck.py 熵模式用），来源是 change_perception.py 的
+# pre/post Siamese 多任务头，而不是 YOLO 的单一 top-1 conf。
+VLN_CHANGE_PERCEPTION = os.getenv("VLN_CHANGE_PERCEPTION", "0").strip().lower() in {
+    "1", "true", "yes", "on",
+}
+_BUILDING_CLASS_NAMES_ZH = {"无损伤建筑", "轻微损伤建筑", "严重损伤建筑", "完全损毁建筑"}
+# YOLO 中文标签 → change_perception.CLASS_NAMES 的英文 4 类，双向都要用到。
+_ZH_TO_CHANGE_CLASS = {
+    "无损伤建筑": "no-damage",
+    "轻微损伤建筑": "minor-damage",
+    "严重损伤建筑": "major-damage",
+    "完全损毁建筑": "destroyed",
+}
+
 # 检测器 raw class_name → 中文标签。兼容两套权重：
 #   - RescueNet（低空斜拍）：type_* 索引名
 #   - xBD 域内微调（卫星正射）：英文 damage subtype（gen_xbd_yolo_dataset.py 的类名）
@@ -178,6 +194,28 @@ def _lazy_import_backends() -> tuple[Any, Any, Any]:
 
     _YOLO_CLS, _SEG_CLS, _DESC_CLS = yolo_cls, seg_cls, desc_cls
     return yolo_cls, seg_cls, desc_cls
+
+
+_CHANGE_PERCEPTION_MOD = None
+_CHANGE_PERCEPTION_IMPORT_ERROR: Optional[str] = None
+
+
+def _lazy_change_perception():
+    """懒加载 change_perception.py；失败时记录一次错误并返回 None（自动退化为
+    YOLO-only 路径，不让 P5 的可选增强拖垮现有链路）。"""
+    global _CHANGE_PERCEPTION_MOD, _CHANGE_PERCEPTION_IMPORT_ERROR
+    if _CHANGE_PERCEPTION_MOD is not None:
+        return _CHANGE_PERCEPTION_MOD
+    if _CHANGE_PERCEPTION_IMPORT_ERROR is not None:
+        return None
+    try:
+        import change_perception as _cp  # noqa: WPS433 (同目录懒加载)
+        _CHANGE_PERCEPTION_MOD = _cp
+        return _cp
+    except Exception as exc:  # noqa: BLE001
+        _CHANGE_PERCEPTION_IMPORT_ERROR = str(exc)
+        logger.warning("[Perception] change_perception 加载失败，退化为 YOLO-only: %s", exc)
+        return None
 
 
 # ── 结果数据结构 ───────────────────────────────────────────────────────
@@ -331,6 +369,23 @@ class DisasterPerception:
             return None
         return path
 
+    def _resolve_paired_pre_image_path(self, active_tile: dict) -> Optional[Path]:
+        """P5：post 瓦片 → 同一物理区域配准的 pre_disaster 瓦片图路径。
+
+        xBD 的 pre/post 影像是同一像素网格（manifest 生成时用同一套仿射拟合），
+        所以 post 瓦片上裁的 crop box 可以原样套到 pre 瓦片上，不需要重新配准。
+        """
+        tile_id = active_tile.get("tile_id")
+        if not tile_id:
+            return None
+        entry = xbd_store.get_entry(tile_id)
+        if not entry:
+            return None
+        paired_id = entry.get("paired_tile_id")
+        if not paired_id:
+            return None
+        return self._resolve_tile_image_path({"tile_id": paired_id})
+
     def _crop_uav_view(
         self,
         lat: float,
@@ -338,12 +393,13 @@ class DisasterPerception:
         alt: float,
         active_tile: dict,
         patch_id: str,
-    ) -> tuple[Path, int, int, float, bool, str]:
+    ) -> tuple[Path, int, int, float, bool, str, Optional[Path]]:
         """
         根据 UAV 位置从活动瓦片裁剪视场 patch。
 
-        返回 (patch_path, patch_w, patch_h, radius_m, degraded, degraded_reason)
+        返回 (patch_path, patch_w, patch_h, radius_m, degraded, degraded_reason, pre_patch_path)
         degraded=True 时表示拿不到仿射 / 瓦片图，回退到占位或整图。
+        pre_patch_path 仅在 VLN_CHANGE_PERCEPTION=1 且能找到配准的 pre_disaster 瓦片时非 None。
         """
         image_path = self._resolve_tile_image_path(active_tile)
         if image_path is None:
@@ -369,11 +425,14 @@ class DisasterPerception:
             min(PERCEPTION_MAX_RADIUS_M, alt * PERCEPTION_VIEW_ALT_FACTOR),
         )
 
+        crop_box: tuple[int, int, int, int] | None = None  # (left, top, right, bottom) on full tile
+
         if transform["geo_to_pixel"] is None:
             degraded = True
             degraded_reason = "tile lacks geo_to_pixel; using full image"
             patch = img.copy()
             patch_w, patch_h = patch.size
+            crop_box = (0, 0, W, H)
         else:
             cx, cy = geo_to_pixel(transform, lon, lat)
             radius_px = int(max(PERCEPTION_MIN_PATCH_PX // 2, radius_m / max(gsd, 1e-3)))
@@ -435,16 +494,41 @@ class DisasterPerception:
 
             patch = img.crop((left_c, top_c, right_c, bottom_c))
             patch_w, patch_h = patch.size
+            crop_box = (left_c, top_c, right_c, bottom_c)
 
         patch_path = PERCEPTION_OUTPUT_DIR / f"{patch_id}.png"
         patch.save(patch_path, "PNG")
-        return patch_path, patch_w, patch_h, radius_m, degraded, degraded_reason
+
+        # P5：把同一 crop box 套到配准的 pre_disaster 瓦片上，产出配对的 pre patch，
+        # 供 _detect 里逐检测框做双时相变化感知。开关关闭或找不到配对瓦片时静默跳过，
+        # 不影响现有 YOLO-only 路径。
+        pre_patch_path: Optional[Path] = None
+        if VLN_CHANGE_PERCEPTION and crop_box is not None:
+            pre_image_path = self._resolve_paired_pre_image_path(active_tile or {})
+            if pre_image_path is not None:
+                try:
+                    with Image.open(pre_image_path) as pre_im:
+                        pre_im.load()
+                        pre_img = pre_im.convert("RGB")
+                    if pre_img.size == (W, H):
+                        pre_patch = pre_img.crop(crop_box)
+                        pre_patch_path = PERCEPTION_OUTPUT_DIR / f"{patch_id}_pre.png"
+                        pre_patch.save(pre_patch_path, "PNG")
+                    else:
+                        logger.debug(
+                            "[Perception] pre/post 瓦片尺寸不一致 (%s vs %s)，跳过双时相 patch",
+                            pre_img.size, (W, H),
+                        )
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("[Perception] pre patch 裁剪失败: %s", exc)
+
+        return patch_path, patch_w, patch_h, radius_m, degraded, degraded_reason, pre_patch_path
 
     # ------------------------------------------------------------------ #
     #  YOLO / SegFormer 调度（与 rs_agent_system.VisionTools 等价）
     # ------------------------------------------------------------------ #
 
-    def _detect(self, patch_path: Path) -> dict:
+    def _detect(self, patch_path: Path, pre_patch_path: Optional[Path] = None) -> dict:
         out_dir = PERCEPTION_OUTPUT_DIR
         base = patch_path.stem
         vis_path = str(out_dir / f"{base}_det.png")
@@ -471,6 +555,9 @@ class DisasterPerception:
                 }
             )
 
+        if VLN_CHANGE_PERCEPTION and pre_patch_path is not None and detections:
+            self._attach_change_class_probs(detections, patch_path, pre_patch_path)
+
         class_counts: dict[str, int] = {}
         for det in detections:
             cls = det["class_name"]
@@ -483,6 +570,68 @@ class DisasterPerception:
             "visualization": vis_path if Path(vis_path).exists() else None,
             "json_file": json_path if Path(json_path).exists() else None,
         }
+
+    def _attach_change_class_probs(
+        self, detections: list[dict], post_patch_path: Path, pre_patch_path: Path,
+    ) -> None:
+        """P5：给每个建筑类检测框补一份校准过的 4 类概率分布 `class_probs`。
+
+        逐框把 post/pre patch 上同一 bbox 位置裁出配对小图，喂给
+        change_perception 的 Siamese 多任务头。任何一步失败（模型未加载、
+        checkpoint 缺失等）都静默跳过该框，不影响 YOLO 检测结果本身。
+        """
+        cp_mod = _lazy_change_perception()
+        if cp_mod is None:
+            return
+        try:
+            model = cp_mod.get_change_perception()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[Perception] change_perception 单例获取失败: %s", exc)
+            return
+
+        try:
+            with Image.open(post_patch_path) as _im:
+                _im.load()
+                post_img = _im.convert("RGB")
+            with Image.open(pre_patch_path) as _im:
+                _im.load()
+                pre_img = _im.convert("RGB")
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[Perception] pre/post patch 打开失败: %s", exc)
+            return
+
+        for det in detections:
+            if det["class_name"] not in _BUILDING_CLASS_NAMES_ZH:
+                continue
+            try:
+                bbox = tuple(float(v) for v in det["bbox_xyxy"])
+                post_crop = self._crop_from_image(post_img, bbox)
+                pre_crop = self._crop_from_image(pre_img, bbox)
+                pred = model.predict(pre_crop, post_crop)
+                det["class_probs"] = dict(pred.class_probs)
+                det["change_prob"] = float(pred.change_prob)
+                det["change_perception_temperature"] = float(pred.temperature)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("[Perception] class_probs 计算失败（跳过该框）: %s", exc)
+
+    @staticmethod
+    def _crop_from_image(img: Image.Image, bbox_xyxy: tuple[float, float, float, float]) -> Image.Image:
+        """按 (context margin 由 change_perception.crop_patch 的约定) 从内存中的 PIL 图裁 bbox。"""
+        w, h = img.size
+        cp_mod = _lazy_change_perception()
+        margin = cp_mod.CONTEXT_MARGIN if cp_mod is not None else 0.25
+        x1, y1, x2, y2 = bbox_xyxy
+        bw, bh = max(1.0, x2 - x1), max(1.0, y2 - y1)
+        mx, my = bw * margin, bh * margin
+        left = max(0.0, x1 - mx)
+        top = max(0.0, y1 - my)
+        right = min(float(w), x2 + mx)
+        bottom = min(float(h), y2 + my)
+        li, ti = int(round(left)), int(round(top))
+        ri, bi = max(li + 1, int(round(right))), max(ti + 1, int(round(bottom)))
+        crop = img.crop((li, ti, ri, bi))
+        out_size = cp_mod.CROP_SIZE if cp_mod is not None else 96
+        return crop.resize((out_size, out_size), Image.BILINEAR)
 
     def _segment(self, patch_path: Path) -> dict:
         out_dir = PERCEPTION_OUTPUT_DIR
@@ -595,7 +744,7 @@ class DisasterPerception:
     ) -> PerceptionResult:
         self.load()  # 幂等
         crop_t0 = time.perf_counter_ns()
-        patch_path, pw, ph, radius_m, degraded, degraded_reason = self._crop_uav_view(
+        patch_path, pw, ph, radius_m, degraded, degraded_reason, pre_patch_path = self._crop_uav_view(
             lat=lat,
             lon=lon,
             alt=alt,
@@ -605,7 +754,7 @@ class DisasterPerception:
         crop_ms = (time.perf_counter_ns() - crop_t0) // 1_000_000
 
         det_t0 = time.perf_counter_ns()
-        detection = self._detect(patch_path)
+        detection = self._detect(patch_path, pre_patch_path=pre_patch_path)
         det_ms = (time.perf_counter_ns() - det_t0) // 1_000_000
 
         seg_t0 = time.perf_counter_ns()
@@ -678,6 +827,7 @@ class DisasterPerception:
                 "seg_ms": int(seg_ms),
                 "desc_ms": int(desc_ms),
                 "total_ms": int(crop_ms + det_ms + seg_ms + desc_ms),
+                "change_perception_used": bool(VLN_CHANGE_PERCEPTION and pre_patch_path is not None),
             },
         )
 

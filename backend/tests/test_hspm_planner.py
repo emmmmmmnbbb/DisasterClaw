@@ -6,6 +6,13 @@ backend/tests/test_hspm_planner.py — P1 HSPM 分层规划单测（mock LLM/gro
     2. OROI：看不到子目标时，按 LLM 给的方位输出探索动作。
     3. motion：看得到子目标但未到 → 朝质心 fly_relative；到达 → 推进/完成。
     4. 多地标推进：到第一个 → hover 推进；到最后一个 → stop arrived。
+    C3（OROI 打分融合，`VLN_OROI_SCORE`/`HspmConfig.use_oroi_score`）：
+    5. score_bearings_llm + _prior_score + score_oroi：LLM 打分 + 方向先验 + frontier
+       融合后选中信号一致指向的方位。
+    6. LLM 打分全失败/为 None 时，score_oroi 仍能靠先验 + frontier 选出有信息量的
+       方位，不会死板回退到"北"。
+    7. HspmNavigator 在 use_oroi_score=True 且注入 semantic_map_provider 时，
+       step() 走打分融合分支且不崩。
 
 运行：`python backend/tests/test_hspm_planner.py`
 """
@@ -18,7 +25,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from hspm_planner import HspmConfig, HspmNavigator, plan_landmarks, reason_oroi  # noqa: E402
+from hspm_planner import (  # noqa: E402
+    HspmConfig,
+    HspmNavigator,
+    OroiScoreWeights,
+    plan_landmarks,
+    reason_oroi,
+    score_bearings_llm,
+    score_oroi,
+)
+from semantic_map import SemanticMap  # noqa: E402
 from vln_navigator import GroundHit, Observation  # noqa: E402
 
 # alt 低于 arrival_confirm_alt_m(22)，使"到达"用例直接确认（不触发降高核验分支）。
@@ -115,6 +131,73 @@ def test_multi_landmark_progress() -> None:
     print("[OK] 多地标推进：地标1 hover 推进 → 地标2 stop arrived")
 
 
+def test_score_bearings_llm_fallback_on_invalid() -> None:
+    b, reason = score_bearings_llm("t", "s", "map", lambda *a: "not json")
+    assert b is None, b
+    print(f"[OK] score_bearings_llm 非法输出 → None，reason={reason}")
+
+
+def test_score_oroi_llm_prior_frontier_agree() -> None:
+    """LLM 打分 + 方向先验 + frontier 三路信号一致指向"东" → 应选东。"""
+    def _llm_east(_msgs, _t, _mt):
+        scores = {b: 0.1 for b in ["北", "东北", "东", "东南", "南", "西南", "西", "西北"]}
+        scores["东"] = 0.9
+        return json.dumps({"scores": scores, "reason": "东侧建筑密集"})
+
+    def _frontier_east(bearing: str) -> float:
+        return 0.9 if bearing == "东" else 0.2
+
+    bearing, reason = score_oroi(
+        "找建筑", "蓝色的建筑", "（地图）", "东", _llm_east, frontier_fn=_frontier_east,
+    )
+    assert bearing == "东", (bearing, reason)
+    print(f"[OK] OROI 打分融合三路一致选东: {reason}")
+
+
+def test_score_oroi_no_llm_uses_frontier() -> None:
+    """LLM 不可用（None）、也没有方向先验时，纯靠 frontier 信号选方位，
+    不会像 reason_oroi 那样死板回退到"北"。"""
+    def _frontier_southeast(bearing: str) -> float:
+        return 0.95 if bearing == "东南" else 0.1
+
+    bearing, reason = score_oroi(
+        "找建筑", "蓝色的建筑", "", "", None, frontier_fn=_frontier_southeast,
+    )
+    assert bearing == "东南", (bearing, reason)
+    print(f"[OK] LLM 全失败但 frontier 有信号 → 选东南（不是死板回退北）: {reason}")
+
+
+def test_score_oroi_weights_shape() -> None:
+    w = OroiScoreWeights(llm=0.6, prior=0.1, frontier=0.3)
+    bearing, _ = score_oroi("t", "s", "map", "", None, frontier_fn=None, weights=w)
+    assert bearing in {"北", "东北", "东", "东南", "南", "西南", "西", "西北"}
+    print(f"[OK] 自定义权重下 score_oroi 仍返回合法方位: {bearing}")
+
+
+def test_step_with_oroi_score() -> None:
+    """HspmConfig.use_oroi_score=True + 注入 semantic_map_provider → step() 走
+    打分融合分支，不崩、动作合法。"""
+    smap = SemanticMap(origin_lat=SNAP["lat"], origin_lon=SNAP["lon"], cell_size_m=5.0)
+    smap.mark_observation(SNAP["lat"], SNAP["lon"], radius_m=40.0)
+
+    def _llm_neutral(_msgs, _t, _mt):
+        scores = {b: 0.5 for b in ["北", "东北", "东", "东南", "南", "西南", "西", "西北"]}
+        return json.dumps({"scores": scores, "reason": "均衡"})
+
+    nav = HspmNavigator(
+        config=HspmConfig(use_oroi_score=True),
+        grounder=lambda p, o: GroundHit(present=False, reason="未见", source="vlm"),
+        llm_chat=_llm_neutral,
+        stmr_provider=lambda snap: {"text": "（地图）"},
+        semantic_map_provider=lambda: smap,
+    )
+    nav.reset("找蓝色的建筑")
+    dec = nav.step(_obs(), SNAP)
+    assert dec.action == "fly_relative", dec.action
+    assert not dec.matched
+    print(f"[OK] use_oroi_score=True 下 step() 走打分融合分支不崩: {dec.reason}")
+
+
 def test_degraded_no_crash() -> None:
     nav = HspmNavigator(
         grounder=lambda p, o: GroundHit(present=True, norm_xy=(0.5, 0.5), source="vlm"),
@@ -133,6 +216,11 @@ def _run_all() -> int:
         test_plan_landmarks_multi,
         test_plan_landmarks_fallback,
         test_oroi_bearing,
+        test_score_bearings_llm_fallback_on_invalid,
+        test_score_oroi_llm_prior_frontier_agree,
+        test_score_oroi_no_llm_uses_frontier,
+        test_score_oroi_weights_shape,
+        test_step_with_oroi_score,
         test_step_unseen_explores,
         test_step_seen_moves_toward,
         test_multi_landmark_progress,

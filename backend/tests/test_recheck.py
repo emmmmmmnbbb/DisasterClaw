@@ -1,14 +1,20 @@
 """
 backend/tests/test_recheck.py — P2 灾情不确定性驱动主动复核 单测
 
-验收点（对应 docs/vln_rescue_agent_实施计划.md 的 P2）：
+验收点（对应 docs/vln_rescue_agent_实施计划.md 的 P2 + P5）：
     1. 不确定性评分：低 risk('low'/可疑) + 低 conf → 高；high + 高 conf → 低。
-    2. best_evidence 取受灾相关检测里 conf 最高者，忽略完好建筑。
+    2. best_evidence 取受灾相关检测里 conf 最高者，忽略完好建筑；附带回传 class_probs。
     3. 低置信/可疑场景 → 触发复核（降高 up_m<0 + 朝目标居中）。
     4. 高置信场景 → 不触发复核（不浪费步数）。
     5. 复核预算耗尽 / 到高度下限 → 收尾定论；降高不越过 alt_min。
     6. 改善路径：先复核 → 再观测变笃定 → resolve confirmed 且不确定性下降 >0。
     7. degraded 视场 → 不居中（仅降高），不崩。
+    P5 升级接口：
+    8. entropy_uncertainty：均匀分布熵最大(≈1)，one-hot 分布熵最小(≈0)。
+    9. uncertainty_score(mode="entropy")：给了 class_probs 用校准熵；没给自动退化 heuristic。
+    10. info_gain_descend：离 alt_min 越远，降高复核的期望信息增益越大；已在 alt_min 时增益为 0。
+    11. trigger_mode="info_gain" 与 uncertainty_mode="entropy" 组合在 assess() 里能跑通，
+        且与默认 heuristic/threshold 模式互不干扰（同一输入下两种模式都不崩）。
 
 运行：`python backend/tests/test_recheck.py`
 """
@@ -24,6 +30,8 @@ from recheck import (  # noqa: E402
     RecheckConfig,
     RecheckController,
     best_evidence,
+    entropy_uncertainty,
+    info_gain_descend,
     uncertainty_score,
 )
 
@@ -48,10 +56,55 @@ def test_best_evidence() -> None:
         _det("严重损伤建筑", 0.4),
         _det("完全损毁建筑", 0.6),
     ]
-    conf, cls, _ = best_evidence(dets)
+    conf, cls, _, probs = best_evidence(dets)
     assert cls == "完全损毁建筑" and abs(conf - 0.6) < 1e-6, (cls, conf)
-    assert best_evidence([_det("无损伤建筑", 0.9)]) == (0.0, "", None)
+    assert probs is None, probs  # 未附加 class_probs（VLN_CHANGE_PERCEPTION 关闭）
+    assert best_evidence([_det("无损伤建筑", 0.9)]) == (0.0, "", None, None)
     print(f"[OK] best_evidence: {cls}@{conf}")
+
+
+def test_best_evidence_class_probs() -> None:
+    """P5：class_probs 字段（perception.py 在 VLN_CHANGE_PERCEPTION=1 时才会附加）随最佳证据回传。"""
+    det = _det("完全损毁建筑", 0.6)
+    det["class_probs"] = {"no-damage": 0.05, "minor-damage": 0.05, "major-damage": 0.1, "destroyed": 0.8}
+    conf, cls, _, probs = best_evidence([det])
+    assert cls == "完全损毁建筑" and probs == det["class_probs"], probs
+    print(f"[OK] best_evidence 回传 class_probs: {probs}")
+
+
+def test_entropy_uncertainty() -> None:
+    uniform = {"no-damage": 0.25, "minor-damage": 0.25, "major-damage": 0.25, "destroyed": 0.25}
+    one_hot = {"no-damage": 0.0, "minor-damage": 0.0, "major-damage": 0.0, "destroyed": 1.0}
+    h_uniform = entropy_uncertainty(uniform)
+    h_onehot = entropy_uncertainty(one_hot)
+    assert h_uniform > 0.95, h_uniform  # 均匀分布 → 归一化熵≈1（最不确定）
+    assert h_onehot < 0.05, h_onehot    # one-hot → 归一化熵≈0（最确定）
+    assert h_uniform > h_onehot
+    print(f"[OK] entropy_uncertainty: uniform={h_uniform} one_hot={h_onehot}")
+
+
+def test_uncertainty_score_entropy_mode() -> None:
+    probs_uncertain = {"no-damage": 0.3, "minor-damage": 0.3, "major-damage": 0.2, "destroyed": 0.2}
+    probs_confident = {"no-damage": 0.02, "minor-damage": 0.02, "major-damage": 0.02, "destroyed": 0.94}
+    u1 = uncertainty_score("low", 0.3, True, class_probs=probs_uncertain, mode="entropy")
+    u2 = uncertainty_score("low", 0.3, True, class_probs=probs_confident, mode="entropy")
+    assert u1 > u2, (u1, u2)
+    # 没给 class_probs → 自动退化 heuristic（数值应等于纯 heuristic 调用）
+    u_fallback = uncertainty_score("low", 0.3, True, class_probs=None, mode="entropy")
+    u_heuristic = uncertainty_score("low", 0.3, True)
+    assert u_fallback == u_heuristic, (u_fallback, u_heuristic)
+    # has_evidence=False 时恒 0，与 mode 无关
+    assert uncertainty_score("any", 0.0, False, class_probs=probs_uncertain, mode="entropy") == 0.0
+    print(f"[OK] entropy 模式：不确定分布={u1} > 确定分布={u2}；无 class_probs 退化={u_fallback}")
+
+
+def test_info_gain_descend() -> None:
+    g_far = info_gain_descend(entropy_now=0.8, alt=120.0, descend_step_m=20.0, alt_min_m=30.0)
+    g_near_floor = info_gain_descend(entropy_now=0.8, alt=35.0, descend_step_m=20.0, alt_min_m=30.0)
+    g_at_floor = info_gain_descend(entropy_now=0.8, alt=30.0, descend_step_m=20.0, alt_min_m=30.0)
+    assert g_far > g_near_floor >= 0, (g_far, g_near_floor)
+    assert g_at_floor == 0.0, g_at_floor  # 已到高度下限，降不动 → 期望增益为 0
+    print(f"[OK] info_gain_descend：远离下限={g_far} > 靠近下限={g_near_floor} > 已到下限={g_at_floor}")
 
 
 def test_trigger_recheck() -> None:
@@ -130,6 +183,39 @@ def test_improvement_resolves_confirmed() -> None:
     assert ctl.stats()["confirmed"] == 1
 
 
+def test_assess_entropy_info_gain_modes() -> None:
+    """P5：uncertainty_mode=entropy + trigger_mode=info_gain 组合能跑通，且与默认
+    heuristic/threshold 模式行为方向一致（低置信触发复核，高置信跳过）。"""
+    cfg = RecheckConfig(uncertainty_mode="entropy", trigger_mode="info_gain", min_info_gain=0.02)
+    ctl = RecheckController(cfg)
+
+    uncertain_det = _det("严重损伤建筑", 0.35, bbox=[70, 10, 90, 30])
+    uncertain_det["class_probs"] = {
+        "no-damage": 0.3, "minor-damage": 0.3, "major-damage": 0.25, "destroyed": 0.15,
+    }
+    out = ctl.assess(
+        lat=LAT, lon=LON, alt=120.0, risk_level="low",
+        detections=[uncertain_det],
+        patch_radius_m=60.0, patch_width=100, patch_height=100,
+    )
+    assert out.kind == "recheck", (out.kind, out.reason)
+
+    # 已经很接近高度下限（32m，alt_min=30m）→ 即使还有一点不确定性，
+    # 继续降高能带来的期望信息增益也很小 → info_gain 模式应判定不值得复核。
+    ctl2 = RecheckController(cfg)
+    confident_det = _det("完全损毁建筑", 0.9)
+    confident_det["class_probs"] = {
+        "no-damage": 0.01, "minor-damage": 0.01, "major-damage": 0.03, "destroyed": 0.95,
+    }
+    out2 = ctl2.assess(
+        lat=LAT, lon=LON, alt=32.0, risk_level="high",
+        detections=[confident_det],
+        patch_radius_m=60.0, patch_width=100, patch_height=100,
+    )
+    assert out2.kind == "skip", (out2.kind, out2.reason)
+    print(f"[OK] entropy+info_gain 组合：不确定→{out.kind}，确定→{out2.kind}")
+
+
 def test_degraded_no_recenter() -> None:
     ctl = RecheckController()
     out = ctl.assess(
@@ -143,16 +229,58 @@ def test_degraded_no_recenter() -> None:
     print("[OK] degraded → 仅降高、不居中")
 
 
+def test_trigger_mode_fixed_always_rechecks() -> None:
+    """E11 基线 trigger_mode='fixed'：只要有可疑证据就必复核，不看不确定性数值——
+    即使 risk='high' 且 conf 很高（heuristic 模式下 unc 会很低、threshold 模式会 skip），
+    fixed 模式仍应触发复核。"""
+    cfg = RecheckConfig(trigger_mode="fixed")
+    ctl = RecheckController(cfg)
+    out = ctl.assess(
+        lat=LAT, lon=LON, alt=120.0, risk_level="high",
+        detections=[_det("完全损毁建筑", 0.95, bbox=[70, 10, 90, 30])],
+        patch_radius_m=60.0, patch_width=100, patch_height=100,
+    )
+    assert out.kind == "recheck", (out.kind, out.reason)
+    print("[OK] trigger_mode=fixed：高置信证据仍强制复核")
+
+
+def test_trigger_mode_random_reproducible() -> None:
+    """E11 基线 trigger_mode='random'：同一 random_seed 下行为可复现（两次独立
+    controller 用相同 seed，对同一输入序列应产生完全相同的 skip/recheck 序列）。"""
+    def _make_ctl() -> RecheckController:
+        return RecheckController(RecheckConfig(trigger_mode="random", random_prob=0.5, random_seed=7))
+
+    det = _det("严重损伤建筑", 0.5, bbox=[70, 10, 90, 30])
+    kinds_a = []
+    kinds_b = []
+    for ctl, out_list in ((_make_ctl(), kinds_a), (_make_ctl(), kinds_b)):
+        for _ in range(5):
+            out = ctl.assess(
+                lat=LAT, lon=LON, alt=120.0, risk_level="low",
+                detections=[det], patch_radius_m=60.0, patch_width=100, patch_height=100,
+            )
+            out_list.append(out.kind)
+    assert kinds_a == kinds_b, (kinds_a, kinds_b)
+    print(f"[OK] trigger_mode=random：seed=7 两次运行序列一致 {kinds_a}")
+
+
 def _run_all() -> int:
     tests = [
         test_uncertainty_score,
         test_best_evidence,
+        test_best_evidence_class_probs,
+        test_entropy_uncertainty,
+        test_uncertainty_score_entropy_mode,
+        test_info_gain_descend,
         test_trigger_recheck,
         test_skip_when_confident,
         test_budget_exhausted_resolves,
         test_altitude_floor,
         test_improvement_resolves_confirmed,
+        test_assess_entropy_info_gain_modes,
         test_degraded_no_recenter,
+        test_trigger_mode_fixed_always_rechecks,
+        test_trigger_mode_random_reproducible,
     ]
     failed = 0
     for t in tests:

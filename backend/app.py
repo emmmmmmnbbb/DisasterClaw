@@ -879,6 +879,9 @@ VLN_GROUNDER = (os.getenv("VLN_GROUNDER", "vlm") or "vlm").strip().lower()
 # P1：规划器后端。legacy（默认，贪心朝质心 + 螺旋探索）/ hspm（CityNavAgent 式
 # landmark→OROI→motion 三层 + STMR 文字矩阵驱动的 LLM 常识推理）。
 VLN_PLANNER = (os.getenv("VLN_PLANNER", "legacy") or "legacy").strip().lower()
+# C3（非 headline，P4.5「B1 + OROI-Score」消融行）：HSPM 未见子目标时的方位选择从
+# "LLM 自由选一个"换成"LLM打分+方向先验+未探索区域增益"三路信号融合，默认关。
+VLN_OROI_SCORE = os.getenv("VLN_OROI_SCORE", "0").strip().lower() in {"1", "true", "yes", "on"}
 # HSPM 的 STMR 文字矩阵窗口（米）与网格数；越大视野越广但 token 越多。
 HSPM_STMR_WINDOW_M = float(os.getenv("HSPM_STMR_WINDOW_M", "200"))
 HSPM_STMR_GRID_N = int(os.getenv("HSPM_STMR_GRID_N", "20"))
@@ -888,6 +891,15 @@ VLN_RECHECK_DESCEND_M = float(os.getenv("VLN_RECHECK_DESCEND_M", "20"))
 VLN_RECHECK_ALT_MIN_M = float(os.getenv("VLN_RECHECK_ALT_MIN_M", "30"))
 VLN_RECHECK_MAX = int(os.getenv("VLN_RECHECK_MAX", "2"))          # 同一位置最多复核次数
 VLN_RECHECK_MAX_TOTAL = int(os.getenv("VLN_RECHECK_MAX_TOTAL", "8"))  # 单 episode 复核机动总上限
+# P5（升级接口落地，仍是 C2 的实现细节，非新增贡献）：
+#   VLN_UNCERTAINTY_MODE：U_t 用 heuristic 查表（默认，向后兼容）还是校准熵（entropy）。
+#   VLN_RECHECK_TRIGGER：复核触发用固定阈值（默认）还是信息增益 argmax（info_gain）。
+VLN_UNCERTAINTY_MODE = (os.getenv("VLN_UNCERTAINTY_MODE", "heuristic") or "heuristic").strip().lower()
+VLN_RECHECK_TRIGGER = (os.getenv("VLN_RECHECK_TRIGGER", "threshold") or "threshold").strip().lower()
+VLN_RECHECK_MIN_INFO_GAIN = float(os.getenv("VLN_RECHECK_MIN_INFO_GAIN", "0.05"))
+# E11 对照基线专用（trigger_mode="random" 时才生效）：固定复核概率 + 可复现种子。
+VLN_RECHECK_RANDOM_PROB = float(os.getenv("VLN_RECHECK_RANDOM_PROB", "0.5"))
+VLN_RECHECK_RANDOM_SEED = int(os.getenv("VLN_RECHECK_RANDOM_SEED", "0"))
 # P3：记忆拓扑图 + LM-Nav 图搜索（默认关，VLN_MEMORY=1 开）。
 VLN_MEMORY = os.getenv("VLN_MEMORY", "0").lower() in {"1", "true", "yes", "on"}
 VLN_MEMORY_PATH = os.getenv("VLN_MEMORY_PATH", str(BASE_DIR / "outputs" / "memory_graph.json"))
@@ -1073,10 +1085,12 @@ def _make_hspm_navigator() -> HspmNavigator:
             arrival_radius_m=VLN_ARRIVAL_RADIUS_M,
             max_step_m=VLN_MAX_STEP_M,
             explore_step_m=VLN_EXPLORE_STEP_M,
+            use_oroi_score=VLN_OROI_SCORE,
         ),
         grounder=grounder,
         llm_chat=llm_chat,
         stmr_provider=_stmr_provider,
+        semantic_map_provider=lambda: getattr(state, "semantic_map", None),
     )
 
 
@@ -1359,6 +1373,11 @@ def run_vln_episode(instruction: str, source: str = "ai") -> dict | None:
                 descend_step_m=VLN_RECHECK_DESCEND_M,
                 alt_min_m=VLN_RECHECK_ALT_MIN_M,
                 max_rechecks=VLN_RECHECK_MAX,
+                uncertainty_mode=VLN_UNCERTAINTY_MODE,
+                trigger_mode=VLN_RECHECK_TRIGGER,
+                min_info_gain=VLN_RECHECK_MIN_INFO_GAIN,
+                random_prob=VLN_RECHECK_RANDOM_PROB,
+                random_seed=VLN_RECHECK_RANDOM_SEED,
             )
         )
     recheck_total = 0  # 本 episode 已执行的复核机动数（全局上限防失控）

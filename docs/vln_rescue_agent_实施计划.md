@@ -319,8 +319,10 @@ perception 已有 `.get(raw, raw)` 兜底，grounding 按中文类匹配，**无
 | B1 +HSPM | `VLN_PLANNER=hspm` | H1 |
 | B2 +复核 | B1 + `VLN_RECHECK=1` | H2 |
 | B3 full | B2 + `VLN_MEMORY=1` | H3 |
+| B1 + OROI-Score | B1 + `VLN_OROI_SCORE=1` | C3 工程改进消融（非 headline，见 E12） |
 
 - grounding 维度：`VLN_GROUNDER ∈ {yolo, vlm, hybrid}` 交叉对比（H 系列默认固定一种，单列 grounding 对比表）。
+- OROI 打分融合（借鉴 Say-REAPEx 的打分式动作选择）：HSPM 的 `reason_oroi` 原本让 LLM 在八方位里"自由选一个"，改为对 8 个方位分别用「LLM affordance + 方向先验一致度 + 未探索区域增益」三路信号加权打分再取最大，`VLN_OROI_SCORE=1` 开启。这是 C3（HSPM 运动层）的工程改进，**不作为独立 contribution**，只作为消融条目验证是否缓解 hard/多地标题绕远的问题。
 
 ### P4.6 鲁棒性 / 混合 grounding（待做）
 
@@ -396,6 +398,66 @@ perception 已有 `.get(raw, raw)` 兜底，grounding 按中文类匹配，**无
 - 看哪些数：每个难度桶的 SR / NE。
 - 期望结论：定位瓶颈（比如远距离 hard 题是主要失败来源），指导后续改进方向。
 
+**E10 — 校准前后不确定性质量对比（对应 P5）** ✅ 已完成（2026-07-11）
+
+- 想搞清楚：换成温度校准的熵之后，`U_t` 是不是真的比查表启发式更"诚实"。
+- 怎么做：在 xBD test 集上跑 `calibration_bench.py`，对比 `heuristic` 与 `entropy`（标定前/后）三版的 ECE / Brier Score / NLL，画 reliability diagram。
+- 期望结论：标定后的熵版本 ECE 明显低于启发式版本，且低于未标定的熵版本（证明温度标定本身有效）。
+- **实测结果**（`change_perception.py` 训练 6 epoch，best val_acc=0.731，学到的温度 T=1.668）：
+
+| 子集 | n | 版本 | ECE | Brier | NLL | Acc |
+|---|---|---|---|---|---|---|
+| test（同源） | 21717 | 未标定 T=1.0 | 0.2762 | 0.7276 | 1.7057 | 0.524 |
+| test（同源） | 21717 | 标定 T=1.668 | **0.1674** | **0.6534** | **1.2864** | 0.524 |
+| holdout（跨灾害，moore-tornado/nepal-flooding/pinery-bushfire） | 69307 | 未标定 | 0.2777 | 0.7377 | 2.2233 | 0.516 |
+| holdout（跨灾害） | 69307 | 标定 | **0.1820** | **0.6729** | **1.5891** | 0.516 |
+
+结论符合预期：温度标定把 ECE 降了 ~39%（test）/ ~34%（holdout），Brier/NLL 同步下降，Acc 不变（标定只重塑分布形状，不改 argmax，符合定义）。跨灾害 holdout 上标定收益同样成立，说明温度标定不是过拟合到训练时见过的灾害类型。**注意**：这里的模型训练时用的子采样训练集未做 tier3 灾种排除（与 E13 的 YOLO 检测器同一限制），holdout 数值是"标定流程在跨灾害数据上的演示"而非严格 unseen 泛化实验；严格版本需要用排除 holdout 灾种后的训练集重训 `change_perception`，留作后续工作。产物：`runs/benchmarks/calibration/{test,holdout}_{summary.json,reliability.png}`。
+
+**E11 — 复核策略六选一（对应 P5，深化 E3）** ✅ 已完成（2026-07-11，n=40/档，`vln_testset.json`，grounder=vlm）
+
+- 想搞清楚：到底哪种复核策略最值。
+- 怎么做：固定 B1+复核开启，`VLN_RECHECK_TRIGGER`/`VLN_UNCERTAINTY_MODE` 组合出六档：不复核 / 随机复核 / 固定降高 / 现有启发式阈值 / 校准熵阈值 / 信息增益驱动（`recheck.py` 新增 `trigger_mode="fixed"/"random"` 支持这两档对照基线）。
+- 看哪些数：复核前后判定准确率变化、每多花一步换来的准确率增益、错误停止率、风险-覆盖率曲线——不只看 ΔU。
+- 期望结论：信息增益驱动版本在"准确率增益/步数"上优于阈值版本，阈值版本优于随机/固定档。
+- **实测结果**：
+
+| 配置 | SR | semSR | NE(m) | SPL | Steps | ΔU | judge_acc |
+|---|---|---|---|---|---|---|---|
+| 不复核 | 0.050 | 0.150 | 170.4 | 0.043 | 4.88 | — | 0.034 |
+| 随机复核 p=0.5 | 0.025 | 0.075 | 248.1 | 0.025 | 5.95 | 0 | 0.037 |
+| 固定降高（有证据必复核） | 0.025 | 0.100 | 224.3 | 0.025 | 5.43 | 0 | 0.071 |
+| 现有启发式阈值 | 0.075 | 0.100 | 262.5 | 0.075 | 5.43 | 0 | 0 |
+| 校准熵阈值 | 0.025 | 0.075 | 268.8 | 0.025 | 6.20 | 0 | 0.036 |
+| 校准熵+信息增益 | 0.025 | 0.100 | 271.0 | 0.025 | 6.23 | 0 | 0.036 |
+
+bootstrap 95% CI + 配对置换检验（`bench_report.py`）：六档两两 SR 差异全部**不显著**（p 全部 ≥ 0.51，n=40 时置信区间宽达 [0,0.18]）——**没有支持"信息增益驱动更优"这个预期结论**，n=40 下六档几乎不可分。更值得记录的反而是一个**方法论发现**：六档 ΔU（`avg_uncertainty_reduction`）全部恒为 **0.0**，不是"下降很小"而是字面上的零。排查后确认原因是统计口径问题而非复核没生效：当前 `RecheckController.stats()` 只在某次复核循环真正走到 `kind="resolve"`（confirmed/dismissed/inconclusive）时才把 `reduction` 记进 `resolved_log`；而本次 40 题的平均步数只有 5~6 步，复核-居中-再观测的循环经常还没跑到 resolve 就已经到达终点或耗尽 step budget，于是 `resolved_log` 为空、平均值退化成 0.0 的默认值。这解释了原始问题里提到的"复核的 ΔU≈0"——**不是不确定性没有下降，而是当前的统计口径没有捕捉到"未 resolve 的复核"里的下降**。这是一个明确的后续修复点（P5 遗留问题，见下方"待确认"更新）：应改成"每次复核机动前后都记一次 unc 差值"而不是"只在 resolve 时记一次"。judge_acc 上固定降高档反而最高（0.071），但样本太小（每档仅个位数 judge_ok 非空样本），不建议据此下结论。产物：`runs/benchmarks/20260711_185109_e11a/`（前四档）+ `runs/benchmarks/20260711_194030_e11b/`（entropy/infogain 两档，需要 P5 训练好的 `change_perception` checkpoint），`bench_report.py` 已支持跨 run 合并出六档对比表。
+
+**E12 — OROI 打分 vs 自由选择 A/B（对应 P4.5 新增行，C3 工程改进）** ✅ 已完成（2026-07-11，n=40/档）
+
+- 想搞清楚：把 LLM 的方位选择从"自由拍板"换成"多信号打分"，会不会缓解 B1 在 hard/多地标题上绕远的问题。
+- 怎么做：固定 B1，只切 `VLN_OROI_SCORE`（0/1），其余配置不变，跑同一题库。
+- 看哪些数：重点看 E8 难度分桶里 hard 桶的 NE/Steps 有没有收窄（当前 B1 hard NE≈291m vs B0≈143m）。
+- 期望结论：打分版本 hard 桶 NE 下降，但这是 C3 的工程改进证据，不写进 contribution 列表。
+- **实测结果**：整体 SR 0.050→0.075、SPL 0.043→0.071 有小幅提升，但 semSR 反而下降（0.150→0.100），NE 变差（170→203m）；bootstrap 配对检验 ΔSR 不显著（p=1）。难度分桶：**hard 桶并未如预期收窄**（OFF 181.7m vs ON 189.1m，几乎没变化甚至略差），反倒是 medium 桶 SR 从 0.167 升到 0.25。跨灾种拆解显示效果方向在不同灾害间也不一致（`mexico-earthquake` 上 SR 0→0.33，`hurricane-michael` 上几乎不变）。**结论**：n=40 下看不出 OROI 打分对 hard/多地标题有稳定收益，原始假设（收窄 hard NE）未被证实；维持"非 headline、写成消融行"的定位是对的，且应在文字里如实报告这个中性/混合结果，而不是只挑 SR/SPL 的好看数字。产物：`runs/benchmarks/20260711_185120_e12/`。
+
+**E13 — 跨灾种泛化 + 规模统计检验（对应 P6）** ✅ 已完成（2026-07-11）
+
+- 想搞清楚：① 检测器在真正没见过的灾害类型上表现如何（P6 tier3 留出集）；② 40 题的消融结论在更大样本下是否稳健。
+- 怎么做：用留出的 3~4 种 tier3 灾害跑一版独立 mAP；把题库扩到 200~500 题后重跑 E1 主消融，`bench_report.py` 出带 bootstrap 95% CI 的表，并做配对检验。
+- 期望结论：跨灾害 mAP 低于同源 test（说明之前的数字有一定虚高，属正常现象，报告出来即可）；扩样本后消融结论的方向不变但置信区间收窄。
+- **实测结果 ①（检测器 xbd_yolo_v2）**：test 集 mAP50=0.368 / mAP50-95=0.176（739 图，53850 实例）；跨灾害 holdout 集（moore-tornado / nepal-flooding / pinery-bushfire）mAP50=0.381 / mAP50-95=0.206（1223 图，69391 实例）——**跨灾害 mAP 没有降低，反而略高于同源 test**，与预期结论相反。这不代表模型真的泛化到未见灾种：`best.pt` 训练时用的是旧版数据集切分，这些 tier3 灾害当时**已经被并入训练池**（详见 P6 的 tier3 切分修复说明），所以本次 holdout 评测只是新版 `gen_xbd_yolo_dataset.py` 切分流程的正确性演示，不是严格的 unseen-disaster 泛化实验；holdout 略高的 mAP 更可能是这几种灾害本身建筑边界更规整/损伤更明显。严格版本需要用 `xbd_yolo_v2/train`（已排除这三种灾害）重新训练 `best.pt` 再评测，受时间限制未执行，留作后续工作，已在代码注释与本节如实说明。
+- **实测结果 ②（题库扩至 240 题，10 种灾害，B0~B3 各跑 30 题 `--limit 30`）**：
+
+| 配置 | SR (95% CI) | n |
+|---|---|---|
+| B0 | 0.067 (0.000, 0.167) | 30 |
+| B1 | 0.033 (0.000, 0.100) | 30 |
+| B2 | 0.000 (0.000, 0.000) | 30 |
+| B3 | 0.033 (0.000, 0.100) | 30 |
+
+六对两两配对检验全部不显著（p≥0.5）。**结论方向与原 40 题 E1 一致**（B1/B2/B3 相对 B0 都没有稳定的 SR 提升，B2 这次甚至是 0），进一步坐实了"不能把 HSPM/复核/记忆当作稳定提升 SR 的 headline 结论"这一判断——这恰恰是本轮把核心贡献收窄到 C2（且 C2 的证据应看 judge_acc/效率而不是裸 SR）的依据。受时间/共享 GPU 资源限制，本次只跑了 240 题里的 30×4=120 题（而不是全部 240×4），置信区间比原计划窄化的目标（200~500 题全跑）弱一些，跑满全量题库留作后续工作。产物：`runs/benchmarks/20260711_185454_e13scale/`。
+
 **E9 — 挑几条画出来看（定性案例）** ✅ `runs/benchmarks/e9_figures/`（脚本 `plot_vln_e9.py`）
 
 - 想搞清楚：成功和失败的典型长什么样，方便写报告/论文配图。
@@ -456,6 +518,57 @@ P4-5 E2 grounding 对比 ✅ → **P4-5b E4 记忆二趟 ✅** → P4-6 鲁棒�
 | **hybrid** | **0.075** | **0.125** | **226** | **193** | **4.8** | 62 |
 
 > yolo 与 vlm 40/40 题轨迹完全相同（grounding 均弱→同一探索路径）；hybrid 在 13/40 题 semNE 优 >5m。**默认 grounder=hybrid**。
+
+---
+
+## P5 — 校准的双时相变化感知（C2 正式实现，第六节"升级接口"落地）
+
+**背景**：第六节"升级接口"预留了两处升级点：① \(U_t\) 从启发式标量换成分布熵；② 复核触发从阈值判断换成信息增益动作选择。P5 就是把这两处从公式变成代码。**这不是新增的独立贡献，而是 C2 的正式实现方案**——C2 仍然是全文唯一的"刀尖"，P5 只是让它的数学定义有一个真正校准过的实现，而不是查表拍脑袋。
+
+**目标**：让 \(U_t\) 真正是温度校准过的熵，让复核触发是信息增益驱动，而不是阈值判断。同时利用 xBD 天然的 pre/post 配对（本地已有完整数据，train 2799 对 + tier3 6369 对 + test 933 对，无需额外采购），让检测器输出的置信度更可信。
+
+**改动**
+- [ ] 新增 `scripts/training/gen_xbd_change_dataset.py`：读 xBD pre+post 配对标注，构造 `changed = post.subtype != 'no-damage'` 的二值变化标签 + 4 类损伤标签，输出配对训练集（图片仍软链，不复制）。
+- [ ] 新增 `backend/change_perception.py`：pre+post 配对 patch 输入 → 共享编码器多任务头，输出 4 类损伤的 **softmax 概率向量**（而非当前 YOLO 的单一 top-1 conf）；训练后做温度标定（temperature scaling，用验证集拟合标量 \(T\)，`p_calibrated = softmax(logits / T)`）。
+- [ ] 改 `backend/perception.py`：`_detect` 目前只暴露每个检测框的 `conf`（top-1 置信度），扩展检测结果结构，增加 `class_probs`（4 类概率分布）字段；通过 `VLN_CHANGE_PERCEPTION=1` 开关接入 `change_perception.py`，关闭时保留现有 YOLO-only 路径不受影响（新旧对照基线并存）。
+- [ ] 改 `backend/recheck.py`：
+  - `uncertainty_score` 增加熵模式：\(U_t=-\sum_i p_i\log p_i\)（归一化到 [0,1]），`p` 取自 `class_probs`；用 `VLN_UNCERTAINTY_MODE ∈ {heuristic, entropy}` 开关切换，`heuristic` 为现有查表公式（默认，保证向后兼容）。
+  - `assess()` 的触发/收尾逻辑增加信息增益模式：定义复核动作候选集合 \(A=\{\text{descend\_center}, \text{hold}\}\)，用 GSD-置信度校准曲线估计每个动作执行后的期望熵 \(\mathbb E H(P_{t+1}^a)\)（简化确定性代理，非蒙特卡洛），取 \(a_t^\star=\arg\max_a[H(P_t)-\mathbb E H(P_{t+1}^a)]\)；用 `VLN_RECHECK_TRIGGER ∈ {threshold, info_gain}` 开关切换。
+- [ ] 新增 `scripts/benchmarks/calibration_bench.py`：在 xBD test 集上计算 ECE / Brier Score / NLL，画 reliability diagram，验证温度标定确实降低了校准误差（不是自称"校准"）。
+
+**怎么测（验收点）**
+- [ ] 单元测试扩展 `backend/tests/test_recheck.py`：熵模式 `uncertainty_score` 在已知概率分布下数值正确；`heuristic`/`entropy` 两种模式在同一输入下都能跑通、互不干扰。
+- [ ] `calibration_bench.py` 跑出的 ECE 相对未标定版本明显下降。
+- [ ] `bench_vln_navigation.py` 在 `VLN_CHANGE_PERCEPTION=1` 下跑出的 ΔU 不再恒为 0（因为 `has_evidence` 判定基于更可信的概率分布，而不是稀疏的 top-1 conf）。
+
+---
+
+## P6 — 评测严谨性补丁
+
+**目标**：修掉两个会被审稿人挑出来的漏洞——训练/测试的跨灾害泄漏、样本量不足以支撑消融结论。
+
+**改动**
+- [ ] `scripts/training/gen_xbd_yolo_dataset.py`：tier3 目前把全部 9 种独立灾害事件（joplin-tornado / lower-puna-volcano / moore-tornado / nepal-flooding / pinery-bushfire / portugal-wildfire / sunda-tsunami / tuscaloosa-tornado / woolsey-fire）都并入训练池，与 train/test 共享的 10 种灾害事件不同，天然是一个未被利用的跨灾害留出集。改为默认排出 3~4 种（如 nepal-flooding / moore-tornado / pinery-bushfire）不参与任何训练，作为 `--holdout-disasters` 参数控制的 unseen-disaster 测试集。
+- [ ] `scripts/benchmarks/gen_vln_testset.py`：题库从 40 题扩到 200~500 题（自动生成，复用现有生成逻辑，不需要新标注）。
+- [ ] `scripts/benchmarks/bench_report.py`：增加 bootstrap 95% CI 与配对检验（paired test），用于消融对比的显著性判断。
+
+**怎么测（验收点）**
+- [ ] 用新脚本重新生成的检测器训练/测试划分下，unseen-disaster 子集单独跑出一版 mAP，与原 test（同源灾害）对比，验证"域内检测器"的跨灾害泛化程度是否被之前的划分方式高估。
+- [ ] `bench_report.py` 输出的消融表带 CI 区间。
+
+---
+
+## 相关工作定位（C1，写作素材，无代码改动）
+
+DisasterClaw 的问题定义（C1，Bird's-eye VLN under uncertain disaster observations）需要在论文里明确同几类邻近工作的差异，避免被误读为"缝合已有模块":
+
+- **xBD/xView2**（Gupta et al., CVPRW 2019）：定义了 pre/post 建筑损伤评估任务与 Joint Damage Scale，但是纯静态图像分类，不涉及"谁去拍这张图"。
+- **Change-Agent**（Liu et al., TGRS 2024）与 **ISPRS 2026 多任务变化论文**（Wang et al.）：把变化理解做成了 agent（检测+描述+计数+归因），但处理的是已经摆在桌面上的两张图，agent 不会自己决定飞近再看。
+- **BayeSiamMTL**（JAG 2025）：把校准不确定性带进了 xBD 数据集本身，产出置信度分层的损伤图，但停留在单张图的后处理，不驱动任何导航动作。
+- **AeroVerse**（TPAMI 2026）：定义了完整的 UAV agent 能力体系（感知/推理/导航/规划/决策），但场景是第一视角城市，没有灾害语义、没有双时相变化。
+- **ESARBench**（2026）：第一个具身搜救基准，但基于 UE5/AirSim 仿真环境与 GIS 建图，不是真实卫星影像；其最优基线 SR 仅 13.89%，可作为"这类任务本身就难"的外部佐证，避免本文低 SR 被误读为系统缺陷。
+
+DisasterClaw 用**真实地理配准的双时相卫星影像**替代仿真环境，是差异化卖点而非弱点，应在 related work 中明确写出这条对比。
 
 ---
 

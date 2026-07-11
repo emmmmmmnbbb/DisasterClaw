@@ -24,8 +24,8 @@ import json
 import logging
 import math
 import re
-from dataclasses import dataclass
-from typing import Callable, Optional
+from dataclasses import dataclass, field
+from typing import Any, Callable, Optional
 
 from vln_navigator import (
     Decision,
@@ -95,6 +95,126 @@ def plan_landmarks(instruction: str, llm_chat: Optional[LlmChat]) -> list[str]:
         return [fallback]
 
 
+@dataclass
+class OroiScoreWeights:
+    """C3（HSPM 运动层工程改进，非 headline）：OROI 打分融合的三路信号权重。"""
+    llm: float = 0.5
+    prior: float = 0.2
+    frontier: float = 0.3
+
+
+def _clamp01(v: float) -> float:
+    return max(0.0, min(1.0, v))
+
+
+def _prior_score(bearing: str, direction_hint: str) -> float:
+    """方向先验一致度 ∈[0,1]：与 direction_hint 的夹角余弦映射到 [0,1]。
+
+    无先验 / 非法方位时返回 0.5（中性，不加分也不减分）。
+    """
+    if not direction_hint or direction_hint not in _BEARING_VEC or bearing not in _BEARING_VEC:
+        return 0.5
+    bn, be = _BEARING_VEC[bearing]
+    hn, he = _BEARING_VEC[direction_hint]
+    b_norm = math.hypot(bn, be) or 1.0
+    h_norm = math.hypot(hn, he) or 1.0
+    cos = (bn * hn + be * he) / (b_norm * h_norm)
+    return _clamp01((cos + 1.0) / 2.0)
+
+
+def score_bearings_llm(
+    instruction: str,
+    subgoal: str,
+    stmr_text: str,
+    llm_chat: Optional[LlmChat],
+) -> tuple[Optional[dict[str, float]], str]:
+    """让 LLM 给 8 个方位分别打 affordance 分（Say-REAPEx / Say-Score 式打分），
+
+    而不是像 reason_oroi 那样"自由选一个"——即使输出退化，也能和方向先验/frontier
+    信号融合，不会整段推理都押在一次离散选择上。
+
+    返回 (scores|None, reason)。scores 缺失/非法时返回 None，由调用方回退权重分配。
+    """
+    if llm_chat is None or not stmr_text:
+        return None, "（无 LLM/地图，跳过 LLM 打分）"
+    try:
+        content = llm_chat(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "你是一架无人机，正按子目标在一张俯视语义地图上导航。"
+                        "地图是以你为中心的文字网格（行上=北 下=南，列左=西 右=东）。"
+                        "当前视场里看不到子目标。请给下面 8 个方位各打一个 0~1 的 "
+                        "affordance 分（越可能接近子目标分越高，例如要找受损建筑，"
+                        "就给已发现的受损/建筑密集方位打更高分；无线索的方位给中性分）。"
+                        "只输出严格 JSON：{\"scores\": {\"北\":0~1,\"东北\":0~1,\"东\":0~1,"
+                        "\"东南\":0~1,\"南\":0~1,\"西南\":0~1,\"西\":0~1,\"西北\":0~1}, "
+                        "\"reason\": \"...\"}。"
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"总指令：{instruction}\n当前子目标：{subgoal}\n\n{stmr_text}",
+                },
+            ],
+            0.2,
+            260,
+        )
+        data = _extract_json(content) or {}
+        raw_scores = data.get("scores") or {}
+        scores: dict[str, float] = {}
+        for b in _BEARING_VEC:
+            try:
+                scores[b] = _clamp01(float(raw_scores.get(b, 0.0)))
+            except (TypeError, ValueError):
+                scores[b] = 0.0
+        if not any(scores.values()):
+            return None, "LLM 打分全 0/非法，回退"
+        reason = str(data.get("reason", ""))[:80]
+        return scores, (reason or "LLM OROI 打分")
+    except Exception as exc:
+        logger.warning("HSPM OROI 打分失败: %s", exc)
+        return None, "OROI 打分异常，回退"
+
+
+def score_oroi(
+    instruction: str,
+    subgoal: str,
+    stmr_text: str,
+    direction_hint: str,
+    llm_chat: Optional[LlmChat],
+    frontier_fn: Optional[Callable[[str], float]] = None,
+    weights: Optional[OroiScoreWeights] = None,
+) -> tuple[str, str]:
+    """object-level（C3 工程改进，`VLN_OROI_SCORE=1` 开）：LLM affordance + 方向
+    先验一致度 + 未探索区域增益 三路信号加权打分，取 argmax 方位。
+
+    比 reason_oroi 的"LLM 自由选一个"更稳：即使 LLM 输出退化/失败（None），
+    先验和 frontier 仍能给出有信息量的打分，不会死板回退到"北"。
+    """
+    weights = weights or OroiScoreWeights()
+    llm_scores, llm_reason = score_bearings_llm(instruction, subgoal, stmr_text, llm_chat)
+
+    best_bearing: Optional[str] = None
+    best_score = -1.0
+    for bearing in _BEARING_VEC:
+        s_llm = llm_scores.get(bearing, 0.0) if llm_scores else 0.5  # 无 LLM 信号 → 中性
+        s_prior = _prior_score(bearing, direction_hint)
+        s_frontier = frontier_fn(bearing) if frontier_fn is not None else 0.5
+        total = weights.llm * s_llm + weights.prior * s_prior + weights.frontier * s_frontier
+        if total > best_score:
+            best_score = total
+            best_bearing = bearing
+
+    best_bearing = best_bearing or (direction_hint if direction_hint in _BEARING_VEC else "北")
+    reason = (
+        f"打分融合选 {best_bearing}(score={best_score:.2f})："
+        f"LLM{'✓' if llm_scores else '✗'}={llm_reason}；先验={direction_hint or '无'}"
+    )
+    return best_bearing, reason[:120]
+
+
 def reason_oroi(
     instruction: str,
     subgoal: str,
@@ -148,7 +268,9 @@ def reason_oroi(
 @dataclass
 class HspmConfig(VlnConfig):
     """复用 VlnConfig 的预算/半径/步长等字段。"""
-    pass
+    # C3（非 headline）：OROI 打分融合开关，对应文档 P4.5「B1 + OROI-Score」消融行。
+    use_oroi_score: bool = False
+    oroi_weights: OroiScoreWeights = field(default_factory=OroiScoreWeights)
 
 
 class HspmNavigator:
@@ -160,11 +282,14 @@ class HspmNavigator:
         grounder: Optional[Grounder] = None,
         llm_chat: Optional[LlmChat] = None,
         stmr_provider: Optional[StmrProvider] = None,
+        semantic_map_provider: Optional[Callable[[], Any]] = None,
     ):
         self.config = config or HspmConfig()
         self._grounder = grounder
         self._llm_chat = llm_chat
         self._stmr_provider = stmr_provider
+        # C3（非 headline）：OROI 打分融合里 frontier 项要用；不给就退化成中性分 0.5。
+        self._semantic_map_provider = semantic_map_provider
 
         self.instruction = ""
         self.parsed: dict = {}
@@ -268,10 +393,17 @@ class HspmNavigator:
             except Exception:
                 stmr = None
         stmr_text = (stmr or {}).get("text", "") if stmr else ""
-        bearing, reason = reason_oroi(
-            self.instruction, subgoal, stmr_text,
-            self.parsed.get("direction_name", ""), self._llm_chat,
-        )
+        direction_hint = self.parsed.get("direction_name", "")
+        if self.config.use_oroi_score:
+            frontier_fn = self._make_frontier_fn(snapshot)
+            bearing, reason = score_oroi(
+                self.instruction, subgoal, stmr_text, direction_hint, self._llm_chat,
+                frontier_fn=frontier_fn, weights=self.config.oroi_weights,
+            )
+        else:
+            bearing, reason = reason_oroi(
+                self.instruction, subgoal, stmr_text, direction_hint, self._llm_chat,
+            )
         dn, de = _BEARING_VEC.get(bearing, (1.0, 0.0))
         norm = math.hypot(dn, de) or 1.0
         step_m = self.config.explore_step_m
@@ -291,6 +423,31 @@ class HspmNavigator:
     def _offset(norm_xy: tuple[float, float], radius_m: float) -> tuple[float, float, float]:
         # VlnNavigator._offset_from_norm 返回 (north_m, east_m, dist_m)
         return VlnNavigator._offset_from_norm(norm_xy, radius_m)
+
+    def _make_frontier_fn(self, snapshot: dict) -> Optional[Callable[[str], float]]:
+        """C3：把 SemanticMap.frontier_score 包成 score_oroi 要的 (bearing)->float。
+
+        拿不到语义地图（未开 P0 建图 / provider 为空）时返回 None，
+        score_oroi 会自动把 frontier 项当中性分 0.5 处理。
+        """
+        if self._semantic_map_provider is None:
+            return None
+        smap = self._semantic_map_provider()
+        if smap is None:
+            return None
+        try:
+            lat, lon = float(snapshot["lat"]), float(snapshot["lon"])
+        except (KeyError, TypeError, ValueError):
+            return None
+
+        def _fn(bearing: str) -> float:
+            vec = _BEARING_VEC.get(bearing, (1.0, 0.0))
+            try:
+                return smap.frontier_score(lat, lon, vec)
+            except Exception:
+                return 0.5
+
+        return _fn
 
     def _log(self, dec: Decision, subgoal: str) -> None:
         self.history.append({
