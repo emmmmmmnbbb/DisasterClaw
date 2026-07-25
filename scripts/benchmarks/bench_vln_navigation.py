@@ -66,11 +66,17 @@ CONFIGS = {
                      "change_perception": True,
                      "recheck_extra": {"uncertainty_mode": "entropy", "trigger_mode": "info_gain"},
                      "desc": "E11: 校准熵 + 信息增益触发"},
-    # E12 — OROI 打分融合 A/B（固定 B1，只切 VLN_OROI_SCORE）。
+    # E12 — OROI 打分融合 A/B/C（固定 B1，只切 VLN_OROI_SCORE 与三路权重）。
     "E12_OFF": {"planner": "hspm", "recheck": False, "memory": False,
                 "desc": "E12: OROI 自由选择（=B1，off）"},
     "E12_ON": {"planner": "hspm", "recheck": False, "memory": False, "oroi_score": True,
-               "desc": "E12: OROI 打分融合（VLN_OROI_SCORE=1）"},
+               "desc": "E12: OROI 打分融合（VLN_OROI_SCORE=1，LLM+先验+frontier）"},
+    # 权重 (llm=0, prior=0, frontier=1) 退化成经典 Frontier-Based Exploration
+    # （Yamauchi 1997：永远朝未探索覆盖增益最大的方向走），来自主流探索文献的
+    # 标准基线，不依赖任何 LLM 调用——区别于 E12_ON 的"三路信号融合"。
+    "E12_FBE": {"planner": "hspm", "recheck": False, "memory": False, "oroi_score": True,
+                "oroi_weights": {"llm": 0.0, "prior": 0.0, "frontier": 1.0},
+                "desc": "E12: 纯 Frontier-Based Exploration（经典基线，无 LLM）"},
 }
 
 
@@ -151,6 +157,10 @@ def apply_config(app, cfg: dict, grounder: str, mem_path: str) -> None:
     app.VLN_RECHECK_RANDOM_PROB = float(extra.get("random_prob", 0.5))
     app.VLN_RECHECK_RANDOM_SEED = int(extra.get("random_seed", 0))
     app.VLN_OROI_SCORE = bool(cfg.get("oroi_score", False))
+    oroi_w = cfg.get("oroi_weights") or {}
+    app.VLN_OROI_W_LLM = float(oroi_w.get("llm", 0.5))
+    app.VLN_OROI_W_PRIOR = float(oroi_w.get("prior", 0.2))
+    app.VLN_OROI_W_FRONTIER = float(oroi_w.get("frontier", 0.3))
 
     import perception
     perception.VLN_CHANGE_PERCEPTION = bool(cfg.get("change_perception", False))

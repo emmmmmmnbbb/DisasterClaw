@@ -186,7 +186,12 @@ def test_improvement_resolves_confirmed() -> None:
 def test_assess_entropy_info_gain_modes() -> None:
     """P5：uncertainty_mode=entropy + trigger_mode=info_gain 组合能跑通，且与默认
     heuristic/threshold 模式行为方向一致（低置信触发复核，高置信跳过）。"""
-    cfg = RecheckConfig(uncertainty_mode="entropy", trigger_mode="info_gain", min_info_gain=0.02)
+    # 显式指定 alt_min_m/descend_step_m（而不是依赖默认值），因为本测试要验证的是
+    # "越接近高度下限，继续降高的期望信息增益越小"这一相对关系，与默认值具体是多少无关。
+    cfg = RecheckConfig(
+        uncertainty_mode="entropy", trigger_mode="info_gain", min_info_gain=0.02,
+        alt_min_m=30.0, descend_step_m=20.0,
+    )
     ctl = RecheckController(cfg)
 
     uncertain_det = _det("严重损伤建筑", 0.35, bbox=[70, 10, 90, 30])
@@ -264,6 +269,61 @@ def test_trigger_mode_random_reproducible() -> None:
     print(f"[OK] trigger_mode=random：seed=7 两次运行序列一致 {kinds_a}")
 
 
+def test_finalize_flushes_pending_reduction() -> None:
+    """回归测试（对应 E11 实测发现的 ΔU≈0 统计漏洞）：episode 在复核循环走到正式
+    定论之前就结束（到达终点/步数耗尽）时，finalize() 应该把这个"未收尾"的位置
+    也按最新一次观测补记进 avg_uncertainty_reduction，而不是让它从统计里消失。"""
+    ctl = RecheckController()
+    # 第一次：可疑低置信 → 触发复核（此时还没到 resolve，episode 假设到这里就结束了）。
+    out1 = ctl.assess(
+        lat=LAT, lon=LON, alt=120.0, risk_level="low",
+        detections=[_det("严重损伤建筑", 0.3)],
+        patch_radius_m=60.0, patch_width=100, patch_height=100,
+    )
+    assert out1.kind == "recheck", out1.kind
+    # 复核修复前：episode 结束时直接调 stats()，pending 的位置从未进 resolved_log。
+    stats_before_finalize = ctl.stats()
+    assert stats_before_finalize["resolved"] == 0
+    assert stats_before_finalize["avg_uncertainty_reduction"] == 0.0
+    assert stats_before_finalize["pending"] == 1
+    # 修复后：episode 结束时先 finalize()，pending 位置补记一笔账（status=episode_end），
+    # 不计入 confirmed/dismissed/inconclusive，但计入 avg_uncertainty_reduction。
+    ctl.finalize()
+    stats_after = ctl.stats()
+    assert stats_after["resolved"] == 1, stats_after
+    assert stats_after["episode_end_pending"] == 1, stats_after
+    assert stats_after["confirmed"] == 0 and stats_after["dismissed"] == 0 and stats_after["inconclusive"] == 0
+    assert stats_after["pending"] == 0
+    # 只观测了一次，before==after（还没有降高复核带来的新观测），下降量应为 0，
+    # 但关键是这次已经被记进了统计分母里，不再是"凭空消失"。
+    assert ctl.resolved_log[-1]["status"] == "episode_end"
+    print(f"[OK] finalize() 补记未收尾的复核：{stats_before_finalize} → {stats_after}")
+
+
+def test_finalize_uses_latest_observation() -> None:
+    """finalize() 应该用"最新一次观测"而不是首次触发时的不确定性来算下降量——
+    模拟"复核了一次、把握有所提升但还没触发 resolve 判定"的场景。"""
+    ctl = RecheckController(RecheckConfig(max_rechecks=3))
+    kw = dict(
+        lat=LAT, lon=LON,
+        patch_radius_m=60.0, patch_width=100, patch_height=100,
+    )
+    o1 = ctl.assess(alt=120.0, risk_level="low",
+                     detections=[_det("严重损伤建筑", 0.3)], **kw)
+    assert o1.kind == "recheck"
+    # 降高后看得更清楚一点，但还没到"把握足够"或"预算耗尽"的定论条件。
+    o2 = ctl.assess(alt=100.0, risk_level="low",
+                     detections=[_det("严重损伤建筑", 0.5)], **kw)
+    assert o2.kind == "recheck", o2.kind
+    unc_after_o2 = o2.uncertainty
+    ctl.finalize()
+    entry = ctl.resolved_log[-1]
+    assert entry["status"] == "episode_end"
+    assert abs(entry["uncertainty_after"] - unc_after_o2) < 1e-9, (entry, unc_after_o2)
+    assert entry["uncertainty_before"] == o1.uncertainty
+    print(f"[OK] finalize() 用最新观测算下降量：{entry['uncertainty_before']} → {entry['uncertainty_after']}")
+
+
 def _run_all() -> int:
     tests = [
         test_uncertainty_score,
@@ -281,6 +341,8 @@ def _run_all() -> int:
         test_degraded_no_recenter,
         test_trigger_mode_fixed_always_rechecks,
         test_trigger_mode_random_reproducible,
+        test_finalize_flushes_pending_reduction,
+        test_finalize_uses_latest_observation,
     ]
     failed = 0
     for t in tests:

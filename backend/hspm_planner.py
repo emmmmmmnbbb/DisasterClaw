@@ -194,7 +194,13 @@ def score_oroi(
     先验和 frontier 仍能给出有信息量的打分，不会死板回退到"北"。
     """
     weights = weights or OroiScoreWeights()
-    llm_scores, llm_reason = score_bearings_llm(instruction, subgoal, stmr_text, llm_chat)
+    if weights.llm <= 0.0:
+        # llm 权重为 0 时（如纯 Frontier-Based Exploration 基线）跳过 LLM 调用：
+        # 既省一次推理开销，也让该基线真正做到"不依赖任何语言模型"，与经典
+        # frontier exploration（Yamauchi 1997）算法定义一致，而不是"权重恰好乘 0"。
+        llm_scores, llm_reason = None, "（frontier-only 基线，跳过 LLM 打分）"
+    else:
+        llm_scores, llm_reason = score_bearings_llm(instruction, subgoal, stmr_text, llm_chat)
 
     best_bearing: Optional[str] = None
     best_score = -1.0

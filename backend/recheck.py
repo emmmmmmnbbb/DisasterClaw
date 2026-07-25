@@ -29,6 +29,17 @@ backend/recheck.py — 灾情不确定性驱动的主动复核（P2，创新主�
     confirmed（确认受灾）/ dismissed（证据消退，排除）/ inconclusive（仍存疑），
     连同"不确定性下降量"一并返回，由上层写回语义地图 candidate_goals 层与报告。
 
+已知问题修复（E11 实测发现，2026-07 修复）：episode 常常在 assess() 还没来得及
+再次访问某个"复核中"位置之前就已经结束（到达终点 / 步数耗尽），导致该位置的
+不确定性变化从未走到上面说的"定论"分支、从未被计入 `resolved_log`，使得
+`stats()["avg_uncertainty_reduction"]` 系统性偏向 0——不是复核没起作用，是统计
+口径只认"干净收尾"。修复方式：`RecheckController` 现在会持续记录每个位置"最新
+一次观测到的不确定性"，并在 `finalize()`（episode 结束时调用一次）里把所有仍
+挂在 `_state` 里、没等到定论的位置也按"最新已知的不确定性下降"补记一笔账
+（status="episode_end"，不计入 confirmed/dismissed/inconclusive，但计入
+avg_uncertainty_reduction 的分子分母），让统计反映复核期间真实发生的不确定性
+变化，而不是"有没有幸运地等到一个正式收尾"。
+
 本模块不做任何 IO / 模型调用 / geo 之外的依赖；几何换算复用 semantic_map.offset_from_norm。
 便于单测：assess() 是确定性纯函数式接口（仅内部维护按位置去重的复核状态）。
 """
@@ -147,8 +158,12 @@ def info_gain_descend(entropy_now: float, alt: float, descend_step_m: float, alt
 class RecheckConfig:
     conf_threshold: float = 0.5      # 证据置信度"够格"阈值
     trigger: float = 0.5             # 触发复核的不确定性阈值（trigger_mode="threshold" 时用）
-    descend_step_m: float = 20.0     # 每次复核下降的高度
-    alt_min_m: float = 30.0          # 高度下限（防止贴地）
+    # descend_step_m / alt_min_m 默认值须严格小于调用方的巡航高度（app.py 的
+    # DEFAULT_HOVER_ALTITUDE_M=30m），否则"复核"从第一次 assess() 起就恒等于"已到
+    # 高度下限"，永远拿不到 kind="recheck" 的真实降高机动（E11 实测发现的根因，
+    # 而不是 stats() 的记账问题）。10/10 给 30m 巡航留出两步各 10m 的真实降高空间。
+    descend_step_m: float = 10.0     # 每次复核下降的高度
+    alt_min_m: float = 10.0          # 高度下限（防止贴地）
     max_rechecks: int = 2            # 同一位置最多复核次数
     recenter_max_m: float = 40.0     # 复核单步水平居中的最大位移
     cell_m: float = 20.0             # 复核去重的位置量化格
@@ -260,8 +275,12 @@ class RecheckController:
 
         # ── 2) 可疑且没把握 ─────────────────────────────────────────
         if rec is None:
-            rec = {"count": 0, "unc0": unc, "label": label}
+            rec = {"count": 0, "unc0": unc, "unc_latest": unc, "label": label, "lat": lat, "lon": lon}
             self._state[key] = rec
+        else:
+            # 持续刷新"最新观测"，供 finalize() 在 episode 提前结束时补记账用。
+            rec["unc_latest"] = unc
+            rec["lat"], rec["lon"] = lat, lon
 
         at_alt_floor = alt <= cfg.alt_min_m + 1e-6
         if rec["count"] >= cfg.max_rechecks or at_alt_floor:
@@ -324,8 +343,33 @@ class RecheckController:
             "rechecks": out.count,
         })
 
+    def finalize(self) -> None:
+        """episode 结束时调用一次：把仍处于"复核中"但没等到正式定论的位置，
+        按各自最新一次观测到的不确定性补记一笔账（见类顶部文档"已知问题修复"）。
+
+        status="episode_end"，语义上不是"确认/排除/存疑"里的任何一种（没有真正
+        走完复核闭环），因此不计入 confirmed/dismissed/inconclusive 计数，但计入
+        avg_uncertainty_reduction，避免这部分被复核循环截断的样本从统计里消失。
+        """
+        for rec in self._state.values():
+            before = rec["unc0"]
+            after = rec.get("unc_latest", before)
+            self.resolved_log.append({
+                "lat": rec.get("lat"),
+                "lon": rec.get("lon"),
+                "label": rec.get("label"),
+                "status": "episode_end",
+                "uncertainty_before": before,
+                "uncertainty_after": after,
+                "reduction": round(before - after, 3),
+                "rechecks": rec.get("count", 0),
+            })
+        self._state.clear()
+
     def stats(self) -> dict:
-        """供报告：复核次数与平均不确定性下降。"""
+        """供报告：复核次数与平均不确定性下降。建议在 episode 结束、调用本方法前
+        先调用一次 `finalize()`，否则"未收尾"的复核会被排除在统计之外（见类顶部
+        文档"已知问题修复"）。"""
         n = len(self.resolved_log)
         red = [r["reduction"] for r in self.resolved_log if r.get("reduction") is not None]
         return {
@@ -333,6 +377,7 @@ class RecheckController:
             "confirmed": sum(1 for r in self.resolved_log if r.get("status") == "confirmed"),
             "dismissed": sum(1 for r in self.resolved_log if r.get("status") == "dismissed"),
             "inconclusive": sum(1 for r in self.resolved_log if r.get("status") == "inconclusive"),
+            "episode_end_pending": sum(1 for r in self.resolved_log if r.get("status") == "episode_end"),
             "avg_uncertainty_reduction": round(sum(red) / len(red), 3) if red else 0.0,
             "pending": len(self._state),
         }

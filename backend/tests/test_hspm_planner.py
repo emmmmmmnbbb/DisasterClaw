@@ -174,6 +174,28 @@ def test_score_oroi_weights_shape() -> None:
     print(f"[OK] 自定义权重下 score_oroi 仍返回合法方位: {bearing}")
 
 
+def test_score_oroi_pure_frontier_skips_llm() -> None:
+    """weights.llm<=0（E12_FBE 纯 Frontier-Based Exploration 基线）应完全跳过 LLM
+    调用——不仅数值上权重乘 0，还要在算法定义上"不依赖任何语言模型"。"""
+    calls = {"n": 0}
+
+    def _llm_should_not_be_called(_msgs, _t, _mt):
+        calls["n"] += 1
+        return json.dumps({"scores": {"东": 1.0}, "reason": "不该被调用"})
+
+    def _frontier_west(bearing: str) -> float:
+        return 0.9 if bearing == "西" else 0.1
+
+    w = OroiScoreWeights(llm=0.0, prior=0.0, frontier=1.0)
+    bearing, reason = score_oroi(
+        "找建筑", "蓝色的建筑", "（地图）", "东",
+        _llm_should_not_be_called, frontier_fn=_frontier_west, weights=w,
+    )
+    assert calls["n"] == 0, "llm 权重为 0 时不应调用 LLM"
+    assert bearing == "西", (bearing, reason)  # 纯 frontier 信号选西，忽略先验"东"
+    print(f"[OK] 纯 FBE 权重跳过 LLM 调用，只按 frontier 选西: {reason}")
+
+
 def test_step_with_oroi_score() -> None:
     """HspmConfig.use_oroi_score=True + 注入 semantic_map_provider → step() 走
     打分融合分支，不崩、动作合法。"""
@@ -220,6 +242,7 @@ def _run_all() -> int:
         test_score_oroi_llm_prior_frontier_agree,
         test_score_oroi_no_llm_uses_frontier,
         test_score_oroi_weights_shape,
+        test_score_oroi_pure_frontier_skips_llm,
         test_step_with_oroi_score,
         test_step_unseen_explores,
         test_step_seen_moves_toward,

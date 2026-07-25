@@ -168,23 +168,81 @@ class _SiameseEncoder(nn.Module):  # type: ignore[misc]
         return self.backbone(x)
 
 
-class ChangeMultiTaskNet(nn.Module):  # type: ignore[misc]
-    """Siamese 多任务头：4 类损伤 logits + 二值变化 logit。"""
+class DifferenceAttention(nn.Module):  # type: ignore[misc]
+    """D2ANet（Difference-aware Attention Network，为 xBD 损伤分级设计）思路的轻量
+    适配：DTA（双时态聚合门控）+ DA（差分注意力）。
 
-    def __init__(self, feat_dim: int = 128, num_classes: int = NUM_CLASSES, pretrained: bool = True):
+    原论文在卷积特征图上做逐空间位置的通道注意力；这里的编码器已经把每张 patch
+    压成一个全局特征向量（分类头本身就是全图级判断，不需要空间粒度），所以退化成
+    向量通道维度的 SE-style（Squeeze-and-Excitation）门控，但保留核心思想不变：
+        DTA：从 [f_pre, f_post] 联合学一组通道门控，分别重加权两个时刻的特征——
+             不同通道对"这次到底发生了什么类型的变化"的敏感度不同（原论文里
+             对应"哪些通道该重点比较"）；
+        DA ：在门控后的差分特征上再学一层通道注意力，进一步放大变化敏感通道、
+             抑制光照/视角等无关差异——这是本模型和"直接拼接 [f_pre,f_post,diff]"
+             baseline 的核心区别：diff 不是简单相减，而是先门控再相减再门控。
+    """
+
+    def __init__(self, feat_dim: int, reduction: int = 4):
+        super().__init__()
+        hidden = max(4, feat_dim // reduction)
+        self.dta_gate = nn.Sequential(
+            nn.Linear(feat_dim * 2, hidden), nn.ReLU(inplace=True),
+            nn.Linear(hidden, feat_dim * 2), nn.Sigmoid(),
+        )
+        self.da_gate = nn.Sequential(
+            nn.Linear(feat_dim, hidden), nn.ReLU(inplace=True),
+            nn.Linear(hidden, feat_dim), nn.Sigmoid(),
+        )
+        self.feat_dim = feat_dim
+
+    def forward(self, f_pre, f_post):
+        gate = self.dta_gate(torch.cat([f_pre, f_post], dim=1))
+        g_pre, g_post = gate[:, : self.feat_dim], gate[:, self.feat_dim :]
+        f_pre_w = f_pre * g_pre
+        f_post_w = f_post * g_post
+        diff = f_post_w - f_pre_w
+        diff_w = diff * self.da_gate(diff)
+        return torch.cat([f_pre_w, f_post_w, diff_w], dim=1)
+
+
+class ChangeMultiTaskNet(nn.Module):  # type: ignore[misc]
+    """Siamese 多任务头：4 类损伤 logits + 二值变化 logit。
+
+    dropout_p>0 时在两个头的隐藏层后插入 Dropout——不是为了正则化本身，而是给
+    MC-Dropout（Gal & Ghahramani 2016）不确定性估计基线留一个"训练时就要打开"的
+    开关：MC-Dropout 要求推理时也保持 dropout 随机采样，因此模型结构必须原生带
+    dropout 层，不能靠推理脚本临时打补丁。默认 0.0，不影响现有已训练模型的行为。
+
+    use_diff_attention=True 时用 DifferenceAttention 替换原来"直接拼接
+    [f_pre,f_post,f_post-f_pre]"的融合方式（对标 D2ANet baseline，见 E15）；
+    默认 False，不影响现有已训练模型的行为/结构。
+    """
+
+    def __init__(
+        self, feat_dim: int = 128, num_classes: int = NUM_CLASSES,
+        pretrained: bool = True, dropout_p: float = 0.0, use_diff_attention: bool = False,
+    ):
         super().__init__()
         self.encoder = _SiameseEncoder(feat_dim, pretrained=pretrained)
-        fused_dim = feat_dim * 3  # [f_pre, f_post, f_post - f_pre]
+        self.dropout_p = dropout_p
+        self.use_diff_attention = use_diff_attention
+        self.diff_attn = DifferenceAttention(feat_dim) if use_diff_attention else None
+        fused_dim = feat_dim * 3  # [f_pre, f_post, f_post - f_pre]（或门控版）
         self.damage_head = nn.Sequential(
-            nn.Linear(fused_dim, 128), nn.ReLU(inplace=True), nn.Linear(128, num_classes),
+            nn.Linear(fused_dim, 128), nn.ReLU(inplace=True), nn.Dropout(dropout_p),
+            nn.Linear(128, num_classes),
         )
         self.change_head = nn.Sequential(
-            nn.Linear(fused_dim, 64), nn.ReLU(inplace=True), nn.Linear(64, 1),
+            nn.Linear(fused_dim, 64), nn.ReLU(inplace=True), nn.Dropout(dropout_p),
+            nn.Linear(64, 1),
         )
 
     def features(self, pre, post):
         f_pre = self.encoder(pre)
         f_post = self.encoder(post)
+        if self.diff_attn is not None:
+            return self.diff_attn(f_pre, f_post)
         return torch.cat([f_pre, f_post, f_post - f_pre], dim=1)
 
     def forward(self, pre, post):
@@ -212,6 +270,38 @@ def fit_temperature(logits, labels, max_iter: int = 50) -> float:
 
     optimizer.step(_closure)
     return float(temperature.clamp(min=1e-3).item())
+
+
+def set_seed(seed: int) -> None:
+    """训练 Deep Ensemble 成员时用不同 seed，才能得到真正独立的模型（而不是同一次
+    随机初始化的多份拷贝）——这是 Lakshminarayanan et al. 2017 Deep Ensembles 方法
+    的核心前提：多样性来自训练随机性（初始化 + shuffle），不是显式的贝叶斯建模。"""
+    random.seed(seed)
+    _require_torch()
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
+@torch.no_grad()
+def mc_dropout_logits(model, pre, post, n_passes: int = 30) -> "torch.Tensor":
+    """MC-Dropout（Gal & Ghahramani 2016）：保持 dropout 层随机采样、其余（尤其
+    BatchNorm）仍用 eval 统计量，跑 n_passes 次前向，返回 [n_passes, B, num_classes]
+    的 logits 堆叠，供上层在概率空间取平均（而不是在 logits 空间平均——softmax 非
+    线性，MC-Dropout 定义的是对预测分布 p(y|x) 的平均，必须先各自 softmax 再平均）。
+
+    模型必须是用 dropout_p>0 训练出来的（结构里有非零 Dropout），否则 n_passes
+    次前向会完全相同，退化成普通单次推理（不报错，但失去 MC-Dropout 的意义）。
+    """
+    model.eval()
+    for m in model.modules():
+        if isinstance(m, nn.Dropout):
+            m.train()  # 只让 Dropout 子模块保持随机，BatchNorm 等其余层仍是 eval 统计量
+    stacked = []
+    for _ in range(n_passes):
+        damage_logits, _ = model(pre, post)
+        stacked.append(damage_logits)
+    return torch.stack(stacked, dim=0)
 
 
 # ── 推理封装：进程级单例，风格对齐 perception.get_perception() ─────────────────
@@ -256,7 +346,16 @@ class ChangePerceptionModel:
             if self._loaded:
                 return
             _require_torch()
-            self.model = ChangeMultiTaskNet(pretrained=not self.ckpt_path.exists()).to(self.device)
+            use_diff_attention = False
+            if self.ckpt_path.exists():
+                # 先探一眼 checkpoint 里的结构标志，再构造匹配的模型——
+                # use_diff_attention 影响的是模块结构（多了 DifferenceAttention 子模块），
+                # 不像 dropout_p 那样只影响一个已存在层的行为，必须在 load_state_dict 前定下来。
+                probe_state = torch.load(self.ckpt_path, map_location=self.device)
+                use_diff_attention = bool(probe_state.get("use_diff_attention", False))
+            self.model = ChangeMultiTaskNet(
+                pretrained=not self.ckpt_path.exists(), use_diff_attention=use_diff_attention,
+            ).to(self.device)
             if self.ckpt_path.exists():
                 state = torch.load(self.ckpt_path, map_location=self.device)
                 self.model.load_state_dict(state["model_state"])
@@ -340,6 +439,7 @@ def _run_epoch(model, loader, device, optimizer=None, change_loss_weight: float 
 
 def train_main(args: argparse.Namespace) -> int:
     _require_torch()
+    set_seed(args.seed)
     data_dir = Path(args.data_dir)
     train_ds = XbdChangeDataset(data_dir / "train.jsonl", augment=True)
     val_path = data_dir / "val.jsonl"
@@ -355,7 +455,9 @@ def train_main(args: argparse.Namespace) -> int:
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.workers)
 
     device = args.device
-    model = ChangeMultiTaskNet(pretrained=True).to(device)
+    model = ChangeMultiTaskNet(
+        pretrained=True, dropout_p=args.dropout, use_diff_attention=args.diff_attention,
+    ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
     best_val_acc = -1.0
@@ -376,7 +478,9 @@ def train_main(args: argparse.Namespace) -> int:
         # 长时间训练（I/O bound，单 epoch 数分钟到十几分钟）在共享 GPU 服务器上有被
         # 其它进程挤占显存/被杀的风险；每个 epoch 都落一次盘，避免全白跑。
         torch.save({"model_state": best_state or model.state_dict(),
-                    "temperature": 1.0, "epoch": epoch, "val_acc": best_val_acc},
+                    "temperature": 1.0, "epoch": epoch, "val_acc": best_val_acc,
+                    "dropout_p": args.dropout, "seed": args.seed,
+                    "use_diff_attention": args.diff_attention},
                    out_path)
 
     if best_state is not None:
@@ -396,6 +500,9 @@ def train_main(args: argparse.Namespace) -> int:
             "temperature": temperature,
             "class_names": CLASS_NAMES,
             "best_val_acc": best_val_acc,
+            "dropout_p": args.dropout,
+            "seed": args.seed,
+            "use_diff_attention": args.diff_attention,
         },
         out_path,
     )
@@ -416,6 +523,9 @@ def main() -> int:
     train_ap.add_argument("--device", default="cuda:0" if (torch and torch.cuda.is_available()) else "cpu")
     train_ap.add_argument("--out", default=str(DEFAULT_CKPT_PATH))
     train_ap.add_argument("--limit", type=int, default=0, help="调试用：截断训练/验证记录数")
+    train_ap.add_argument("--seed", type=int, default=0, help="Deep Ensemble 用不同 seed 训练多个独立成员")
+    train_ap.add_argument("--dropout", type=float, default=0.0, help="head 内 Dropout 概率，>0 才能支持 MC-Dropout 推理")
+    train_ap.add_argument("--diff-attention", action="store_true", help="用 D2ANet 式差分注意力融合替代简单拼接（E15）")
 
     args = ap.parse_args()
     if args.command == "train":

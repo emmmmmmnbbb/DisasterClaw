@@ -26,7 +26,7 @@ from perception import (
 )
 from semantic_map import SemanticMap
 from stmr_matrix import build_stmr
-from hspm_planner import HspmConfig, HspmNavigator
+from hspm_planner import HspmConfig, HspmNavigator, OroiScoreWeights
 from recheck import RecheckConfig, RecheckController
 from memory_graph import MemoryGraph, text_match_scorer
 from vlm_analyzer import VLMAnalyzer
@@ -882,13 +882,26 @@ VLN_PLANNER = (os.getenv("VLN_PLANNER", "legacy") or "legacy").strip().lower()
 # C3（非 headline，P4.5「B1 + OROI-Score」消融行）：HSPM 未见子目标时的方位选择从
 # "LLM 自由选一个"换成"LLM打分+方向先验+未探索区域增益"三路信号融合，默认关。
 VLN_OROI_SCORE = os.getenv("VLN_OROI_SCORE", "0").strip().lower() in {"1", "true", "yes", "on"}
+# E12 扩展：三路信号权重可调（默认对齐 OroiScoreWeights 的 0.5/0.2/0.3）。把三个权重
+# 设成 (0,0,1) 即退化成经典 Frontier-Based Exploration（Yamauchi 1997：永远朝"未探索
+# 覆盖增益"最大的方向走）——作为 E12 除"自由选择/打分融合"外的第三档、来自主流探索
+# 文献的标准基线，而不是自造的对照。
+VLN_OROI_W_LLM = float(os.getenv("VLN_OROI_W_LLM", "0.5"))
+VLN_OROI_W_PRIOR = float(os.getenv("VLN_OROI_W_PRIOR", "0.2"))
+VLN_OROI_W_FRONTIER = float(os.getenv("VLN_OROI_W_FRONTIER", "0.3"))
 # HSPM 的 STMR 文字矩阵窗口（米）与网格数；越大视野越广但 token 越多。
 HSPM_STMR_WINDOW_M = float(os.getenv("HSPM_STMR_WINDOW_M", "200"))
 HSPM_STMR_GRID_N = int(os.getenv("HSPM_STMR_GRID_N", "20"))
 # P2：灾情不确定性驱动主动复核（默认关，VLN_RECHECK=1 开）。
 VLN_RECHECK = os.getenv("VLN_RECHECK", "0").lower() in {"1", "true", "yes", "on"}
-VLN_RECHECK_DESCEND_M = float(os.getenv("VLN_RECHECK_DESCEND_M", "20"))
-VLN_RECHECK_ALT_MIN_M = float(os.getenv("VLN_RECHECK_ALT_MIN_M", "30"))
+# 已知问题修复（E11 实测发现，2026-07）：巡航高度 DEFAULT_HOVER_ALTITUDE_M=30m 恰好等于
+# 旧默认的复核高度下限 30m，导致 recheck.py 里 `alt <= alt_min_m` 从 episode 一开始就恒真——
+# 复核一旦触发，第一次 assess() 就会因为"已到高度下限"直接走"预算耗尽/到高度下限"分支直接
+# resolve，永远拿不到 kind="recheck" 的真实"降高+居中再观测"机动，且这次 resolve 的
+# before/after 是同一次观测（reduction 恒为 0）。改成 10m 后，30m 巡航高度下有 20m 真实可降
+# 的空间，配合 descend_step_m=10m 可以真正做两步"逼近观测"再收尾，ΔU 才有意义可算。
+VLN_RECHECK_DESCEND_M = float(os.getenv("VLN_RECHECK_DESCEND_M", "10"))
+VLN_RECHECK_ALT_MIN_M = float(os.getenv("VLN_RECHECK_ALT_MIN_M", "10"))
 VLN_RECHECK_MAX = int(os.getenv("VLN_RECHECK_MAX", "2"))          # 同一位置最多复核次数
 VLN_RECHECK_MAX_TOTAL = int(os.getenv("VLN_RECHECK_MAX_TOTAL", "8"))  # 单 episode 复核机动总上限
 # P5（升级接口落地，仍是 C2 的实现细节，非新增贡献）：
@@ -1086,6 +1099,9 @@ def _make_hspm_navigator() -> HspmNavigator:
             max_step_m=VLN_MAX_STEP_M,
             explore_step_m=VLN_EXPLORE_STEP_M,
             use_oroi_score=VLN_OROI_SCORE,
+            oroi_weights=OroiScoreWeights(
+                llm=VLN_OROI_W_LLM, prior=VLN_OROI_W_PRIOR, frontier=VLN_OROI_W_FRONTIER,
+            ),
         ),
         grounder=grounder,
         llm_chat=llm_chat,
@@ -1678,11 +1694,16 @@ def run_vln_episode(instruction: str, source: str = "ai") -> dict | None:
 
         summary = navigator.summarize(arrived, final_snap)
         if rechecker is not None:
+            # episode 到这里就要收尾了：把仍"复核中"但没等到正式定论的位置（常见
+            # 于到达终点/步数耗尽打断复核循环）按最新观测补记账，避免 ΔU 统计
+            # 系统性地丢掉这部分样本（E11 实测发现，见 recheck.py 顶部说明）。
+            rechecker.finalize()
             rstats = rechecker.stats()
             if rstats["resolved"] or recheck_total:
                 summary += (
                     f" 复核 {recheck_total} 次机动、定论 {rstats['resolved']} 处"
-                    f"（确认 {rstats['confirmed']} / 排除 {rstats['dismissed']} / 存疑 {rstats['inconclusive']}），"
+                    f"（确认 {rstats['confirmed']} / 排除 {rstats['dismissed']} / 存疑 {rstats['inconclusive']}"
+                    f" / episode 结束时未收尾 {rstats['episode_end_pending']}），"
                     f"平均不确定性下降 {rstats['avg_uncertainty_reduction']}。"
                 )
         # 收尾写一条 world report，让地图落一个标记点

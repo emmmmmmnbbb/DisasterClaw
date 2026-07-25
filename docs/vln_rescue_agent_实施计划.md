@@ -320,6 +320,7 @@ perception 已有 `.get(raw, raw)` 兜底，grounding 按中文类匹配，**无
 | B2 +复核 | B1 + `VLN_RECHECK=1` | H2 |
 | B3 full | B2 + `VLN_MEMORY=1` | H3 |
 | B1 + OROI-Score | B1 + `VLN_OROI_SCORE=1` | C3 工程改进消融（非 headline，见 E12） |
+| B1 + FBE（纯几何基线） | B1 + `VLN_OROI_SCORE=1` 三路权重设为 `(0,0,1)` | 经典 Frontier-Based Exploration 对照（见 E12） |
 
 - grounding 维度：`VLN_GROUNDER ∈ {yolo, vlm, hybrid}` 交叉对比（H 系列默认固定一种，单列 grounding 对比表）。
 - OROI 打分融合（借鉴 Say-REAPEx 的打分式动作选择）：HSPM 的 `reason_oroi` 原本让 LLM 在八方位里"自由选一个"，改为对 8 个方位分别用「LLM affordance + 方向先验一致度 + 未探索区域增益」三路信号加权打分再取最大，`VLN_OROI_SCORE=1` 开启。这是 C3（HSPM 运动层）的工程改进，**不作为独立 contribution**，只作为消融条目验证是否缓解 hard/多地标题绕远的问题。
@@ -414,13 +415,27 @@ perception 已有 `.get(raw, raw)` 兜底，grounding 按中文类匹配，**无
 
 结论符合预期：温度标定把 ECE 降了 ~39%（test）/ ~34%（holdout），Brier/NLL 同步下降，Acc 不变（标定只重塑分布形状，不改 argmax，符合定义）。跨灾害 holdout 上标定收益同样成立，说明温度标定不是过拟合到训练时见过的灾害类型。**注意**：这里的模型训练时用的子采样训练集未做 tier3 灾种排除（与 E13 的 YOLO 检测器同一限制），holdout 数值是"标定流程在跨灾害数据上的演示"而非严格 unseen 泛化实验；严格版本需要用排除 holdout 灾种后的训练集重训 `change_perception`，留作后续工作。产物：`runs/benchmarks/calibration/{test,holdout}_{summary.json,reliability.png}`。
 
+**E10b — 温度标定 vs MC-Dropout vs Deep Ensemble（对应"用算法改动超越" baseline 调研）** ✅ 已完成（2026-07-25）
+
+- 想搞清楚：E10 只验证了"温度标定比不标定好"，但文献（Ovadia et al. 2019《Can You Trust Your Model's Uncertainty?》、Lakshminarayanan et al. 2017 Deep Ensembles）指出温度标定只是最轻量的后处理手段，MC-Dropout / Deep Ensemble 通常校准质量更好。调研后把这两个方法接入同一套 `calibration_bench.py` 评测流程，在完全相同的 test/holdout 子集上直接对比。
+- 怎么做：① **MC-Dropout**（Gal & Ghahramani 2016）：给 `ChangeMultiTaskNet` 两个头加 `dropout_p=0.3`（`--dropout` 开关），训练方式不变，推理时保持 Dropout 随机采样、其余层仍用 eval 统计量，跑 T=30 次前向，在概率空间取平均；② **Deep Ensemble**（Lakshminarayanan et al. 2017）：额外训练 2 个不同 `--seed` 的独立模型（连同 baseline_seed0 共 K=3 个成员），每个成员用自己学到的温度做 softmax 后在概率空间取平均（Ovadia et al. 推荐的 pool-then-average 做法，而不是共享一个温度）。
+- **实测结果**（同一 baseline_seed0 作为单模型对照，E15 用的同一批 test=21717/holdout=69307 子集）：
+
+| 方法 | test Acc | test ECE | holdout Acc | holdout ECE |
+|---|---|---|---|---|
+| 单模型 + 温度标定（E10 做法） | 0.548 | 0.1129 | 0.521 | 0.1494 |
+| MC-Dropout（T=30 次前向）+ 温度标定 | 0.508 | 0.1327 | 0.527 | 0.1409 |
+| **Deep Ensemble（K=3，各自标定后取平均）** | **0.553** | **0.0909** | **0.534** | **0.0961** |
+
+- **结论**：三者里 **Deep Ensemble 全面最优**——Acc 和 ECE 在 test/holdout 上都优于单模型温度标定（test ECE 降 19%、holdout ECE 降 36%），和文献结论完全一致，代价是要独立训练/保存/推理 K 个模型（本次 K=3，训练成本 3 倍）。**MC-Dropout 没有体现出预期优势**：test 上 Acc 反而下降（0.548→0.508，dropout 在小模型上对同域拟合有一定损伤），ECE 也没有比单纯温度标定更好（0.1327 > 0.1129）；只在 holdout 上 ECE 略有改善（0.1409 vs 0.1494）。如实报告这个"MC-Dropout 不如预期"的中性结果：dropout_p=0.3、T=30 次前向是本次固定的超参组合，MC-Dropout 对 dropout 率/次数比较敏感，不能排除调参后表现更好的可能，但至少在当前设置下，**温度标定仍是"性价比"最高的选项，Deep Ensemble 是"效果优先"时的更优替代**，而不是无脑三选一都要上。产物：`backend/outputs/change_perception/{ensemble_seed1,ensemble_seed2,mc_dropout}.pt`、`runs/benchmarks/calibration_e10b/`。
+
 **E11 — 复核策略六选一（对应 P5，深化 E3）** ✅ 已完成（2026-07-11，n=40/档，`vln_testset.json`，grounder=vlm）
 
 - 想搞清楚：到底哪种复核策略最值。
 - 怎么做：固定 B1+复核开启，`VLN_RECHECK_TRIGGER`/`VLN_UNCERTAINTY_MODE` 组合出六档：不复核 / 随机复核 / 固定降高 / 现有启发式阈值 / 校准熵阈值 / 信息增益驱动（`recheck.py` 新增 `trigger_mode="fixed"/"random"` 支持这两档对照基线）。
 - 看哪些数：复核前后判定准确率变化、每多花一步换来的准确率增益、错误停止率、风险-覆盖率曲线——不只看 ΔU。
 - 期望结论：信息增益驱动版本在"准确率增益/步数"上优于阈值版本，阈值版本优于随机/固定档。
-- **实测结果**：
+- **第一版实测结果（2026-07-11，ΔU 恒为 0，事后查出是 bug）**：
 
 | 配置 | SR | semSR | NE(m) | SPL | Steps | ΔU | judge_acc |
 |---|---|---|---|---|---|---|---|
@@ -431,7 +446,46 @@ perception 已有 `.get(raw, raw)` 兜底，grounding 按中文类匹配，**无
 | 校准熵阈值 | 0.025 | 0.075 | 268.8 | 0.025 | 6.20 | 0 | 0.036 |
 | 校准熵+信息增益 | 0.025 | 0.100 | 271.0 | 0.025 | 6.23 | 0 | 0.036 |
 
-bootstrap 95% CI + 配对置换检验（`bench_report.py`）：六档两两 SR 差异全部**不显著**（p 全部 ≥ 0.51，n=40 时置信区间宽达 [0,0.18]）——**没有支持"信息增益驱动更优"这个预期结论**，n=40 下六档几乎不可分。更值得记录的反而是一个**方法论发现**：六档 ΔU（`avg_uncertainty_reduction`）全部恒为 **0.0**，不是"下降很小"而是字面上的零。排查后确认原因是统计口径问题而非复核没生效：当前 `RecheckController.stats()` 只在某次复核循环真正走到 `kind="resolve"`（confirmed/dismissed/inconclusive）时才把 `reduction` 记进 `resolved_log`；而本次 40 题的平均步数只有 5~6 步，复核-居中-再观测的循环经常还没跑到 resolve 就已经到达终点或耗尽 step budget，于是 `resolved_log` 为空、平均值退化成 0.0 的默认值。这解释了原始问题里提到的"复核的 ΔU≈0"——**不是不确定性没有下降，而是当前的统计口径没有捕捉到"未 resolve 的复核"里的下降**。这是一个明确的后续修复点（P5 遗留问题，见下方"待确认"更新）：应改成"每次复核机动前后都记一次 unc 差值"而不是"只在 resolve 时记一次"。judge_acc 上固定降高档反而最高（0.071），但样本太小（每档仅个位数 judge_ok 非空样本），不建议据此下结论。产物：`runs/benchmarks/20260711_185109_e11a/`（前四档）+ `runs/benchmarks/20260711_194030_e11b/`（entropy/infogain 两档，需要 P5 训练好的 `change_perception` checkpoint），`bench_report.py` 已支持跨 run 合并出六档对比表。
+bootstrap 95% CI + 配对置换检验（`bench_report.py`）：六档两两 SR 差异全部**不显著**（p 全部 ≥ 0.51，n=40 时置信区间宽达 [0,0.18]）——**没有支持"信息增益驱动更优"这个预期结论**，n=40 下六档几乎不可分。更值得记录的反而是一个**方法论发现**：六档 ΔU（`avg_uncertainty_reduction`）全部恒为 **0.0**，不是"下降很小"而是字面上的零。产物：`runs/benchmarks/20260711_185109_e11a/`（前四档）+ `runs/benchmarks/20260711_194030_e11b/`（entropy/infogain 两档）。
+
+- **第二版实测结果（2026-07-12，修复两个 ΔU bug 后重跑，n=40/档不变）**：
+
+| 配置 | SR | semSR | NE(m) | SPL | Steps | ΔU(聚合) | judge_acc |
+|---|---|---|---|---|---|---|---|
+| E11_NONE 不复核 | 0.025 | 0.075 | 268.8 | 0.025 | 6.20 | — | 0.036 |
+| E11_RANDOM 随机复核 p=0.5 | 0.075 | 0.200 | 209.5 | 0.044 | 5.20 | -0.0 | 0 |
+| E11_FIXED 固定降高 | 0.050 | 0.150 | 227.6 | 0.043 | 5.60 | 0.0 | 0.034 |
+| E11_HEURISTIC 现有启发式 | 0.075 | 0.150 | 226.1 | 0.044 | 5.50 | 0.0 | 0 |
+| E11_ENTROPY 校准熵阈值 | 0.025 | 0.075 | 270.4 | 0.025 | 6.475 | 0.0 | 0.036 |
+| E11_INFOGAIN 校准熵+信息增益 | 0.075 | 0.125 | 184.7 | 0.068 | 4.825 | 0.0 | 0.033 |
+
+bootstrap 95% CI + 配对置换检验：六档两两 SR 差异仍全部**不显著**（p 全部 ≥ 0.49），SR/NE 数字与修复前几乎没变（符合预期，两个 bug 影响的只是 ΔU 统计，不影响导航决策本身）。**聚合 ΔU 看上去仍然约等于 0，但这次不是 bug，是被稀释了**：逐题查 `episodes.jsonl` 发现，40 题里**只有 1 题**（`midwest-flooding_00000400_post_disaster__4790`）在探索过程中真的检测到过受灾证据、触发了复核，其余 39 题全程 `risk_level="none"`，对该题贡献的 ΔU 恒为 0——40 个数取平均，1 个非零值自然被抹平成"0.0"。**只看这唯一命中证据的题，四种"有真复核"的档位显示出清晰的梯度**：
+
+| 配置 | 该题 ΔU（唯一命中证据的样本） |
+|---|---|
+| E11_RANDOM（随机） | -0.007（复核后反而更不确定） |
+| E11_FIXED（固定降高，无信号） | 0.001 |
+| E11_HEURISTIC（heuristic 查表） | 0.001 |
+| E11_ENTROPY（校准熵阈值） | 0.011 |
+| E11_INFOGAIN（校准熵+信息增益） | 0.013 |
+
+这个梯度**方向符合最初的假设**：校准概率（entropy/infogain）比 heuristic 查表对"降高看得更清楚"这件事更敏感，随机复核（不看任何信号）甚至可能变差。但样本量是 **n=1**，只能当作"修复生效、方向正确"的定性证据，不能作为统计意义上的结论——真正验证需要一个"受灾证据出现率更高"的题库（当前 40 题库里 97.5% 的题全程无证据，复核这条支线几乎没有被真正考验过）。产物：`runs/benchmarks/20260712_002632_e11c_*/`（NONE/RANDOM/FIXED/HEURISTIC）+ `runs/benchmarks/20260712_011133_e11c_*/`（ENTROPY/INFOGAIN），合并报告 `runs/benchmarks/e11c_六档汇总报告.md`。
+
+**ΔU=0 根因排查（2026-07-11 复盘，两层问题，均已修复代码，未重跑六档实验）：**
+
+最初怀疑是纯统计口径问题（"未 resolve 的复核不计入平均值"），已修复（见下），但补丁后拿真实 episode 重新抽样验证时发现 ΔU 依然是 0——说明**真正的根因在更上游**：
+
+1. **根因（主要）：巡航高度=复核高度下限，复核从触发起就"没有降的空间"。** `app.py` 的 `DEFAULT_HOVER_ALTITUDE_M=30.0` 恰好等于旧默认的 `VLN_RECHECK_ALT_MIN_M=30.0`。`recheck.py` 里判断"到高度下限"的条件是 `alt <= alt_min_m`，episode 全程巡航高度都是 30m，所以这个条件从第一次 `assess()` 起就恒为真——复核证据一旦出现，直接走"预算耗尽/到高度下限"分支**立即 resolve**，根本拿不到 `kind="recheck"` 的真实"降高+居中"机动；而这次 resolve 的 before/after 又是同一次观测（还没来得及降高看清楚），reduction 自然恒为 0。**修复**：把 `VLN_RECHECK_DESCEND_M` / `VLN_RECHECK_ALT_MIN_M` 默认值从 30/20 改成 10/10（`backend/app.py`、`backend/recheck.py` 的 `RecheckConfig` 默认值同步改），30m 巡航高度下留出 20m 真实可降空间，够两步各降 10m 后再收尾。
+2. **次要（统计口径，已一并修复，防御性加固）：episode 常在复核循环走到正式 resolve 之前就结束**（到达终点/步数耗尽打断），导致 `resolved_log` 漏记这部分样本。`RecheckController` 新增 `finalize()`：episode 收尾时把仍"复核中"但没等到定论的位置，按最新一次观测补记一笔账（status="episode_end"，不计入 confirmed/dismissed/inconclusive，但计入 `avg_uncertainty_reduction`），`app.py` 在写 `summary`/`report` 前调用一次。单测见 `test_finalize_flushes_pending_reduction` / `test_finalize_uses_latest_observation`。
+
+**修复后的实测验证**（`trigger_mode="fixed"` + 修复后默认值，抽样 16 题里恰好命中 1 题有真实受灾证据 `midwest-flooding_00000400_post_disaster__4790`）：
+```
+{'resolved': 8, 'confirmed': 2, 'dismissed': 0, 'inconclusive': 1,
+ 'episode_end_pending': 5, 'avg_uncertainty_reduction': 0.001, 'pending': 0}
+```
+两点确认：① `resolved=8` 里有 `episode_end_pending=5`——如果没有 `finalize()` 补丁，这 5 条会直接从统计里消失；② `avg_uncertainty_reduction` 从恒为 0.0 变成 **0.001**（非零但很小）——说明高度下限修好后复核机制真的能跑出"降高→再观测→resolve"的完整链路，但 heuristic 不确定性公式（risk 暧昧度 + 1-conf）对"降到 10m 后看得更清楚"这件事本身不敏感，降高带来的置信度提升幅度有限。**这不再是"统计口径 bug"或"配置死锁"，而是一个更真实的、值得在 entropy/校准概率模式下重新检验的效果量问题**——加上 `VLN_CHANGE_PERCEPTION` 的校准熵/信息增益模式，理论上应该比 heuristic 公式对分辨率变化更敏感，值得优先重跑 E11_ENTROPY/E11_INFOGAIN 两档验证。
+
+**尚未做的事（已更新为第二版结果之后的后续项）**：两个 bug 已修复、六档已重跑完并写进上面的第二版结果表；下一步不是再重跑同一份 40 题库（几乎必然还是只命中 1 题），而是①**构造一个"受灾证据出现率更高"的小题库**（比如直接挑 xBD 里 major/destroyed 密度高的瓦片、缩短起点-目标距离，让探索过程更容易撞见受损建筑），专门用来给 ΔU/复核策略做统计意义上的对比，和现有面向 SR/NE 的题库分开维护；②在这个新题库上重跑六档，届时才适合再做一次 bootstrap CI/配对检验来判断"entropy/infogain 显著优于 heuristic/random"这个方向性发现是否成立；③把 `stats()` 增加"按是否命中过 `EVIDENCE_CLASSES` 分层"的口径，避免以后又被"全程无证据"的样本稀释成 0。
 
 **E12 — OROI 打分 vs 自由选择 A/B（对应 P4.5 新增行，C3 工程改进）** ✅ 已完成（2026-07-11，n=40/档）
 
@@ -440,6 +494,16 @@ bootstrap 95% CI + 配对置换检验（`bench_report.py`）：六档两两 SR �
 - 看哪些数：重点看 E8 难度分桶里 hard 桶的 NE/Steps 有没有收窄（当前 B1 hard NE≈291m vs B0≈143m）。
 - 期望结论：打分版本 hard 桶 NE 下降，但这是 C3 的工程改进证据，不写进 contribution 列表。
 - **实测结果**：整体 SR 0.050→0.075、SPL 0.043→0.071 有小幅提升，但 semSR 反而下降（0.150→0.100），NE 变差（170→203m）；bootstrap 配对检验 ΔSR 不显著（p=1）。难度分桶：**hard 桶并未如预期收窄**（OFF 181.7m vs ON 189.1m，几乎没变化甚至略差），反倒是 medium 桶 SR 从 0.167 升到 0.25。跨灾种拆解显示效果方向在不同灾害间也不一致（`mexico-earthquake` 上 SR 0→0.33，`hurricane-michael` 上几乎不变）。**结论**：n=40 下看不出 OROI 打分对 hard/多地标题有稳定收益，原始假设（收窄 hard NE）未被证实；维持"非 headline、写成消融行"的定位是对的，且应在文字里如实报告这个中性/混合结果，而不是只挑 SR/SPL 的好看数字。产物：`runs/benchmarks/20260711_185120_e12/`。
+
+- **新增第三档 E12_FBE（对标主流探索文献的标准基线）** ✅ 已完成（2026-07-25，n=40，`vln_testset.json`，grounder=vlm）：调研 ObjectNav/主动探索文献后发现，之前的 E12 只对比了"LLM 自由选择"与"打分融合"两档，缺一个来自经典机器人学的标准基线——**Frontier-Based Exploration**（Yamauchi 1997：永远朝"未探索覆盖增益"最大的方向走，完全不依赖任何语言/语义信号）。做法：把 `score_oroi` 的三路权重设成 `(llm=0, prior=0, frontier=1)`，复用已有的 `SemanticMap.frontier_score` 探针，且权重为 0 时直接跳过 LLM 调用（不是"权重恰好乘 0"，是让基线在算法定义上就不依赖 LLM）。
+
+| 配置 | 说明 | n | SR | semSR | NE(m) | semNE(m) | SPL | Steps |
+|---|---|---|---|---|---|---|---|---|
+| E12_OFF | OROI 自由选择（=B1） | 40 | 0.050 | 0.150 | 170.351 | 145.054 | 0.043 | 4.875 |
+| E12_ON | OROI 打分融合 | 40 | 0.075 | 0.100 | 203.041 | 183.083 | 0.071 | 5.425 |
+| E12_FBE | 纯 Frontier-Based Exploration | 40 | 0.025 | 0.050 | 389.14 | 341.978 | 0.022 | 6.475 |
+
+**结论**：纯 FBE 是三档里最差的——SR/semSR 最低，NE/semNE 几乎是另外两档的 2 倍，Steps 最多（说明走了更多弯路却更难命中目标）。这个结果符合直觉但仍值得写进论文：**"最大化未探索覆盖"本身不是一个面向目标的信号**——它只会让无人机均匀地探索全图，而不会像 LLM 自由选择或 OROI 打分那样，哪怕只是模糊地"朝已发现的受损建筑方向"或"朝语义先验方向"走。这为本项目在 exploration 阶段引入语言/语义信号（而不是纯几何覆盖）提供了一个来自标准基线的负向对照证据：不加语义引导的经典探索算法在"找特定语义目标"这个任务上明显更差，从而间接支撑 C3（HSPM 三层规划 + OROI 语义打分）存在的必要性。产物：`runs/benchmarks/20260725_153648_e12_fbe/`。
 
 **E13 — 跨灾种泛化 + 规模统计检验（对应 P6）** ✅ 已完成（2026-07-11）
 
@@ -457,6 +521,50 @@ bootstrap 95% CI + 配对置换检验（`bench_report.py`）：六档两两 SR �
 | B3 | 0.033 (0.000, 0.100) | 30 |
 
 六对两两配对检验全部不显著（p≥0.5）。**结论方向与原 40 题 E1 一致**（B1/B2/B3 相对 B0 都没有稳定的 SR 提升，B2 这次甚至是 0），进一步坐实了"不能把 HSPM/复核/记忆当作稳定提升 SR 的 headline 结论"这一判断——这恰恰是本轮把核心贡献收窄到 C2（且 C2 的证据应看 judge_acc/效率而不是裸 SR）的依据。受时间/共享 GPU 资源限制，本次只跑了 240 题里的 30×4=120 题（而不是全部 240×4），置信区间比原计划窄化的目标（200~500 题全跑）弱一些，跑满全量题库留作后续工作。产物：`runs/benchmarks/20260711_185454_e13scale/`。
+
+**E14 — 跨数据集泛化：xBD 训练的检测器搬到真实无人机影像上还灵不灵（对应"增强学术性"调研）** ✅ 已完成（2026-07-25）
+
+- 想搞清楚：E13 的"跨灾害"其实是 xBD 内部换灾种（同一卫星正射视角、同一套标注规范），学术上更硬的证据是换一个**完全独立的第三方数据集**——不同传感器/视角（低空无人机 vs 卫星）、不同灾害事件、不同标注团队。调研后选定两个类别体系与 xBD 4 类损伤直接可对齐/部分可对齐的公开数据集：
+  - **RescueNet**（Rahnemoonfar et al., *Scientific Data* 2023）：Hurricane Michael 低空无人机斜拍，10 类像素级分割，含与 xBD 完全一致的 4 档建筑损伤（No/Minor/Major-Damage + Total-Destruction）。
+  - **FloodNet**（Rahnemoonfar et al., *IEEE Access* 2021）：Hurricane Harvey 低空无人机斜拍，仅 2 档建筑标签（Flooded/Non-Flooded），语义比 xBD 粗（"被水淹"≠"结构性损毁"）。
+  - **BRIGHT**（Chen et al., *ESSD* 2025，14 个全球灾害事件、光学+SAR 双模态）调研后判定**不适合**直接接入现有 pipeline：它是"灾前光学+灾后 SAR"配对，而不是 xBD/本项目用的光学-光学双时相，SAR 图像不能直接喂给 RGB 检测器/变化感知模型，接入需要额外训练 SAR 域模型，超出"跑一次跨数据集验证"的范畴——已归入 related work 引用（第六节相关工作定位），未落地实验。
+- 怎么做（两个子实验，脚本均新增在 `scripts/training/` + `scripts/benchmarks/`）：
+  - **E14a（RescueNet，标准 mAP）**：`gen_rescuenet_yolo_testset.py` 把 RescueNet 测试集 450 张 mask（像素值 2~5 对应 4 档损伤）按连通域转成 YOLO 检测框（**注**：RescueNet 无实例级标注，"每个连通域一个框"是该数据集标注粒度本身的限制，非本脚本近似误差），零样本（不重新训练）跑 `xbd_yolov8s_1024` 的 `model.val()`。
+  - **E14b（FloodNet，证据敏感度）**：因 FloodNet 标签体系更粗，不硬凑 4 类跑 mAP（会引入语义不一致的假结论），改用 `gen_floodnet_yolo_testset.py` + `eval_floodnet_evidence.py` 检验一个更具体、更贴合 C2 主线的问题——检测器对 IoU 匹配到的 flooded 建筑，判成"有损伤类"（minor/major/destroyed 任一）的比例，是否明显高于 non-flooded 建筑；这直接对应 `backend/recheck.py` 的 `EVIDENCE_CLASSES` 假设（"水/受损同属风险证据"）能否在训练域外的真实无人机影像上站得住。
+- 期望结论：mAP 会低于 xBD 同源 test（跨域是常识），但如果保持一定水平/证据敏感度方向正确，仍是有价值的泛化证据；如果崩到几乎 0，则如实报告"域差主导，尚不具备跨视角泛化能力"。
+- **实测结果 E14a（RescueNet，330/450 张含建筑损伤框，1115 个框）**：
+
+| 子集 | n(图) | 类别数 | mAP50 | mAP50-95 |
+|---|---|---|---|---|
+| xBD test（同源，E13①） | 739 | 4 | 0.368 | 0.176 |
+| xBD holdout（跨灾害，同数据集，E13①） | 1223 | 4 | 0.381 | 0.206 |
+| **RescueNet test（跨数据集+跨视角，零样本）** | 330 | 4 | **0.021** | **0.014** |
+
+逐类 mAP50：no-damage 0.074 / minor-damage 0.003 / major-damage 0.007 / destroyed 0.00001——**几乎完全崩溃**，相对 xBD 同源 test 暴跌 94%（0.368→0.021）。这与文档已记录的"旧 RescueNet 权重在 xBD 上检出≈0"（第 251~254 行）方向完全对称：**卫星正射视角（xBD）与低空斜拍视角（RescueNet）之间存在双向、几乎不可逾越的域差**，用其中一个视角训练的检测器不能指望零样本迁移到另一视角。这个负面结果本身有学术价值——它是"为什么本项目要做 Bird's-eye VLN 而不是直接复用第一视角/低空无人机检测器"这一问题定义（C1）的一条直接实证支撑，应写进 related work 或 limitation。
+
+- **实测结果 E14b（FloodNet，199 张、604 个 flooded + 657 个 non-flooded 建筑框）**：
+
+| 建筑类别 | GT 总数 | 定位召回（IoU≥0.3） | 命中框中判成"有损伤类"的比例 |
+|---|---|---|---|
+| flooded（真实被淹） | 604 | 67.2% | **0.49%** |
+| non-flooded（真实未淹） | 657 | 37.7% | 4.03% |
+
+两个反直觉的发现，如实记录：① 定位召回本身不算差（flooded 67%），说明检测器的"建筑候选框定位"能力有一定跨视角保留，问题主要在**损伤分类头**；② 损伤分类完全没有跨域迁移——不仅 flooded 建筑几乎全被判成 no-damage（仅 0.49% 判成有损伤类），non-flooded 建筑判成"有损伤"的比例反而更高（4.03% vs 0.49%），方向与假设**相反**。说明检测器在域外数据上的分类头基本退化成"默认输出 no-damage"，而不是真的学到了可迁移的损伤视觉特征。这进一步印证 E10/E11 的判断：**当前 C2（不确定性驱动复核）的收益完全依赖同域检测器的分类质量**，一旦换到训练时没见过的视角/传感器，"受灾证据"这个信号源本身先失效，复核机制无从谈起——这是比"样本量不足看不出差异"更根本的一层局限，建议作为 limitation 明确写出，而不是留给审稿人自己发现。
+- **结论**：不把这个负面结果藏起来，而是正面写成"Bird's-eye VLN 问题定义（C1）"的论据之一——现有第一视角/低空无人机检测器不能直接套用到俯视灾害场景，反之亦然，这是本项目选择在 xBD 卫星正射域内训练/评测的合理性依据，而不是偷懒。后续如果要真正解决跨视角泛化，需要域适应（domain adaptation）或多视角联合训练，超出当前范围，留作后续工作。
+
+**E15 — 双时相变化感知：差分注意力 vs 简单拼接（对应"用算法改动超越 baseline" baseline 调研）** ✅ 已完成（2026-07-25）
+
+- 想搞清楚：`change_perception.py` 现有的融合方式是"直接拼接 `[f_pre,f_post,f_post-f_pre]`"，学术界的双时相变化检测 baseline 梯队（ChangeFormer/BIT/SNUNet/D2ANet）普遍认为"不加注意力的简单差分"不是最优融合方式。调研后选择 **D2ANet**（Difference-aware Attention Network，与本项目同用 xBD 建筑损伤数据）作为对标对象——同数据集、同任务，指标可直接比较，且原论文的 DTA（双时态聚合门控）+ DA（差分注意力）两个模块思路可以适配到本项目"编码器输出全局特征向量、不是卷积特征图"的架构（详见 `backend/change_perception.py` 的 `DifferenceAttention` 类注释）。
+- 怎么做：新增 `DifferenceAttention` 模块（SE-style 通道门控，先对 `f_pre`/`f_post` 联合门控再相减，再对差分结果二次门控），`--diff-attention` 开关控制，其余训练超参（6 epoch、batch=64、lr=1e-3、xBD change train=25356）与 baseline 完全一致，且**固定同一个 seed=0** 消除初始化/数据顺序的随机性干扰，只让融合方式这一个变量不同。评测走 E10 同一套流程：`xbd_change/test.jsonl`（同源，n=21717）+ `xbd_change_full/holdout.jsonl`（跨 3 种未见灾害，n=69307）。
+- **实测结果**：
+
+| 模型 | val_acc(best) | test Acc | test ECE（标定后） | holdout Acc | holdout ECE（标定后） |
+|---|---|---|---|---|---|
+| baseline（简单拼接，seed=0） | 0.756 | 0.548 | 0.1129 | 0.521 | 0.1494 |
+| **+ DifferenceAttention（D2ANet 思路，seed=0）** | 0.745 | 0.532 | 0.1382 | **0.590** | **0.0917** |
+
+- **结论（一个有取舍但方向清晰的正面结果）**：差分注意力在**同源 val/test 上略输**（val_acc -1.1pp，test Acc -1.6pp）——两个门控层增加了参数量和优化难度，同域拟合能力略有下降；但在**跨灾害 holdout 上明显更好**：Acc **+6.9pp**（0.521→0.590），标定后 ECE **降 39%**（0.1494→0.0917，比 baseline 的标定收益更大）。这与 D2ANet 论文的设计动机一致：DTA+DA 两级门控学的是"哪些特征通道对捕捉变化本身敏感"，而不是"哪些通道对同源数据的纹理/光照分布敏感"，因此更不容易过拟合到训练时见过的灾害类型的表面特征，在真正没见过的灾害上保留更多可迁移的判别信号。**这是本轮调研里唯一一个"改算法真的在关键维度上超过 baseline"的结果**（E12_FBE 是负向对照，E14 是负向发现），且超过的维度（跨灾害泛化）恰好是 E14 揭示的当前系统最大短板，建议作为论文里"算法贡献"部分的正面证据，同时如实报告同源精度的小幅取舍，不只挑好看的数字。产物：`backend/outputs/change_perception/{baseline_seed0,diff_attention_seed0}.pt`、`runs/benchmarks/calibration_e15/`。
+- **产物**：转换脚本 `scripts/training/gen_rescuenet_yolo_testset.py` / `gen_floodnet_yolo_testset.py`；评测脚本 `scripts/benchmarks/eval_floodnet_evidence.py`；结果 `runs/detect/rescuenet_zero_shot/`、`runs/benchmarks/e14_floodnet_evidence.json`；原始数据 `/home/lc/datasets/rescuenet/`、`/home/lc/datasets/floodnet/extracted/`（均已删除下载用的原始 zip，仅保留解压后的图片+标注）。
 
 **E9 — 挑几条画出来看（定性案例）** ✅ `runs/benchmarks/e9_figures/`（脚本 `plot_vln_e9.py`）
 
@@ -567,8 +675,14 @@ DisasterClaw 的问题定义（C1，Bird's-eye VLN under uncertain disaster obse
 - **BayeSiamMTL**（JAG 2025）：把校准不确定性带进了 xBD 数据集本身，产出置信度分层的损伤图，但停留在单张图的后处理，不驱动任何导航动作。
 - **AeroVerse**（TPAMI 2026）：定义了完整的 UAV agent 能力体系（感知/推理/导航/规划/决策），但场景是第一视角城市，没有灾害语义、没有双时相变化。
 - **ESARBench**（2026）：第一个具身搜救基准，但基于 UE5/AirSim 仿真环境与 GIS 建图，不是真实卫星影像；其最优基线 SR 仅 13.89%，可作为"这类任务本身就难"的外部佐证，避免本文低 SR 被误读为系统缺陷。
+- **AirNav / OpenFly / HUGE-Bench**（2025~2026，大规模航拍 VLN）：规模远超本项目（10 万级轨迹），但场景是通用城市导航/巡检，不涉及灾害语义、不涉及双时相变化检测，说明"通用航拍 VLN 数据集"覆盖不了本项目的任务需求，不是简单缝合已有 benchmark 就能得到。
+- **DisasterBench**（2026）：UAV 灾害多模态推理 benchmark，14 种灾害场景类型、9 类响应任务，但是多选 VQA 形式（问答），不驱动导航动作——停留在"看图回答"层面，没有"要不要飞近再看一眼"这个决策环节。
+- **BRIGHT**（Chen et al., *ESSD* 2025，IEEE GRSS DFC 2025 Track II 官方数据集）：目前最新、最权威的多灾害多模态（光学+SAR）建筑损伤评测集，14 个全球灾害事件，专门设计了跨事件迁移评测协议。调研后判定其"灾前光学+灾后 SAR"的配对方式与本项目"光学-光学双时相"不兼容，SAR 图像不能直接喂给现有 RGB 检测器/变化感知模型，故未接入定量实验（见 E14 说明），但其"跨事件迁移"协议设计思路值得本项目后续扩展跨传感器泛化时参考。
+- **Uncertainty-Informed Active Perception for Open-Vocabulary ObjectNav**（2025）：**方法论上与本项目 C2 最接近的工作**，同样是"感知不确定性 → 主动感知动作选择"的闭环（用 VLM 语义相似度的不确定性驱动 frontier exploration）。**必须在 related work 中正面区分**，核心差异两点：① 场景与几何约束不同——本项目的不确定性降低有明确的物理机制（降高→GSD 变细→证据置信提升，第 0 节 \(R_t,g_t\) 的单调关系），室内 ObjectNav 没有这种"分辨率随动作确定性变化"的耦合；② 不确定性来源不同——本项目用经过温度校准的双时相变化检测概率分布（第 2 节 \(U_t\)），而非 VLM 开放词汇语义相似度，前者有 E10 的 ECE/Brier/NLL 校准质量验证，后者停留在启发式相似度分数。
 
 DisasterClaw 用**真实地理配准的双时相卫星影像**替代仿真环境，是差异化卖点而非弱点，应在 related work 中明确写出这条对比。
+
+**理论脉络补充**（不确定性驱动主动感知的数学传统）：本项目 P5"升级接口"里的信息增益触发算子（\(a_t^\star=\arg\max_a[H(P_t)-\mathbb E H(P_{t+1}^a)]\)）并非凭空设计，而是 **Bajcsy（1988，*Active Perception*，主动感知奠基性工作）** 定义的感知-动作闭环，在 **POMDP-IR / AP²-POMDP**（信息增益驱动的感知动作选择框架，IJCAI 2019 等）框架下针对"俯视灾害场景"的一个确定性代理实现——写作时补一句理论溯源，能让 P5 的公式化显得有学术脉络支撑，而不是像临时发明的启发式。
 
 ---
 
