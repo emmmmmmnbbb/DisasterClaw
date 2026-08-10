@@ -197,6 +197,7 @@ class RecheckController:
         # key=量化位置 → {count, unc0, label}
         self._state: dict[tuple[int, int], dict] = {}
         self.resolved_log: list[dict] = []  # 供报告/评测：每次定论的不确定性下降
+        self.trigger_count = 0  # 本 episode 新触发复核的位置数（按量化位置/闭环计）
         self._rng = random.Random(self.config.random_seed)  # trigger_mode="random" 专用
 
     def _key(self, lat: float, lon: float) -> tuple[int, int]:
@@ -236,8 +237,14 @@ class RecheckController:
         patch_width: int,
         patch_height: int,
         degraded: bool = False,
+        allow_recheck: bool = True,
     ) -> RecheckOutcome:
-        """评估当前观测：跳过 / 触发复核机动 / 定论。"""
+        """评估当前观测：跳过 / 触发复核机动 / 定论。
+
+        allow_recheck=False 用于 episode 的全局复核动作预算已经耗尽时：仍接收并
+        记账最后一次机动后的新观测，但不再发出新机动。已有 pending 闭环会以
+        inconclusive/confirmed 正式收尾；尚未触发的位置直接跳过。
+        """
         cfg = self.config
         conf, label, bbox, class_probs = best_evidence(detections)
         has_detection_evidence = bool(label)
@@ -275,21 +282,32 @@ class RecheckController:
 
         # ── 2) 可疑且没把握 ─────────────────────────────────────────
         if rec is None:
+            if not allow_recheck:
+                return RecheckOutcome(
+                    kind="skip", uncertainty=unc, label=label,
+                    reason="episode 复核动作总预算已耗尽，不再触发新复核。",
+                )
             rec = {"count": 0, "unc0": unc, "unc_latest": unc, "label": label, "lat": lat, "lon": lon}
             self._state[key] = rec
+            self.trigger_count += 1
         else:
             # 持续刷新"最新观测"，供 finalize() 在 episode 提前结束时补记账用。
             rec["unc_latest"] = unc
             rec["lat"], rec["lon"] = lat, lon
 
         at_alt_floor = alt <= cfg.alt_min_m + 1e-6
-        if rec["count"] >= cfg.max_rechecks or at_alt_floor:
+        if rec["count"] >= cfg.max_rechecks or at_alt_floor or not allow_recheck:
             # 预算耗尽 / 到高度下限 → 收尾定论
             before = rec["unc0"]
             reduction = round(before - unc, 3)
             status = "confirmed" if (risk_level == "high" or conf >= cfg.conf_threshold) else "inconclusive"
             del self._state[key]
-            why = "到达高度下限" if at_alt_floor else "复核预算耗尽"
+            if at_alt_floor:
+                why = "到达高度下限"
+            elif not allow_recheck:
+                why = "episode 复核动作总预算耗尽"
+            else:
+                why = "复核预算耗尽"
             out = RecheckOutcome(
                 kind="resolve", uncertainty=unc, label=rec["label"] or label,
                 status=status, uncertainty_before=before, reduction=reduction,
@@ -372,12 +390,23 @@ class RecheckController:
         文档"已知问题修复"）。"""
         n = len(self.resolved_log)
         red = [r["reduction"] for r in self.resolved_log if r.get("reduction") is not None]
+        completed = sum(
+            1 for r in self.resolved_log
+            if r.get("status") in {"confirmed", "dismissed", "inconclusive"}
+        )
+        finalized_pending = sum(
+            1 for r in self.resolved_log if r.get("status") == "episode_end"
+        )
         return {
+            "triggered": self.trigger_count,
             "resolved": n,
+            "completed": completed,
             "confirmed": sum(1 for r in self.resolved_log if r.get("status") == "confirmed"),
             "dismissed": sum(1 for r in self.resolved_log if r.get("status") == "dismissed"),
             "inconclusive": sum(1 for r in self.resolved_log if r.get("status") == "inconclusive"),
-            "episode_end_pending": sum(1 for r in self.resolved_log if r.get("status") == "episode_end"),
+            "episode_end_pending": finalized_pending,
+            "finalized_pending": finalized_pending,
+            "uncertainty_reduction_sum": round(sum(red), 3),
             "avg_uncertainty_reduction": round(sum(red) / len(red), 3) if red else 0.0,
             "pending": len(self._state),
         }

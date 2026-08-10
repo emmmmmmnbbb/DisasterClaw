@@ -1,0 +1,71 @@
+\section{Implementation and Reproducibility Details}
+\label{app:implementation}
+
+\paragraph{Existing damage model.}
+The implemented dual-temporal network uses a shared ResNet-18 encoder and 96-by-96 pre/post building crops.
+The baseline concatenates both encoded features and their difference.
+The auxiliary change loss has weight 0.5.
+The recorded E10 training used six epochs and Adam with learning rate \(10^{-3}\); its learned scalar temperature was 1.668.
+These details describe the existing run and will be frozen or explicitly superseded before strict evaluation.
+
+\paragraph{Reinspection controller.}
+The controller supports heuristic, entropy-threshold, fixed, random, and information-gain trigger modes.
+It deduplicates positions through quantized geographic cells and enforces per-cell and per-episode budgets.
+The descend-and-center action is clipped to map bounds and minimum altitude.
+Terminal records include confirmed, dismissed, inconclusive, and episode-end states.
+
+\paragraph{Map and memory.}
+The semantic map maintains visible area, explored area, landmarks, candidate goals, and surrounding objects in geographic coordinates.
+For language-model queries, local cells are serialized as a compact textual grid.
+Memory stores observations and outcomes keyed by location.
+The hierarchical planner decomposes instructions into landmark-level subgoals before selecting metric waypoints.
+These components are held constant in the primary reinspection comparison.
+
+\paragraph{Strict event-disjoint data.}
+The frozen replacement split places
+\texttt{hurricane-harvey} and \texttt{mexico-earthquake} in validation;
+\texttt{hurricane-michael} and \texttt{palu-tsunami} in test; and
+\texttt{nepal-flooding}, \texttt{moore-tornado}, and
+\texttt{pinery-bushfire} in holdout.
+Training uses the twelve remaining events:
+\texttt{guatemala-volcano},
+\texttt{hurricane-florence},
+\texttt{hurricane-matthew},
+\texttt{joplin-tornado},
+\texttt{lower-puna-volcano},
+\texttt{midwest-flooding},
+\texttt{portugal-wildfire},
+\texttt{santa-rosa-wildfire},
+\texttt{socal-fire},
+\texttt{sunda-tsunami},
+\texttt{tuscaloosa-tornado}, and
+\texttt{woolsey-fire}.
+The corresponding bitemporal building counts are 143{,}230 / 73{,}859 /
+71{,}293 / 69{,}307.
+Training entry points reject any non-disjoint manifest when
+\texttt{--require-event-disjoint} is set.
+
+\paragraph{Evidence-rich reinspection subset.}
+The strict reinspection set contains 40 approved single-target episodes
+across ten events.
+Starts lie outside the 25\,m success radius and inside the default 60\,m
+observation radius.
+Approval combines contact-sheet inspection with deterministic geometry and
+no-data checks; damage severity follows xBD and is not independently
+relabeled.
+
+\paragraph{Current evidence ledger.}
+Historical E1 contains 40 instructions and one repeat per configuration; all strict-SR values are at most 0.075.
+Strict event-disjoint calibration uses 71{,}293 test and 69{,}307 holdout building crops.
+Strict baseline temperatures are \(T=1.351\) (concatenation) and \(T=1.330\) (difference attention), with best validation accuracies 0.797 and 0.795.
+Strict detector metrics are recorded in
+\texttt{runs/benchmarks/paper\_strict\_v1/yolo\_metrics.json}.
+Historical E11 contains 40 episodes per policy, but only one episode presents detected damage evidence and performs genuine reinspection.
+The manuscript does not extrapolate from that single trigger.
+
+\paragraph{Artifacts to release.}
+The reproducibility package includes event-disjoint manifests, benchmark instructions, configuration snapshots, checkpoint hashes, per-episode JSONL logs, aggregate scripts, and calibration diagrams.
+Generated paper numbers are written by
+\texttt{scripts/benchmarks/export\_paper\_assets.py} with source SHA-256 hashes in
+\texttt{paper/generated/provenance.json}.
+The strict report preserves failed and no-trigger episodes and distinguishes exploratory historical runs from frozen final runs.

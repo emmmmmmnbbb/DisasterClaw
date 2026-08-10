@@ -22,8 +22,10 @@ subtype + 二值变化标签），供 `backend/change_perception.py` 的 Dataset
 
 用法：
     python scripts/training/gen_xbd_change_dataset.py \
-        --xbd-root /home/lc/datasets/xbd --out /home/lc/datasets/xbd_change \
-        --splits train,tier3 --test-split test --val-frac 0.05 \
+        --xbd-root /home/lc/datasets/xbd --out /home/lc/datasets/xbd_change_event_v1 \
+        --splits train,tier3 --test-split test --strict-event-split \
+        --val-disasters hurricane-florence,hurricane-matthew \
+        --test-disasters hurricane-michael,joplin-tornado \
         --holdout-disasters nepal-flooding,moore-tornado,pinery-bushfire
     # 调试： --limit 200（按 tile 数限制，不是按建筑数）
 """
@@ -46,6 +48,8 @@ from gen_xbd_yolo_dataset import (  # noqa: E402
     CLASS_NAMES,
     SUBTYPE_TO_CLASS,
     disaster_of,
+    parse_disasters,
+    validate_event_subsets,
 )
 
 MIN_BOX_PX = 4.0  # 退化框（宽或高小于此值）跳过
@@ -135,16 +139,20 @@ def _write_jsonl(records: list[dict], path: Path) -> dict:
     path.parent.mkdir(parents=True, exist_ok=True)
     cls_counts = {name: 0 for name in CLASS_NAMES}
     n_changed = 0
+    disaster_counts: dict[str, int] = {}
     with path.open("w", encoding="utf-8") as f:
         for rec in records:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
             cls_counts[rec["subtype"]] = cls_counts.get(rec["subtype"], 0) + 1
             n_changed += rec["changed"]
+            disaster = rec["disaster"]
+            disaster_counts[disaster] = disaster_counts.get(disaster, 0) + 1
     return {
         "path": str(path),
         "buildings": len(records),
         "changed": n_changed,
         "class_counts": cls_counts,
+        "disaster_counts": disaster_counts,
     }
 
 
@@ -162,46 +170,136 @@ def main() -> int:
         default="nepal-flooding,moore-tornado,pinery-bushfire",
         help="同 gen_xbd_yolo_dataset.py，保持两套数据集切分一致；传空字符串关闭。",
     )
+    ap.add_argument(
+        "--strict-event-split",
+        action="store_true",
+        help=(
+            "按灾害事件严格切 train/val/test/holdout；会把 --test-split 并入候选池，"
+            "确保官方 train/test 中同名事件不会跨 subset。"
+        ),
+    )
+    ap.add_argument("--val-disasters", default="", help="严格事件模式的 val 事件（逗号分隔）。")
+    ap.add_argument("--test-disasters", default="", help="严格事件模式的 test 事件（逗号分隔）。")
     args = ap.parse_args()
 
     xbd_root = Path(args.xbd_root).expanduser().resolve()
     out_root = Path(args.out).expanduser().resolve()
+    if not xbd_root.is_dir():
+        raise FileNotFoundError(f"xBD 根目录不存在: {xbd_root}")
+    if not 0.0 < args.val_frac < 1.0:
+        raise ValueError("--val-frac 必须在 (0, 1) 内")
     out_root.mkdir(parents=True, exist_ok=True)
     rng = random.Random(args.seed)
-    holdout_disasters = {d.strip() for d in args.holdout_disasters.split(",") if d.strip()}
+    holdout_disasters = parse_disasters(args.holdout_disasters)
+    val_disasters = parse_disasters(args.val_disasters)
+    test_disasters = parse_disasters(args.test_disasters)
+    requested_groups = {
+        "val": val_disasters,
+        "test": test_disasters,
+        "holdout": holdout_disasters,
+    }
+    requested_overlaps = {}
+    requested_names = list(requested_groups)
+    for i, left in enumerate(requested_names):
+        for right in requested_names[i + 1:]:
+            shared = sorted(requested_groups[left] & requested_groups[right])
+            if shared:
+                requested_overlaps[f"{left}__{right}"] = shared
+    if requested_overlaps:
+        raise ValueError(f"--val/--test/--holdout-disasters 互相重叠: {requested_overlaps}")
 
-    pool_tiles: list[tuple[Path, str]] = []
-    holdout_tiles: list[tuple[Path, str]] = []
-    for sp in [s.strip() for s in args.splits.split(",") if s.strip()]:
+    source_splits = [s.strip() for s in args.splits.split(",") if s.strip()]
+    if args.strict_event_split:
+        if not val_disasters or not test_disasters or not holdout_disasters:
+            raise ValueError(
+                "--strict-event-split 要求显式提供非空的 --val-disasters、"
+                "--test-disasters 和 --holdout-disasters"
+            )
+        if args.test_split and args.test_split not in source_splits:
+            source_splits.append(args.test_split)
+
+    candidates: list[tuple[Path, str]] = []
+    for sp in source_splits:
         labels_dir = xbd_root / sp / "labels"
         post_paths = sorted(labels_dir.glob("*post_disaster.json")) if labels_dir.exists() else []
+        if not post_paths:
+            raise FileNotFoundError(f"split 缺少 post 标签: {labels_dir}")
         if args.limit:
             post_paths = post_paths[: args.limit]
-        for p in post_paths:
-            if disaster_of(p) in holdout_disasters:
-                holdout_tiles.append((p, sp))
-            else:
-                pool_tiles.append((p, sp))
+        candidates.extend((p, sp) for p in post_paths)
         print(f"[gen] {sp}: {len(post_paths)} tiles 扫描")
 
-    rng.shuffle(pool_tiles)
-    n_val = int(len(pool_tiles) * args.val_frac)
-    val_tiles = pool_tiles[:n_val]
-    train_tiles = pool_tiles[n_val:]
+    if args.strict_event_split:
+        known_disasters = {disaster_of(p) for p, _ in candidates}
+        missing = {
+            name: sorted(values - known_disasters)
+            for name, values in requested_groups.items()
+            if values - known_disasters
+        }
+        if missing:
+            raise ValueError(f"指定了不存在的灾害事件: {missing}")
+        subsets: dict[str, list[tuple[Path, str]]] = {
+            "train": [], "val": [], "test": [], "holdout": [],
+        }
+        for item in candidates:
+            disaster = disaster_of(item[0])
+            if disaster in holdout_disasters:
+                subset = "holdout"
+            elif disaster in test_disasters:
+                subset = "test"
+            elif disaster in val_disasters:
+                subset = "val"
+            else:
+                subset = "train"
+            subsets[subset].append(item)
+        split_audit = validate_event_subsets(subsets)
+        split_strategy = "strict_event"
+    else:
+        pool_tiles = [
+            item for item in candidates if disaster_of(item[0]) not in holdout_disasters
+        ]
+        holdout_tiles = [
+            item for item in candidates if disaster_of(item[0]) in holdout_disasters
+        ]
+        rng.shuffle(pool_tiles)
+        n_val = int(len(pool_tiles) * args.val_frac)
+        subsets = {"train": pool_tiles[n_val:], "val": pool_tiles[:n_val]}
+        if args.test_split:
+            labels_dir = xbd_root / args.test_split / "labels"
+            test_paths = sorted(labels_dir.glob("*post_disaster.json")) if labels_dir.exists() else []
+            if args.limit:
+                test_paths = test_paths[: args.limit]
+            if test_paths:
+                subsets["test"] = [(p, args.test_split) for p in test_paths]
+        if holdout_tiles:
+            subsets["holdout"] = holdout_tiles
+        event_sets = {
+            name: sorted({disaster_of(path) for path, _ in paths})
+            for name, paths in subsets.items()
+        }
+        overlaps = {}
+        names = list(event_sets)
+        for i, left in enumerate(names):
+            for right in names[i + 1:]:
+                shared = sorted(set(event_sets[left]) & set(event_sets[right]))
+                if shared:
+                    overlaps[f"{left}__{right}"] = shared
+        split_audit = {
+            "event_disjoint": not overlaps, "events": event_sets, "overlaps": overlaps,
+        }
+        split_strategy = "legacy_tile_random"
 
-    test_tiles: list[tuple[Path, str]] = []
-    if args.test_split:
-        labels_dir = xbd_root / args.test_split / "labels"
-        test_paths = sorted(labels_dir.glob("*post_disaster.json")) if labels_dir.exists() else []
-        if args.limit:
-            test_paths = test_paths[: args.limit]
-        test_tiles = [(p, args.test_split) for p in test_paths]
-
-    subsets = {"train": train_tiles, "val": val_tiles}
-    if test_tiles:
-        subsets["test"] = test_tiles
-    if holdout_tiles:
-        subsets["holdout"] = holdout_tiles
+    if args.strict_event_split:
+        occupied = [
+            str(out_root / name)
+            for name in ("train.jsonl", "val.jsonl", "test.jsonl", "holdout.jsonl", "manifest.json")
+            if (out_root / name).exists()
+        ]
+        if occupied:
+            raise FileExistsError(
+                "严格事件模式拒绝覆盖已有清单；请换一个新的 --out。"
+                f"已有文件: {occupied}"
+            )
 
     summary = {}
     for name, tiles in subsets.items():
@@ -211,9 +309,18 @@ def main() -> int:
         summary[name] = _write_jsonl(records, out_root / f"{name}.jsonl")
 
     manifest = {
+        "generator": str(Path(__file__).resolve()),
         "xbd_root": str(xbd_root),
+        "seed": args.seed,
         "class_names": CLASS_NAMES,
+        "split_strategy": split_strategy,
+        "strict_event_split": bool(args.strict_event_split),
+        "source_splits": source_splits,
+        "requested_disasters": {
+            name: sorted(values) for name, values in requested_groups.items()
+        },
         "holdout_disasters": sorted(holdout_disasters),
+        "split_audit": split_audit,
         "subsets": {k: {kk: vv for kk, vv in v.items() if kk != "path"} for k, v in summary.items()},
     }
     (out_root / "manifest.json").write_text(

@@ -29,8 +29,10 @@ scripts/training/gen_xbd_yolo_dataset.py — xBD post_disaster 标注 → YOLO �
 
 用法：
     python scripts/training/gen_xbd_yolo_dataset.py \
-        --xbd-root /home/lc/datasets/xbd --out /home/lc/datasets/xbd_yolo \
-        --splits train,tier3 --test-split test --val-frac 0.05 \
+        --xbd-root /home/lc/datasets/xbd --out /home/lc/datasets/xbd_yolo_event_v1 \
+        --splits train,tier3 --test-split test --strict-event-split \
+        --val-disasters hurricane-florence,hurricane-matthew \
+        --test-disasters hurricane-michael,joplin-tornado \
         --holdout-disasters nepal-flooding,moore-tornado,pinery-bushfire
     # 调试： --limit 200
     # 不留跨灾害集（旧行为）： --holdout-disasters ""
@@ -124,6 +126,28 @@ def disaster_of(label_path: Path) -> str:
     return _DISASTER_RE.sub("", label_path.stem)
 
 
+def parse_disasters(raw: str) -> set[str]:
+    return {d.strip() for d in raw.split(",") if d.strip()}
+
+
+def validate_event_subsets(subsets: dict[str, list[tuple[Path, str]]]) -> dict:
+    """返回事件级切分审计信息；任何事件跨 subset 出现都立即失败。"""
+    events = {
+        name: sorted({disaster_of(path) for path, _ in paths})
+        for name, paths in subsets.items()
+    }
+    overlaps: dict[str, list[str]] = {}
+    names = list(events)
+    for i, left in enumerate(names):
+        for right in names[i + 1:]:
+            shared = sorted(set(events[left]) & set(events[right]))
+            if shared:
+                overlaps[f"{left}__{right}"] = shared
+    if overlaps:
+        raise ValueError(f"事件级切分泄漏：{overlaps}")
+    return {"event_disjoint": True, "events": events, "overlaps": overlaps}
+
+
 def _emit(
     label_paths: list[tuple[Path, str]],  # (label_path, src_split)
     xbd_root: Path,
@@ -140,6 +164,7 @@ def _emit(
     n_box = 0
     n_empty = 0
     cls_total: dict[str, int] = {}
+    disaster_counts: dict[str, int] = {}
     for label_path, src_split in label_paths:
         if limit and n_img >= limit:
             break
@@ -161,6 +186,8 @@ def _emit(
         (lab_dir / f"{tile_id}.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
         n_img += 1
         n_box += len(lines)
+        disaster = disaster_of(label_path)
+        disaster_counts[disaster] = disaster_counts.get(disaster, 0) + 1
         for k, v in counts.items():
             cls_total[k] = cls_total.get(k, 0) + v
     return {
@@ -169,6 +196,7 @@ def _emit(
         "boxes": n_box,
         "skipped_empty": n_empty,
         "class_counts": cls_total,
+        "disaster_counts": disaster_counts,
     }
 
 
@@ -190,43 +218,143 @@ def main() -> int:
             "tier3 全部并入训练池）。"
         ),
     )
+    ap.add_argument(
+        "--strict-event-split",
+        action="store_true",
+        help=(
+            "按灾害事件严格切 train/val/test/holdout；会把 --test-split 也并入候选池，"
+            "确保同一事件在官方 train/test 中的全部瓦片只落入一个 subset。"
+        ),
+    )
+    ap.add_argument(
+        "--val-disasters",
+        default="",
+        help="严格事件模式下完整划入 val 的事件（逗号分隔，必须显式指定）。",
+    )
+    ap.add_argument(
+        "--test-disasters",
+        default="",
+        help="严格事件模式下完整划入 test 的事件（逗号分隔，必须显式指定）。",
+    )
     args = ap.parse_args()
 
     xbd_root = Path(args.xbd_root).expanduser().resolve()
     out_root = Path(args.out).expanduser().resolve()
+    if not xbd_root.is_dir():
+        raise FileNotFoundError(f"xBD 根目录不存在: {xbd_root}")
+    if not 0.0 < args.val_frac < 1.0:
+        raise ValueError("--val-frac 必须在 (0, 1) 内")
     out_root.mkdir(parents=True, exist_ok=True)
     rng = random.Random(args.seed)
 
-    holdout_disasters = {
-        d.strip() for d in args.holdout_disasters.split(",") if d.strip()
+    holdout_disasters = parse_disasters(args.holdout_disasters)
+    val_disasters = parse_disasters(args.val_disasters)
+    test_disasters = parse_disasters(args.test_disasters)
+    requested_groups = {
+        "val": val_disasters,
+        "test": test_disasters,
+        "holdout": holdout_disasters,
     }
+    requested_overlaps = {}
+    requested_names = list(requested_groups)
+    for i, left in enumerate(requested_names):
+        for right in requested_names[i + 1:]:
+            shared = sorted(requested_groups[left] & requested_groups[right])
+            if shared:
+                requested_overlaps[f"{left}__{right}"] = shared
+    if requested_overlaps:
+        raise ValueError(f"--val/--test/--holdout-disasters 互相重叠: {requested_overlaps}")
 
-    # 训练池（排出 holdout 灾害事件）
-    pool: list[tuple[Path, str]] = []
-    holdout_pool: list[tuple[Path, str]] = []
-    for sp in [s.strip() for s in args.splits.split(",") if s.strip()]:
+    source_splits = [s.strip() for s in args.splits.split(",") if s.strip()]
+    if args.strict_event_split:
+        if not val_disasters or not test_disasters or not holdout_disasters:
+            raise ValueError(
+                "--strict-event-split 要求显式提供非空的 --val-disasters、"
+                "--test-disasters 和 --holdout-disasters"
+            )
+        if args.test_split and args.test_split not in source_splits:
+            source_splits.append(args.test_split)
+
+    candidates: list[tuple[Path, str]] = []
+    for sp in source_splits:
         paths = _post_label_paths(xbd_root, sp)
-        n_hold = 0
-        for p in paths:
-            if disaster_of(p) in holdout_disasters:
-                holdout_pool.append((p, sp))
-                n_hold += 1
-            else:
-                pool.append((p, sp))
-        print(f"[gen] {sp}: {len(paths)} post labels（其中 {n_hold} 张划入 holdout）")
-    rng.shuffle(pool)
-    n_val = int(len(pool) * args.val_frac)
-    val_pool = pool[:n_val]
-    train_pool = pool[n_val:]
+        if not paths:
+            raise FileNotFoundError(f"split 缺少 post 标签: {xbd_root / sp / 'labels'}")
+        candidates.extend((p, sp) for p in paths)
+        print(f"[gen] {sp}: {len(paths)} post labels")
 
-    stats = []
-    stats.append(_emit(train_pool, xbd_root, out_root, "train", args.limit))
-    stats.append(_emit(val_pool, xbd_root, out_root, "val", args.limit))
-    if args.test_split:
-        test_paths = [(p, args.test_split) for p in _post_label_paths(xbd_root, args.test_split)]
-        stats.append(_emit(test_paths, xbd_root, out_root, "test", args.limit))
+    if args.strict_event_split:
+        known_disasters = {disaster_of(p) for p, _ in candidates}
+        missing = {
+            name: sorted(values - known_disasters)
+            for name, values in requested_groups.items()
+            if values - known_disasters
+        }
+        if missing:
+            raise ValueError(f"指定了不存在的灾害事件: {missing}")
+        subsets: dict[str, list[tuple[Path, str]]] = {
+            "train": [], "val": [], "test": [], "holdout": [],
+        }
+        for item in candidates:
+            disaster = disaster_of(item[0])
+            if disaster in holdout_disasters:
+                subset = "holdout"
+            elif disaster in test_disasters:
+                subset = "test"
+            elif disaster in val_disasters:
+                subset = "val"
+            else:
+                subset = "train"
+            subsets[subset].append(item)
+        split_audit = validate_event_subsets(subsets)
+        split_strategy = "strict_event"
+    else:
+        pool = [item for item in candidates if disaster_of(item[0]) not in holdout_disasters]
+        holdout_pool = [item for item in candidates if disaster_of(item[0]) in holdout_disasters]
+        rng.shuffle(pool)
+        n_val = int(len(pool) * args.val_frac)
+        subsets = {"train": pool[n_val:], "val": pool[:n_val]}
+        if args.test_split:
+            subsets["test"] = [
+                (p, args.test_split) for p in _post_label_paths(xbd_root, args.test_split)
+            ]
+        if holdout_pool:
+            subsets["holdout"] = holdout_pool
+        event_sets = {
+            name: sorted({disaster_of(path) for path, _ in paths})
+            for name, paths in subsets.items()
+        }
+        overlaps = {}
+        names = list(event_sets)
+        for i, left in enumerate(names):
+            for right in names[i + 1:]:
+                shared = sorted(set(event_sets[left]) & set(event_sets[right]))
+                if shared:
+                    overlaps[f"{left}__{right}"] = shared
+        split_audit = {
+            "event_disjoint": not overlaps, "events": event_sets, "overlaps": overlaps,
+        }
+        split_strategy = "legacy_tile_random"
+
+    if args.strict_event_split:
+        occupied = []
+        for name in subsets:
+            for leaf in ("images", "labels"):
+                directory = out_root / name / leaf
+                if directory.exists() and any(directory.iterdir()):
+                    occupied.append(str(directory))
+        if occupied:
+            raise FileExistsError(
+                "严格事件模式拒绝复用非空输出目录（会残留旧 subset 文件）；"
+                f"请换一个新的 --out。非空目录: {occupied}"
+            )
+
+    stats = [
+        _emit(paths, xbd_root, out_root, name, args.limit)
+        for name, paths in subsets.items()
+    ]
+    holdout_pool = subsets.get("holdout", [])
     if holdout_pool:
-        stats.append(_emit(holdout_pool, xbd_root, out_root, "holdout", args.limit))
         holdout_by_disaster: dict[str, int] = {}
         for p, _sp in holdout_pool:
             d = disaster_of(p)
@@ -251,12 +379,29 @@ def main() -> int:
     for i, name in enumerate(CLASS_NAMES):
         yaml_lines.append(f"  {i}: {name}")
     (out_root / "data.yaml").write_text("\n".join(yaml_lines) + "\n", encoding="utf-8")
+    manifest = {
+        "generator": str(Path(__file__).resolve()),
+        "xbd_root": str(xbd_root),
+        "seed": args.seed,
+        "split_strategy": split_strategy,
+        "strict_event_split": bool(args.strict_event_split),
+        "source_splits": source_splits,
+        "requested_disasters": {
+            name: sorted(values) for name, values in requested_groups.items()
+        },
+        "split_audit": split_audit,
+        "subsets": {s["subset"]: {k: v for k, v in s.items() if k != "subset"} for s in stats},
+    }
+    (out_root / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
 
     print("\n[gen] 完成：")
     for s in stats:
         print(f"  {s['subset']:5s}: imgs={s['images']:6d} boxes={s['boxes']:7d} "
               f"empty_skip={s['skipped_empty']:5d} classes={s['class_counts']}")
     print(f"[gen] data.yaml → {out_root / 'data.yaml'}")
+    print(f"[gen] manifest → {out_root / 'manifest.json'}")
     return 0
 
 

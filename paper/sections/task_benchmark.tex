@@ -1,0 +1,50 @@
+\section{Task and Benchmark}
+\label{sec:task}
+
+\subsection{Bird's-Eye Disaster VLN}
+An episode is a tuple
+\(
+e=(I^{\mathrm{pre}},I^{\mathrm{post}},G,s_0,x,g)
+\),
+where \(I^{\mathrm{pre}}\) and \(I^{\mathrm{post}}\) are georeferenced pre- and post-event images, \(G\) is the geographic transform, \(s_0\) is the initial UAV state, \(x\) is a natural-language instruction, and \(g\) is the annotated target building and damage label.
+At time \(t\), the agent receives a crop determined by latitude, longitude, altitude, and camera geometry.
+It chooses a planar waypoint, a sensing action, or stop.
+The output contains a final position and a damage judgment.
+
+\paragraph{Metrics.}
+Strict success rate \(\SR\) counts an episode only when the agent stops within the target tolerance of the designated building.
+Semantic success \(\semSR\) is a diagnostic that accepts a building with the requested class; it must not replace strict \(\SR\).
+Navigation error \(\NE\) measures final geodesic distance to the target, and \(\SPL\) discounts successful but inefficient paths.
+For damage decisions we report accuracy, ECE, Brier score, and negative log-likelihood.
+For active sensing we additionally report trigger coverage, post-trigger decision change, uncertainty reduction, action count, altitude change, and accuracy gain per added sensing action.
+
+\subsection{Existing Benchmark Instance}
+The current navigation benchmark contains 40 instructions over xBD-derived scenes.
+Instructions vary in target damage class, landmark composition, and difficulty.
+The existing E1 comparison uses one run per configuration, so it is a pipeline-scale evaluation rather than a definitive estimate.
+The E10 calibration sets contain 21,717 test crops and 69,307 crops in a nominal holdout spanning three disaster types.
+Historical model training did not strictly exclude all holdout disaster types; consequently, ``holdout'' here describes the stored split, not a certified unseen-disaster test.
+
+\subsection{Leakage-Safe Evaluation Split}
+The strict protocol groups data by disaster event before any crop generation.
+No tile, building, temporal pair, or disaster identity may cross training, calibration, validation, and test partitions.
+Temperature is fitted on a calibration partition whose events are disjoint from the final test events.
+All crops from one building remain in one partition.
+The final report includes hashes of manifests and checkpoints, event lists, class counts, and duplicate checks.
+Our generated strict manifest contains 12 training events, two validation
+events, two test events, and three holdout events, with no event overlap.
+The corresponding bitemporal building sets contain 143,230, 73,859, 71,293,
+and 69,307 examples, respectively.
+
+\paragraph{Evidence-rich reinspection subset.}
+The reinspection study uses 40 approved near-target episodes selected from 60
+candidates across ten disaster events.
+Every episode has one \texttt{major-damage} or \texttt{destroyed} target.
+We inspect contact sheets and reject targets near no-data boundaries, outside
+the image, or otherwise failing deterministic geometry checks.
+This subset is intentionally all-easy and measures whether the agent uses
+visible evidence; it is not used to claim long-range navigation ability.
+
+\paragraph{Evaluation status.}
+We distinguish \emph{existing evidence}, which is reported in \secref{sec:experiments}, from the \emph{pre-registered strict evaluation} in Appendix~\ref{app:protocol}.
+Unknown strict-split results are not estimated or back-filled.

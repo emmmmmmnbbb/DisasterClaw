@@ -96,7 +96,27 @@ def compute_calibration_metrics(probs: np.ndarray, labels: np.ndarray, n_bins: i
     nll = float(-np.mean(np.log(np.clip(true_probs, eps, 1.0))))
 
     acc = float(accuracies.mean())
-    return {"ece": float(ece), "brier": brier, "nll": nll, "acc": acc, "n": n, "bins": bins}
+    order = np.argsort(-confidences)
+    risk_coverage = []
+    for coverage in np.linspace(0.05, 1.0, 20):
+        count = max(1, int(round(n * float(coverage))))
+        selective_acc = float(accuracies[order[:count]].mean())
+        risk_coverage.append({
+            "coverage": float(coverage),
+            "count": count,
+            "selective_accuracy": selective_acc,
+            "selective_risk": 1.0 - selective_acc,
+            "confidence_threshold": float(confidences[order[count - 1]]),
+        })
+    return {
+        "ece": float(ece),
+        "brier": brier,
+        "nll": nll,
+        "acc": acc,
+        "n": n,
+        "bins": bins,
+        "risk_coverage": risk_coverage,
+    }
 
 
 @torch.no_grad()
@@ -211,9 +231,26 @@ def main() -> int:
     ap.add_argument("--mc-dropout", action="store_true", help="额外跑 MC-Dropout 基线（--ckpt 须是 dropout_p>0 训练出的模型）")
     ap.add_argument("--mc-t", type=int, default=30, help="MC-Dropout 随机前向次数")
     ap.add_argument("--ensemble-ckpts", default="", help="逗号分隔的多个 checkpoint 路径，额外跑 Deep Ensemble 基线")
+    ap.add_argument(
+        "--require-event-disjoint",
+        action="store_true",
+        help="评测前要求 data-dir/manifest.json 声明严格事件级无交集。",
+    )
     args = ap.parse_args()
 
-    jsonl_path = Path(args.data_dir) / f"{args.subset}.jsonl"
+    data_dir = Path(args.data_dir).expanduser().resolve()
+    if args.require_event_disjoint:
+        manifest_path = data_dir / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        audit = manifest.get("split_audit") or {}
+        if (
+            manifest.get("split_strategy") != "strict_event"
+            or not manifest.get("strict_event_split")
+            or not audit.get("event_disjoint")
+            or audit.get("overlaps")
+        ):
+            raise ValueError(f"数据集不是严格事件级无泄漏切分: {manifest_path}")
+    jsonl_path = data_dir / f"{args.subset}.jsonl"
     if not jsonl_path.exists():
         print(f"[calib] 子集不存在: {jsonl_path}", file=sys.stderr)
         return 1

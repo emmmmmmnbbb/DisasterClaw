@@ -15,6 +15,20 @@ Single-UAV disaster response console built around:
 - `frontend/`: React + Vite frontend
 - `docs/`: project notes
 - `scripts/`: local run helpers
+- `paper/`: CVPR-style DisasterClaw manuscript, claim contract, and strict
+  experiment protocol
+
+## Paper
+
+The anonymous English draft is built from traceable benchmark artifacts:
+
+```bash
+python scripts/benchmarks/export_paper_assets.py
+latexmk -pdf -cd -interaction=nonstopmode -halt-on-error paper/main.tex
+```
+
+See `paper/CLAIMS.md` for the allowed scientific claims and
+`paper/EXPERIMENT_PROTOCOL.md` for the event-disjoint evaluation protocol.
 
 ## Default Anchor
 

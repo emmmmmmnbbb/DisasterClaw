@@ -27,7 +27,7 @@ from perception import (
 from semantic_map import SemanticMap
 from stmr_matrix import build_stmr
 from hspm_planner import HspmConfig, HspmNavigator, OroiScoreWeights
-from recheck import RecheckConfig, RecheckController
+from recheck import EVIDENCE_CLASSES, RecheckConfig, RecheckController
 from memory_graph import MemoryGraph, text_match_scorer
 from vlm_analyzer import VLMAnalyzer
 from vln_navigator import (
@@ -1397,6 +1397,9 @@ def run_vln_episode(instruction: str, source: str = "ai") -> dict | None:
             )
         )
     recheck_total = 0  # 本 episode 已执行的复核机动数（全局上限防失控）
+    recheck_horizontal_m = 0.0  # 复核机动带来的额外水平距离（按实际下发参数）
+    recheck_motion_m = 0.0  # 复核机动三维距离（水平居中 + 降高）
+    evidence_observation_count = 0  # 独立于策略触发，供 NONE 等配置公平分层
 
     arrived = False
     executed: list[dict] = []
@@ -1515,10 +1518,15 @@ def run_vln_episode(instruction: str, source: str = "ai") -> dict | None:
             })
 
             obs = Observation.from_perception(result)
+            if any(
+                det.get("class_name") in EVIDENCE_CLASSES
+                for det in (result.detection.get("detections") or [])
+            ):
+                evidence_observation_count += 1
 
             # ── P2：灾情不确定性驱动主动复核 ──────────────────────────
             # 看到疑似受灾目标但没把握 → 先降高+飞近再确认，不急着往下走。
-            if rechecker is not None and recheck_total < VLN_RECHECK_MAX_TOTAL:
+            if rechecker is not None:
                 rc = rechecker.assess(
                     lat=float(snap["lat"]),
                     lon=float(snap["lon"]),
@@ -1529,6 +1537,9 @@ def run_vln_episode(instruction: str, source: str = "ai") -> dict | None:
                     patch_width=int(result.patch_width),
                     patch_height=int(result.patch_height),
                     degraded=bool(result.degraded),
+                    # 总预算耗尽后仍要把最后一次复核后的观测交给控制器，否则
+                    # pending 闭环看不到 U_after，episode 结束时 ΔU 会退化为 0。
+                    allow_recheck=recheck_total < VLN_RECHECK_MAX_TOTAL,
                 )
                 if rc.kind == "recheck" and rc.params is not None:
                     recheck_total += 1
@@ -1555,6 +1566,12 @@ def run_vln_episode(instruction: str, source: str = "ai") -> dict | None:
                     )
                     if not _post_covered(dlat, dlon):
                         p["north_m"], p["east_m"] = 0.0, 0.0
+                    _re_n = float(p.get("north_m", 0.0))
+                    _re_e = float(p.get("east_m", 0.0))
+                    _re_u = float(p.get("up_m", 0.0))
+                    _re_horizontal = (_re_n * _re_n + _re_e * _re_e) ** 0.5
+                    recheck_horizontal_m += _re_horizontal
+                    recheck_motion_m += (_re_horizontal * _re_horizontal + _re_u * _re_u) ** 0.5
                     state.push_log("warn", f"[VLN 复核 {recheck_total}] {rc.reason}")
                     socketio.emit(
                         "ai_thought",
@@ -1693,15 +1710,23 @@ def run_vln_episode(instruction: str, source: str = "ai") -> dict | None:
                 logger.warning("memory graph record failed: %s", exc)
 
         summary = navigator.summarize(arrived, final_snap)
+        rstats = None
         if rechecker is not None:
             # episode 到这里就要收尾了：把仍"复核中"但没等到正式定论的位置（常见
             # 于到达终点/步数耗尽打断复核循环）按最新观测补记账，避免 ΔU 统计
             # 系统性地丢掉这部分样本（E11 实测发现，见 recheck.py 顶部说明）。
             rechecker.finalize()
             rstats = rechecker.stats()
+            rstats.update({
+                "extra_actions": recheck_total,
+                "extra_horizontal_m": round(recheck_horizontal_m, 2),
+                "extra_motion_m": round(recheck_motion_m, 2),
+                "has_evidence": evidence_observation_count > 0,
+            })
             if rstats["resolved"] or recheck_total:
                 summary += (
-                    f" 复核 {recheck_total} 次机动、定论 {rstats['resolved']} 处"
+                    f" 复核 {recheck_total} 次机动、触发 {rstats['triggered']} 处、"
+                    f"完成 {rstats['completed']} 处"
                     f"（确认 {rstats['confirmed']} / 排除 {rstats['dismissed']} / 存疑 {rstats['inconclusive']}"
                     f" / episode 结束时未收尾 {rstats['episode_end_pending']}），"
                     f"平均不确定性下降 {rstats['avg_uncertainty_reduction']}。"
@@ -1725,8 +1750,9 @@ def run_vln_episode(instruction: str, source: str = "ai") -> dict | None:
             "steps_executed": len(executed),
             "arrived": arrived,
             "vln_history": navigator.history,
-            "recheck": rechecker.stats() if rechecker is not None else None,
+            "recheck": rstats,
             "recheck_log": rechecker.resolved_log if rechecker is not None else [],
+            "evidence_observations": evidence_observation_count,
             "memory": (get_memory_graph().stats() if VLN_MEMORY else None),
             # ── P4 评测所需字段 ────────────────────────────────────────
             "final_pos": {

@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import hashlib
+import importlib.metadata
 import json
 import math
 import os
@@ -125,8 +127,40 @@ def set_seed(seed: int) -> None:
         torch.manual_seed(seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(seed)
+        if hasattr(torch.backends, "cudnn"):
+            torch.backends.cudnn.deterministic = True
+            torch.backends.cudnn.benchmark = False
     except Exception:
         pass
+
+
+def noisy_start(start: dict, sigma_m: float, seed: int) -> dict:
+    """Inject deterministic zero-mean Gaussian initialization error in ENU."""
+    if sigma_m <= 0:
+        return dict(start)
+    from geo import meters_to_latlon
+
+    rng = random.Random(seed)
+    north_m = rng.gauss(0.0, sigma_m)
+    east_m = rng.gauss(0.0, sigma_m)
+    lat, lon = meters_to_latlon(
+        float(start["lat"]), float(start["lon"]), north_m, east_m
+    )
+    return {**start, "lat": lat, "lon": lon}
+
+
+def force_degraded_perception(app) -> None:
+    """Mark VLN observations degraded for the E7 geometry robustness test."""
+    original = app._vln_perceive
+
+    def _wrapped(source: str):
+        result, snapshot, active_tile = original(source)
+        if result is not None:
+            result.degraded = True
+            result.degraded_reason = "benchmark forced degraded geometry"
+        return result, snapshot, active_tile
+
+    app._vln_perceive = _wrapped
 
 
 def apply_config(app, cfg: dict, grounder: str, mem_path: str) -> None:
@@ -196,7 +230,12 @@ def eval_episode(report: dict, item: dict) -> dict:
     if report.get("error") or not report.get("final_pos") or not goals:
         out.update({"success": False, "ne_m": None, "spl": 0.0,
                     "steps": report.get("steps_executed"), "path_len_m": report.get("path_len_m"),
-                    "delta_u": None, "pred_class": None, "judge_ok": None})
+                    "delta_u": None, "pred_class": None, "judge_ok": None,
+                    "evidence_stratum": None, "evidence_observations": None,
+                    "recheck_triggered": None,
+                    "recheck_completed": None, "recheck_pending": None,
+                    "recheck_delta_u_sum": None, "recheck_extra_actions": None,
+                    "recheck_extra_horizontal_m": None, "recheck_extra_motion_m": None})
         return out
 
     fp = report["final_pos"]
@@ -221,6 +260,9 @@ def eval_episode(report: dict, item: dict) -> dict:
 
     rc = report.get("recheck") or {}
     delta_u = rc.get("avg_uncertainty_reduction") if isinstance(rc, dict) else None
+    has_recheck_stats = isinstance(report.get("recheck"), dict)
+    triggered = rc.get("triggered") if has_recheck_stats else None
+    evidence_observations = int(report.get("evidence_observations") or 0)
 
     pred = _predicted_class(report)
     judge_ok = (pred == last.get("class")) if (pred is not None) else None
@@ -234,6 +276,19 @@ def eval_episode(report: dict, item: dict) -> dict:
         "steps": report.get("steps_executed"),
         "path_len_m": round(path_len, 2),
         "delta_u": delta_u,
+        # 逐 episode 证据链字段：支持 evidence/no-evidence 分层，并把正式完成与
+        # episode 截断的 pending 分开；旧的 delta_u 保留为向后兼容的均值字段。
+        "evidence_stratum": (
+            "evidence" if evidence_observations > 0 else "no_evidence"
+        ),
+        "evidence_observations": evidence_observations,
+        "recheck_triggered": triggered,
+        "recheck_completed": rc.get("completed") if has_recheck_stats else None,
+        "recheck_pending": rc.get("finalized_pending") if has_recheck_stats else None,
+        "recheck_delta_u_sum": rc.get("uncertainty_reduction_sum") if has_recheck_stats else None,
+        "recheck_extra_actions": rc.get("extra_actions") if has_recheck_stats else None,
+        "recheck_extra_horizontal_m": rc.get("extra_horizontal_m") if has_recheck_stats else None,
+        "recheck_extra_motion_m": rc.get("extra_motion_m") if has_recheck_stats else None,
         "pred_class": pred,
         "goal_class": last.get("class"),
         "judge_ok": judge_ok,
@@ -247,6 +302,30 @@ def eval_episode(report: dict, item: dict) -> dict:
 def _mean(xs):
     xs = [x for x in xs if x is not None]
     return round(sum(xs) / len(xs), 3) if xs else None
+
+
+def damage_macro_f1(rows: list[dict]) -> float | None:
+    """Macro F1 over ground-truth damage classes; missing predictions are FN."""
+    classes = sorted({r.get("goal_class") for r in rows if r.get("goal_class")})
+    if not classes:
+        return None
+    f1s = []
+    for cls in classes:
+        tp = sum(
+            1 for r in rows
+            if r.get("goal_class") == cls and r.get("pred_class") == cls
+        )
+        fp = sum(
+            1 for r in rows
+            if r.get("goal_class") != cls and r.get("pred_class") == cls
+        )
+        fn = sum(
+            1 for r in rows
+            if r.get("goal_class") == cls and r.get("pred_class") != cls
+        )
+        denom = 2 * tp + fp + fn
+        f1s.append((2 * tp / denom) if denom else 0.0)
+    return round(sum(f1s) / len(f1s), 4)
 
 
 def aggregate(rows: list[dict]) -> dict:
@@ -269,6 +348,7 @@ def aggregate(rows: list[dict]) -> dict:
         "delta_u_mean": _mean([r.get("delta_u") for r in rows]),
         "judge_acc": _mean([1.0 if r.get("judge_ok") else 0.0
                             for r in rows if r.get("judge_ok") is not None]),
+        "damage_macro_f1": damage_macro_f1(rows),
     }
     # 难度分桶（E8）
     by_diff = {}
@@ -303,7 +383,34 @@ def env_snapshot() -> dict:
         "dataset_mode": os.environ.get("DATASET_MODE", "xbd"),
         "perception_device": os.environ.get("PERCEPTION_DEVICE", "cuda"),
         "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+        "llm_model": os.environ.get("LLM_MODEL", ""),
+        "planner_llm_model": os.environ.get("PLANNER_LLM_MODEL", ""),
+        "vlm_model": os.environ.get("VLM_MODEL", ""),
     }
+    checkpoints = {}
+    for name, raw_path in (
+        ("yolo", os.environ.get("YOLO_WEIGHTS", "")),
+        ("change_perception", os.environ.get("CHANGE_PERCEPTION_CKPT", "")),
+    ):
+        if not raw_path:
+            continue
+        path = Path(raw_path).expanduser()
+        record = {"path": str(path)}
+        if path.is_file():
+            digest = hashlib.sha256()
+            with path.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            record["sha256"] = digest.hexdigest()
+            record["bytes"] = path.stat().st_size
+        checkpoints[name] = record
+    info["checkpoints"] = checkpoints
+    info["packages"] = {}
+    for package in ("numpy", "scipy", "torchvision", "ultralytics", "transformers"):
+        try:
+            info["packages"][package] = importlib.metadata.version(package)
+        except importlib.metadata.PackageNotFoundError:
+            pass
     try:
         import torch
         info["torch"] = torch.__version__
@@ -324,6 +431,17 @@ def main() -> int:
     ap.add_argument("--repeat", type=int, default=1, help="每题重复次数取平均")
     ap.add_argument("--difficulty", default="", help="只跑某难度 easy/medium/hard（空=全部）")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument(
+        "--gps-noise-sigma-m",
+        type=float,
+        default=0.0,
+        help="E5：在 episode 起点注入 ENU 高斯定位误差 σ（米）。",
+    )
+    ap.add_argument(
+        "--force-degraded",
+        action="store_true",
+        help="E7：强制把感知几何标为 degraded，禁用检测框地理投影与复核居中。",
+    )
     ap.add_argument("--out-dir", default="")
     ap.add_argument("--tag", default="", help="run_id 附加标签")
     args = ap.parse_args()
@@ -353,6 +471,8 @@ def main() -> int:
     print("[bench] 正在导入 app（首次会加载/预热感知 + 本地 VLM，可能耗时数分钟）...")
     t_import = time.time()
     import app  # noqa: E402  —— 触发 AppState() warmup，加载真实模型
+    if args.force_degraded:
+        force_degraded_perception(app)
     print(f"[bench] app ready in {time.time() - t_import:.1f}s")
 
     raw_rows: list[dict] = []
@@ -372,14 +492,21 @@ def main() -> int:
                 set_seed(args.seed + rep)
                 t0 = time.time()
                 try:
-                    report = app.run_vln_episode_headless(item["instruction"], item["start"], source="bench")
+                    start = noisy_start(
+                        item["start"],
+                        args.gps_noise_sigma_m,
+                        seed=args.seed + rep * 1_000_003 + idx,
+                    )
+                    report = app.run_vln_episode_headless(item["instruction"], start, source="bench")
                 except Exception as exc:
                     report = {"ok": False, "error": f"crash: {exc}", "arrived": False}
                     traceback.print_exc()
                 dt = time.time() - t0
                 row = eval_episode(report, item)
                 row.update({"config": cfg_name, "repeat": rep, "wall_s": round(dt, 1),
-                            "instruction": item["instruction"]})
+                            "instruction": item["instruction"],
+                            "gps_noise_sigma_m": args.gps_noise_sigma_m,
+                            "force_degraded": bool(args.force_degraded)})
                 cfg_rows.append(row)
                 raw_rows.append(row)
                 raw_fp.write(json.dumps(row, ensure_ascii=False) + "\n")

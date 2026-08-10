@@ -292,6 +292,8 @@ def test_finalize_flushes_pending_reduction() -> None:
     stats_after = ctl.stats()
     assert stats_after["resolved"] == 1, stats_after
     assert stats_after["episode_end_pending"] == 1, stats_after
+    assert stats_after["completed"] == 0 and stats_after["finalized_pending"] == 1
+    assert stats_after["triggered"] == 1
     assert stats_after["confirmed"] == 0 and stats_after["dismissed"] == 0 and stats_after["inconclusive"] == 0
     assert stats_after["pending"] == 0
     # 只观测了一次，before==after（还没有降高复核带来的新观测），下降量应为 0，
@@ -324,6 +326,63 @@ def test_finalize_uses_latest_observation() -> None:
     print(f"[OK] finalize() 用最新观测算下降量：{entry['uncertainty_before']} → {entry['uncertainty_after']}")
 
 
+def test_global_budget_finalizes_latest_observation() -> None:
+    """全局动作预算耗尽后仍应接收最后一次机动后的观测并正式收尾，而不是让
+    app 跳过 assess()、最终拿首次观测冒充 U_after。"""
+    ctl = RecheckController(RecheckConfig(max_rechecks=3))
+    kw = dict(
+        lat=LAT, lon=LON, patch_radius_m=60.0, patch_width=100, patch_height=100,
+    )
+    first = ctl.assess(
+        alt=120.0, risk_level="low",
+        detections=[_det("严重损伤建筑", 0.3)], **kw,
+    )
+    assert first.kind == "recheck"
+    last = ctl.assess(
+        alt=110.0, risk_level="low",
+        detections=[_det("严重损伤建筑", 0.45)], allow_recheck=False, **kw,
+    )
+    assert last.kind == "resolve" and last.status == "inconclusive", last
+    assert last.reduction is not None and last.reduction > 0, last.reduction
+    stats = ctl.stats()
+    assert stats["completed"] == 1 and stats["finalized_pending"] == 0, stats
+    assert stats["avg_uncertainty_reduction"] == last.reduction, stats
+    print(f"[OK] 全局预算耗尽用最新观测收尾：ΔU={last.reduction}")
+
+
+def test_inconclusive_is_completed() -> None:
+    """未定论是完整走完预算后的正式结果，不应归到 episode 截断 pending。"""
+    ctl = RecheckController(RecheckConfig(max_rechecks=1))
+    kw = dict(
+        lat=LAT, lon=LON, risk_level="low",
+        detections=[_det("严重损伤建筑", 0.3)],
+        patch_radius_m=60.0, patch_width=100, patch_height=100,
+    )
+    assert ctl.assess(alt=120.0, **kw).kind == "recheck"
+    out = ctl.assess(alt=110.0, **kw)
+    assert out.kind == "resolve" and out.status == "inconclusive", out
+    stats = ctl.stats()
+    assert stats["completed"] == 1 and stats["inconclusive"] == 1
+    assert stats["finalized_pending"] == 0 and stats["pending"] == 0
+    print("[OK] 未定论计为 completed，不计为 pending")
+
+
+def test_zero_trigger_stats() -> None:
+    """无证据 episode 应输出完整的零值字段，供 no-evidence 分层使用。"""
+    ctl = RecheckController()
+    out = ctl.assess(
+        lat=LAT, lon=LON, alt=120.0, risk_level="none", detections=[],
+        patch_radius_m=60.0, patch_width=100, patch_height=100,
+    )
+    assert out.kind == "skip"
+    ctl.finalize()
+    stats = ctl.stats()
+    assert stats["triggered"] == 0 and stats["completed"] == 0
+    assert stats["finalized_pending"] == 0 and stats["resolved"] == 0
+    assert stats["uncertainty_reduction_sum"] == 0 and stats["avg_uncertainty_reduction"] == 0
+    print("[OK] 零触发 episode 输出完整零值统计")
+
+
 def _run_all() -> int:
     tests = [
         test_uncertainty_score,
@@ -343,6 +402,9 @@ def _run_all() -> int:
         test_trigger_mode_random_reproducible,
         test_finalize_flushes_pending_reduction,
         test_finalize_uses_latest_observation,
+        test_global_budget_finalizes_latest_observation,
+        test_inconclusive_is_completed,
+        test_zero_trigger_stats,
     ]
     failed = 0
     for t in tests:

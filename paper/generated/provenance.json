@@ -1,0 +1,56 @@
+{
+  "generator": "scripts/benchmarks/export_paper_assets.py",
+  "sources": [
+    {
+      "path": "runs/benchmarks/20260623_202108_e1full/results.json",
+      "sha256": "34dc3305113e3fa25b73ded4fdf844bf06eccd7584319062cdaebbefdb38b349"
+    },
+    {
+      "path": "runs/benchmarks/paper_strict_v1/calibration_baseline/test_summary.json",
+      "sha256": "165ea41b26affe566cde88d12ac5e886f83ed69648bd01528f4ac7aef0fbc35c"
+    },
+    {
+      "path": "runs/benchmarks/paper_strict_v1/calibration_baseline/holdout_summary.json",
+      "sha256": "f53c042acc7e095acce7c421c191bb677f73361e9024bd328aca5a5a0c8b6d3b"
+    },
+    {
+      "path": "runs/benchmarks/paper_strict_v1/calibration_baseline/test_full.json",
+      "sha256": "e5cddf6a6f20cf198c6044b6985f8556003c7ef8fb854eba7bf3c969f8e0a0bf"
+    },
+    {
+      "path": "runs/benchmarks/paper_strict_v1/calibration_diff_attention/test_summary.json",
+      "sha256": "a9bd51b804fa885c64be7ea146ad68ad7907e64449996497646784a61e50b73b"
+    },
+    {
+      "path": "runs/benchmarks/paper_strict_v1/calibration_diff_attention/holdout_summary.json",
+      "sha256": "06e9155869859c64caf5f8b24a7f8a9f5956d3b58d6e5a53733934437314643e"
+    },
+    {
+      "path": "runs/benchmarks/paper_strict_v1/yolo_metrics.json",
+      "sha256": "66802ea25599f4422f62d4e7d7a17438b391da1f9170dd9de3253fa2285a323a"
+    },
+    {
+      "path": "/home/lc/datasets/xbd_yolo_strict_v1/manifest.json",
+      "sha256": "b846375fff0bf099cc89a969dbd6e6e2b55d5c32695a0b9c1d56e9b2e831b019"
+    },
+    {
+      "path": "/home/lc/datasets/xbd_change_strict_v1/manifest.json",
+      "sha256": "b809ced5c1069b44d1b430fbc1c0fba838e70629339107d34a27e1356fb78b66"
+    },
+    {
+      "path": "backend/data/benchmarks/vln_recheck_testset.json",
+      "sha256": "e1719e98c824a9482bc19110d1e2d687fd712d905185bc3f03dd9e61ac12414f"
+    }
+  ],
+  "qualitative_cases": [
+    "case_04_E1-sem\u6210\u529f_semNE=12.53m.png",
+    "case_06_E1-\u5931\u8d25_NE=1304.66m_easy.png",
+    "case_01_E4-seed\u6210\u529f_NE=0.0m.png"
+  ],
+  "review_sheets": [
+    "review_01.jpg",
+    "review_02.jpg",
+    "review_03.jpg"
+  ],
+  "warning": "Navigation results default to the historical repeat=1 run. Replace --navigation with the strict repeat>=3 run before submission."
+}

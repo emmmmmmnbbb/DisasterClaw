@@ -1,0 +1,28 @@
+\section{Limitations and Broader Impact}
+\label{sec:limitations}
+
+\paragraph{Statistical power and trigger scarcity.}
+The navigation benchmark is small, success rates are low, and the active mechanism triggers on only one available episode.
+Consequently, the paper cannot yet claim that reinspection improves final decisions or navigation.
+A larger benchmark alone is insufficient; it must contain enough evidence-positive episodes to exercise the policy.
+
+\paragraph{Historical split leakage.}
+The nominal cross-disaster holdout was evaluated with a model whose training data may include the same disaster types.
+Spatially nearby crops and multiple crops from one building can also create optimistic estimates unless grouping is enforced.
+The current holdout values are retained for transparency but not promoted as strict generalization.
+
+\paragraph{Simulation and sensing fidelity.}
+The environment uses georeferenced overhead imagery and approximates altitude changes by changing crop footprint.
+It does not model wind, oblique perspective, motion blur, communications, battery dynamics, no-fly zones, or the full sensor pipeline of a physical UAV.
+Performance in this environment is not evidence of safe autonomous deployment.
+
+\paragraph{Perception bottlenecks.}
+Damage labels can be ambiguous even to humans, and domain shift across satellite, crewed-aircraft, and low-altitude UAV imagery can invalidate confidence estimates.
+Calibration measured on one distribution does not guarantee calibration after shift.
+Open-vocabulary vision-language outputs may improve coverage while introducing hallucinated evidence.
+
+\paragraph{Responsible use.}
+\ProjectName is intended as decision support.
+False negatives can delay aid, while false positives can waste scarce response resources.
+Human operators should retain authority over routing and damage declarations.
+Geospatial imagery may expose sensitive locations; data access, retention, and released trajectories require disaster-specific privacy and security review.

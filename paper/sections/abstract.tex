@@ -1,0 +1,12 @@
+\begin{abstract}
+Language-guided aerial navigation could help responders inspect damaged infrastructure, but disaster imagery creates a failure mode that conventional vision-and-language navigation does not directly address: the agent may reach a plausible region while remaining uncertain about whether the observed structure is actually damaged.
+We introduce \ProjectName, a system and benchmark formulation for bird's-eye disaster vision-and-language navigation in georeferenced pre- and post-event imagery.
+Its central mechanism is calibrated uncertainty-driven active reinspection.
+A dual-temporal damage model produces calibrated class probabilities; when uncertainty is high and an action is expected to reduce it, the agent spends a limited budget to descend and recenter before committing to a damage judgment.
+Hierarchical instruction decomposition, a textual semantic map, and episodic memory support this loop but are not presented as success-rate improvements.
+Our current evidence is deliberately bounded.
+Under a frozen event-disjoint split, temperature scaling reduces test ECE from 0.095 to 0.037 without changing accuracy, but increases holdout ECE from 0.046 to 0.084.
+A difference-attention fusion matches concatenation accuracy on both partitions and does not recover the older holdout accuracy gain observed under a leaky split.
+Navigation success remains low in the historical ablation, and only one of 40 episodes in the available reinspection study encountered actionable evidence.
+We therefore report these results and continue the pre-registered navigation and reinspection evaluation needed to test whether calibrated active reinspection improves decision quality under a fixed flight budget.
+\end{abstract}

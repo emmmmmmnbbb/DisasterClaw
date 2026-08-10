@@ -15,6 +15,7 @@ scripts/training/train_xbd_yolo.py — 在 xBD post_disaster 上微调 YOLOv8 �
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -34,13 +35,35 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--project", default=str(DEFAULT_PROJECT))
     ap.add_argument("--name", default="xbd_yolov8s_1024")
+    ap.add_argument(
+        "--require-event-disjoint",
+        action="store_true",
+        help="训练前要求 data.yaml 同目录 manifest.json 声明严格且无事件交集。",
+    )
     args = ap.parse_args()
+
+    data_path = Path(args.data).expanduser().resolve()
+    if not data_path.exists():
+        raise FileNotFoundError(f"data.yaml 不存在: {data_path}")
+    if args.require_event_disjoint:
+        manifest_path = data_path.parent / "manifest.json"
+        if not manifest_path.exists():
+            raise FileNotFoundError(f"缺少切分 manifest: {manifest_path}")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        audit = manifest.get("split_audit") or {}
+        if (
+            manifest.get("split_strategy") != "strict_event"
+            or not manifest.get("strict_event_split")
+            or not audit.get("event_disjoint")
+            or audit.get("overlaps")
+        ):
+            raise ValueError(f"数据集不是严格事件级无泄漏切分: {manifest_path}")
 
     from ultralytics import YOLO
 
     model = YOLO(args.model)
     model.train(
-        data=args.data,
+        data=str(data_path),
         imgsz=args.imgsz,
         epochs=args.epochs,
         batch=args.batch,

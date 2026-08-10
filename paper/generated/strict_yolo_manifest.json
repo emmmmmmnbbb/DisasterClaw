@@ -1,0 +1,133 @@
+{
+  "generator": "/home/lc/disasterclaw/scripts/training/gen_xbd_yolo_dataset.py",
+  "xbd_root": "/home/lc/datasets/xbd",
+  "seed": 42,
+  "split_strategy": "strict_event",
+  "strict_event_split": true,
+  "source_splits": [
+    "train",
+    "tier3",
+    "test"
+  ],
+  "requested_disasters": {
+    "val": [
+      "hurricane-harvey",
+      "mexico-earthquake"
+    ],
+    "test": [
+      "hurricane-michael",
+      "palu-tsunami"
+    ],
+    "holdout": [
+      "moore-tornado",
+      "nepal-flooding",
+      "pinery-bushfire"
+    ]
+  },
+  "split_audit": {
+    "event_disjoint": true,
+    "events": {
+      "train": [
+        "guatemala-volcano",
+        "hurricane-florence",
+        "hurricane-matthew",
+        "joplin-tornado",
+        "lower-puna-volcano",
+        "midwest-flooding",
+        "portugal-wildfire",
+        "santa-rosa-wildfire",
+        "socal-fire",
+        "sunda-tsunami",
+        "tuscaloosa-tornado",
+        "woolsey-fire"
+      ],
+      "val": [
+        "hurricane-harvey",
+        "mexico-earthquake"
+      ],
+      "test": [
+        "hurricane-michael",
+        "palu-tsunami"
+      ],
+      "holdout": [
+        "moore-tornado",
+        "nepal-flooding",
+        "pinery-bushfire"
+      ]
+    },
+    "overlaps": {}
+  },
+  "subsets": {
+    "train": {
+      "images": 3878,
+      "boxes": 143436,
+      "skipped_empty": 2350,
+      "class_counts": {
+        "no-damage": 105799,
+        "minor-damage": 14121,
+        "destroyed": 17279,
+        "major-damage": 6237
+      },
+      "disaster_counts": {
+        "guatemala-volcano": 21,
+        "hurricane-florence": 402,
+        "hurricane-matthew": 285,
+        "midwest-flooding": 316,
+        "santa-rosa-wildfire": 291,
+        "socal-fire": 533,
+        "joplin-tornado": 148,
+        "lower-puna-volcano": 174,
+        "portugal-wildfire": 948,
+        "sunda-tsunami": 93,
+        "tuscaloosa-tornado": 271,
+        "woolsey-fire": 396
+      }
+    },
+    "val": {
+      "images": 553,
+      "boxes": 73930,
+      "skipped_empty": 33,
+      "class_counts": {
+        "major-damage": 10661,
+        "minor-damage": 3728,
+        "no-damage": 58941,
+        "destroyed": 600
+      },
+      "disaster_counts": {
+        "hurricane-harvey": 395,
+        "mexico-earthquake": 158
+      }
+    },
+    "test": {
+      "images": 579,
+      "boxes": 71460,
+      "skipped_empty": 17,
+      "class_counts": {
+        "no-damage": 54614,
+        "minor-damage": 6571,
+        "major-damage": 3132,
+        "destroyed": 7143
+      },
+      "disaster_counts": {
+        "hurricane-michael": 426,
+        "palu-tsunami": 153
+      }
+    },
+    "holdout": {
+      "images": 1223,
+      "boxes": 69391,
+      "skipped_empty": 1468,
+      "class_counts": {
+        "no-damage": 55705,
+        "destroyed": 2315,
+        "minor-damage": 6102,
+        "major-damage": 5269
+      },
+      "disaster_counts": {
+        "moore-tornado": 220,
+        "nepal-flooding": 568,
+        "pinery-bushfire": 435
+      }
+    }
+  }
+}

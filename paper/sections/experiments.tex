@@ -1,0 +1,79 @@
+\section{Experiments}
+\label{sec:experiments}
+
+\subsection{Questions and Reporting Policy}
+We organize the study around six research questions:
+\begin{itemize}
+    \item \textbf{RQ1:} Are damage probabilities calibrated enough for action selection?
+    \item \textbf{RQ2:} Does the policy identify when reinspection is useful better than no, random, fixed, and heuristic controls?
+    \item \textbf{RQ3:} Does reinspection improve damage judgment on evidence-bearing episodes?
+    \item \textbf{RQ4:} What judgment or uncertainty gain is obtained per extra action and meter flown?
+    \item \textbf{RQ5:} How robust are calibration and decisions on held-out events and degraded observations?
+    \item \textbf{RQ6:} How does active reinspection affect navigation \(\SR\), \(\NE\), \(\SPL\), and path length?
+\end{itemize}
+We report all available evidence for these questions, including negative and compromised results.
+Navigation gains are never inferred from perception-only metrics, and \(\semSR\) is never treated as strict success.
+
+\subsection{RQ6: Navigation Ablation Remains Low and Inconclusive}
+\input{tables/navigation}
+
+\tabref{tab:navigation} reports the historical 40-instruction, single-repeat E1 run.
+Strict success is low for every configuration.
+Adding the hierarchical planner leaves \(\SR\) unchanged at 0.075 while increasing navigation error.
+Adding reinspection or memory does not improve strict success.
+The slight semantic-success difference for reinspection is not a substitute for strict target arrival.
+With this sample size, the navigation differences are not statistically significant.
+These results establish a difficult benchmark and expose grounding failures; they do not establish that the supporting stack improves navigation.
+The strict evidence-rich rerun with hybrid grounding, three paired seeds, and the event-disjoint perception stack is \pending.
+
+\subsection{RQ1: Calibration Helps In-Domain Confidence, Not Uniformly}
+\input{tables/calibration}
+
+Under the frozen event-disjoint split, temperature scaling changes test ECE from 0.095 to 0.037 while leaving accuracy unchanged at 0.765 (\tabref{tab:calibration}).
+On the held-out events, the same validation-fitted temperature increases ECE from 0.046 to 0.084.
+Brier score and NLL improve on test and worsen slightly on holdout.
+Thus calibrated probabilities are useful for the in-domain test partition, but a single scalar temperature is not a sufficient robustness guarantee for held-out disasters.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{generated/calibration_reliability.pdf}
+  \caption{Strict event-disjoint test-set reliability before and after
+  scalar temperature scaling fitted on validation.}
+  \label{fig:reliability}
+\end{figure}
+
+\subsection{RQ5: Strict Difference Attention Does Not Repeat the Old Holdout Gain}
+\input{tables/difference_attention}
+
+After event-disjoint retraining, concatenation and difference attention reach nearly identical accuracy on test and holdout (\tabref{tab:difference_attention}).
+Calibrated test ECE slightly favors difference attention, while calibrated holdout ECE favors concatenation.
+The earlier historical observation that difference attention substantially raised holdout accuracy therefore does not survive the strict protocol.
+\input{tables/event_split}
+\tabref{tab:event-split} records the frozen partition.
+\input{tables/yolo_metrics}
+The detector used for hybrid grounding remains weak under the same split (\tabref{tab:yolo-metrics}); low recall is a localization bottleneck for language-conditioned targeting.
+
+\subsection{RQ2--RQ4: Active Reinspection Is Currently Underpowered}
+The available E11 study evaluates six policies on 40 episodes.
+Pairwise strict-SR differences are non-significant (\(p\geq0.49\)).
+Only one episode contains detected damage evidence and activates genuine reinspection; the other 39 remain at \texttt{risk\_level=none}.
+Although that single episode shows different uncertainty changes across policies, \(n=1\) cannot support a positive conclusion for when to reinspect, judgment gain, or cost-normalized utility.
+The current evidence therefore demonstrates execution and logging, not effectiveness.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{generated/review_sheets/review_01.jpg}
+  \caption{Contact-sheet audit for the evidence-rich reinspection subset.
+  Starts are outside the 25\,m success radius and inside the default
+  observation radius; approval is geometry-checked and visually reviewed.
+  Strict policy comparison on this set is \pending.}
+  \label{fig:evidence-rich}
+\end{figure}
+
+An evidence-rich 40-task subset with starts outside the success radius has been frozen for the strict rerun (\figref{fig:evidence-rich}); its results are \pending.
+
+\subsection{Pre-Registered Strict Evaluation}
+Event-disjoint manifests, perception checkpoints, and calibration fits are now frozen.
+Remaining work is the paired navigation and reinspection suite with hybrid grounding, three seeds, bootstrap confidence intervals, Wilcoxon or paired permutation tests, and Holm correction over the six-policy family.
+No positive claim will be made if trigger coverage is too low for the pre-specified analysis.
+Appendix~\ref{app:protocol} records the frozen hypotheses and denominators.

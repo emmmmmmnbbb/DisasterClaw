@@ -29,3 +29,14 @@ backend/runs/
 *.log
 .idea/
 .vscode/
+
+# LaTeX build products (paper sources/assets stay tracked)
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.brf
+paper/*.fdb_latexmk
+paper/*.fls
+paper/*.log
+paper/*.out
+paper/*.pdf

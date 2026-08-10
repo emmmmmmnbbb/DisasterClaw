@@ -110,14 +110,23 @@ def tile_center(entry: dict) -> tuple[float, float] | None:
 
 
 _BUCKET_DIST = {"easy": (30.0, 55.0), "medium": (70.0, 140.0), "hard": (160.0, 250.0)}
+# At the default 30 m altitude the perception radius is 60 m. Keep the target
+# visible while placing the start outside the 25 m success radius.
+_EVIDENCE_RICH_DIST = (32.0, 50.0)
 
 
-def sample_start(goal: dict, bounds: dict, bucket: str, rng: random.Random) -> tuple[float, float]:
+def sample_start(
+    goal: dict,
+    bounds: dict,
+    bucket: str,
+    rng: random.Random,
+    distance_range: tuple[float, float] | None = None,
+) -> tuple[float, float]:
     """按目标难度桶，从目标反推一个起点（随机方位 + 桶内随机距离），并 clamp 进瓦片范围。
 
     这样难度可控、起点必在 POST 覆盖内；最终难度仍按 clamp 后的真实距离判定。
     """
-    lo, hi = _BUCKET_DIST.get(bucket, (70.0, 140.0))
+    lo, hi = distance_range or _BUCKET_DIST.get(bucket, (70.0, 140.0))
     dist = rng.uniform(lo, hi)
     ang = math.radians(rng.uniform(0.0, 360.0))
     north, east = dist * math.cos(ang), dist * math.sin(ang)
@@ -143,6 +152,7 @@ def _instruction(cls_phrase: str, direction: str | None, multi_second: str | Non
 def make_item(
     tile_id: str, disaster: str, start: tuple[float, float],
     goals: list[dict], landmarks: list[str], with_direction: bool, rng: random.Random,
+    benchmark_profile: str = "standard",
 ) -> dict:
     # 最短路径：start→g1(→g2)
     pts = [start] + [(g["lat"], g["lon"]) for g in goals]
@@ -154,7 +164,7 @@ def make_item(
         direction = bearing_name(n, e)
     second = landmarks[1] if len(landmarks) > 1 else None
     instruction = _instruction(landmarks[0], direction, second)
-    return {
+    item = {
         "id": f"{tile_id}__{rng.randint(1000, 9999)}",
         "tile_id": tile_id,
         "instruction": instruction,
@@ -172,14 +182,38 @@ def make_item(
         "with_direction": with_direction,
         "multi": len(goals) > 1,
     }
+    if benchmark_profile == "evidence-rich":
+        item.update({
+            "benchmark_profile": benchmark_profile,
+            "expected_evidence": True,
+            "review": {
+                "status": "pending",
+                "checks": {
+                    "target_visible_in_post_image": None,
+                    "damage_label_unambiguous": None,
+                    "instruction_unambiguous": None,
+                    "start_and_goal_in_bounds": None,
+                },
+                "notes": "",
+            },
+        })
+    return item
 
 
-def gen_for_tile(entry: dict, dataset_root: Path, rng: random.Random, bucket: str) -> list[dict]:
+def gen_for_tile(
+    entry: dict,
+    dataset_root: Path,
+    rng: random.Random,
+    bucket: str,
+    benchmark_profile: str = "standard",
+) -> list[dict]:
     """为单个瓦片生成 0~2 条题（视可用受损建筑而定），起点按难度桶反推。"""
     bounds = entry.get("bounds")
     if not bounds:
         return []
     buildings = tile_buildings(dataset_root, entry)
+    if benchmark_profile == "evidence-rich":
+        buildings = [b for b in buildings if b["subtype"] in PRIORITY_SUBTYPES]
     if not buildings:
         return []
     tile_id = entry["tile_id"]
@@ -191,10 +225,17 @@ def gen_for_tile(entry: dict, dataset_root: Path, rng: random.Random, bucket: st
         cands = [b for b in buildings if b["subtype"] == st]
         if cands:
             g = rng.choice(cands)
-            start = sample_start(g, bounds, bucket, rng)
+            start = sample_start(
+                g,
+                bounds,
+                bucket,
+                rng,
+                distance_range=_EVIDENCE_RICH_DIST if benchmark_profile == "evidence-rich" else None,
+            )
             items.append(make_item(
                 tile_id, disaster, start, [g], [g["class"]],
                 with_direction=rng.random() < 0.5, rng=rng,
+                benchmark_profile=benchmark_profile,
             ))
             break
 
@@ -202,7 +243,7 @@ def gen_for_tile(entry: dict, dataset_root: Path, rng: random.Random, bucket: st
     distinct: dict[str, dict] = {}
     for b in buildings:
         distinct.setdefault(b["subtype"], b)
-    if len(distinct) >= 2 and rng.random() < 0.5:
+    if benchmark_profile != "evidence-rich" and len(distinct) >= 2 and rng.random() < 0.5:
         two = list(distinct.values())[:2]
         start = sample_start(two[0], bounds, bucket, rng)
         # 先近后远更自然
@@ -211,6 +252,7 @@ def gen_for_tile(entry: dict, dataset_root: Path, rng: random.Random, bucket: st
             tile_id, disaster, start, two,
             [two[0]["class"], two[1]["class"]],
             with_direction=rng.random() < 0.5, rng=rng,
+            benchmark_profile=benchmark_profile,
         ))
     return items
 
@@ -222,6 +264,15 @@ def main() -> int:
     ap.add_argument("--disasters", default="palu-tsunami,mexico-earthquake,midwest-flooding,hurricane-michael")
     ap.add_argument("--n", type=int, default=40)
     ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument(
+        "--profile",
+        choices=["standard", "evidence-rich"],
+        default="standard",
+        help=(
+            "evidence-rich 仅生成 major/destroyed 单目标近距任务，使目标大概率出现在"
+            "初始视场；每题仍须按 review 字段人工核验后方可用于论文。"
+        ),
+    )
     ap.add_argument("--out", default=str(BACKEND / "data" / "benchmarks" / "vln_testset.json"))
     args = ap.parse_args()
 
@@ -254,7 +305,7 @@ def main() -> int:
     items: list[dict] = []
     cursors = {d: 0 for d in disasters}
     exhausted: set[str] = set()
-    buckets = ["easy", "medium", "hard"]
+    buckets = ["easy"] if args.profile == "evidence-rich" else ["easy", "medium", "hard"]
     bi = 0
     while len(items) < args.n and len(exhausted) < len(disasters):
         for d in disasters:
@@ -268,7 +319,13 @@ def main() -> int:
                 continue
             entry = tiles[cursors[d]]
             cursors[d] += 1
-            for it in gen_for_tile(entry, dataset_root, rng, buckets[bi % len(buckets)]):
+            for it in gen_for_tile(
+                entry,
+                dataset_root,
+                rng,
+                buckets[bi % len(buckets)],
+                benchmark_profile=args.profile,
+            ):
                 if len(items) < args.n:
                     items.append(it)
                     bi += 1
@@ -291,6 +348,13 @@ def main() -> int:
         "seed": args.seed,
         "dataset_root": str(dataset_root),
         "success_radius_m": 25,
+        "benchmark_profile": args.profile,
+        "review_protocol": (
+            "人工核验 post 图像中目标可见、损伤标签和指令无歧义、起终点均在有效范围；"
+            "仅 review.status=approved 的题可进入论文主实验。"
+            if args.profile == "evidence-rich" else
+            "自动生成草稿；正式评测前建议人工核验。"
+        ),
         "stratification": strat,
         "items": items,
     }

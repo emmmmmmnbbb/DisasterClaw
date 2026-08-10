@@ -34,6 +34,7 @@ backend/change_perception.py — P5 校准的双时相变化感知（C2 正式�
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import logging
 import random
@@ -101,13 +102,19 @@ def crop_patch(
 ) -> Image.Image:
     """按 bbox（+上下文边距）从原图裁一块正方形 patch，resize 到 out_size。"""
     x1, y1, x2, y2 = _expand_bbox(bbox, CONTEXT_MARGIN, image_w, image_h)
-    with Image.open(image_path) as im:
-        im = im.convert("RGB")
-        left, top = int(round(x1)), int(round(y1))
-        right, bottom = max(left + 1, int(round(x2))), max(top + 1, int(round(y2)))
-        patch = im.crop((left, top, right, bottom))
-        patch = patch.resize((out_size, out_size), Image.BILINEAR)
+    im = _load_rgb_tile(image_path)
+    left, top = int(round(x1)), int(round(y1))
+    right, bottom = max(left + 1, int(round(x2))), max(top + 1, int(round(y2)))
+    patch = im.crop((left, top, right, bottom))
+    patch = patch.resize((out_size, out_size), Image.BILINEAR)
     return patch
+
+
+@functools.lru_cache(maxsize=8)
+def _load_rgb_tile(image_path: str) -> Image.Image:
+    """Small per-worker decoded-tile cache for building-grouped batches."""
+    with Image.open(image_path) as image:
+        return image.convert("RGB")
 
 
 _IMAGENET_MEAN = [0.485, 0.456, 0.406]
@@ -152,6 +159,37 @@ class XbdChangeDataset(Dataset):  # type: ignore[misc]
         pre_t = self._transform(pre)
         post_t = self._transform(post)
         return pre_t, post_t, int(rec["class_id"]), float(rec["changed"])
+
+
+class TileGroupedBatchSampler:
+    """Shuffle homogeneous tile batches while preserving random tile order.
+
+    Opening a 1024x1024 PNG for every building makes strict event-level
+    training I/O-bound. Each emitted batch contains records from one tile, so
+    the small decoded-image cache above is effective without retaining the
+    whole dataset in memory.
+    """
+
+    def __init__(self, records: list[dict], batch_size: int, seed: int):
+        groups: dict[str, list[int]] = {}
+        for index, record in enumerate(records):
+            groups.setdefault(str(record["tile_id"]), []).append(index)
+        self.batches = [
+            indices[offset: offset + batch_size]
+            for indices in groups.values()
+            for offset in range(0, len(indices), batch_size)
+        ]
+        self.seed = seed
+        self.epoch = 0
+
+    def __iter__(self):
+        batches = list(self.batches)
+        random.Random(self.seed + self.epoch).shuffle(batches)
+        self.epoch += 1
+        yield from batches
+
+    def __len__(self) -> int:
+        return len(self.batches)
 
 
 # ── 模型：Siamese 编码器 + 双任务头 ───────────────────────────────────────────
@@ -440,7 +478,20 @@ def _run_epoch(model, loader, device, optimizer=None, change_loss_weight: float 
 def train_main(args: argparse.Namespace) -> int:
     _require_torch()
     set_seed(args.seed)
-    data_dir = Path(args.data_dir)
+    data_dir = Path(args.data_dir).expanduser().resolve()
+    if args.require_event_disjoint:
+        manifest_path = data_dir / "manifest.json"
+        if not manifest_path.exists():
+            raise FileNotFoundError(f"缺少切分 manifest: {manifest_path}")
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        audit = manifest.get("split_audit") or {}
+        if (
+            manifest.get("split_strategy") != "strict_event"
+            or not manifest.get("strict_event_split")
+            or not audit.get("event_disjoint")
+            or audit.get("overlaps")
+        ):
+            raise ValueError(f"数据集不是严格事件级无泄漏切分: {manifest_path}")
     train_ds = XbdChangeDataset(data_dir / "train.jsonl", augment=True)
     val_path = data_dir / "val.jsonl"
     if not val_path.exists():
@@ -451,7 +502,12 @@ def train_main(args: argparse.Namespace) -> int:
         val_ds.records = val_ds.records[: max(1, args.limit // 4)]
     print(f"[train] train={len(train_ds)} val={len(val_ds)} device={args.device}")
 
-    train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, num_workers=args.workers)
+    train_batches = TileGroupedBatchSampler(
+        train_ds.records, batch_size=args.batch_size, seed=args.seed
+    )
+    train_loader = DataLoader(
+        train_ds, batch_sampler=train_batches, num_workers=args.workers
+    )
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False, num_workers=args.workers)
 
     device = args.device
@@ -526,6 +582,11 @@ def main() -> int:
     train_ap.add_argument("--seed", type=int, default=0, help="Deep Ensemble 用不同 seed 训练多个独立成员")
     train_ap.add_argument("--dropout", type=float, default=0.0, help="head 内 Dropout 概率，>0 才能支持 MC-Dropout 推理")
     train_ap.add_argument("--diff-attention", action="store_true", help="用 D2ANet 式差分注意力融合替代简单拼接（E15）")
+    train_ap.add_argument(
+        "--require-event-disjoint",
+        action="store_true",
+        help="训练前要求 manifest.json 声明严格且无事件交集。",
+    )
 
     args = ap.parse_args()
     if args.command == "train":

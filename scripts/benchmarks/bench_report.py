@@ -70,6 +70,20 @@ def _rate(xs: list) -> float | None:
     return round(sum(1 for x in xs if x) / len(xs), 3) if xs else None
 
 
+def damage_macro_f1(rows: list[dict]) -> float | None:
+    classes = sorted({r.get("goal_class") for r in rows if r.get("goal_class")})
+    if not classes:
+        return None
+    scores = []
+    for cls in classes:
+        tp = sum(1 for r in rows if r.get("goal_class") == cls and r.get("pred_class") == cls)
+        fp = sum(1 for r in rows if r.get("goal_class") != cls and r.get("pred_class") == cls)
+        fn = sum(1 for r in rows if r.get("goal_class") == cls and r.get("pred_class") != cls)
+        denom = 2 * tp + fp + fn
+        scores.append((2 * tp / denom) if denom else 0.0)
+    return round(sum(scores) / len(scores), 3)
+
+
 def load_episodes(run_dirs: list[Path]) -> list[dict]:
     eps: list[dict] = []
     for d in run_dirs:
@@ -95,7 +109,15 @@ def agg(rows: list[dict]) -> dict:
         "SPL": _mean([r.get("spl") for r in rows]),
         "Steps": _mean([r.get("steps") for r in rows]),
         "dU": _mean([r.get("delta_u") for r in rows]),
+        "recheck_triggered": _mean([r.get("recheck_triggered") for r in rows]),
+        "recheck_completed": _mean([r.get("recheck_completed") for r in rows]),
+        "recheck_pending": _mean([r.get("recheck_pending") for r in rows]),
+        "recheck_extra_actions": _mean([r.get("recheck_extra_actions") for r in rows]),
+        "recheck_extra_horizontal_m": _mean(
+            [r.get("recheck_extra_horizontal_m") for r in rows]
+        ),
         "judge": _rate([r.get("judge_ok") for r in rows]),
+        "macro_f1": damage_macro_f1(rows),
     }
 
 
@@ -113,13 +135,13 @@ def group_by(rows: list[dict], key: str) -> dict[str, list[dict]]:
 def table_main(eps: list[dict]) -> list[str]:
     by_cfg = group_by(eps, "config")
     L = ["## 主消融表（E1）", "",
-         "| 配置 | 说明 | n | SR | semSR | NE(m) | semNE(m) | SPL | Steps | ΔU | judge_acc |",
-         "|---|---|---|---|---|---|---|---|---|---|---|"]
+         "| 配置 | 说明 | n | SR | semSR | NE(m) | semNE(m) | SPL | Steps | ΔU | judge_acc | macro-F1 |",
+         "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for c in config_order(by_cfg):
         a = agg(by_cfg[c])
         L.append(f"| {c} | {CONFIG_DESC.get(c,'')} | {a['n']} | {_fmt(a['SR'])} | {_fmt(a['semSR'])} | "
                  f"{_fmt(a['NE'])} | {_fmt(a['semNE'])} | {_fmt(a['SPL'])} | {_fmt(a['Steps'])} | "
-                 f"{_fmt(a['dU'])} | {_fmt(a['judge'])} |")
+                 f"{_fmt(a['dU'])} | {_fmt(a['judge'])} | {_fmt(a['macro_f1'])} |")
     L += ["", "> SR=到达指定 GT；semSR=到达瓦片内任一同类受损建筑；ΔU/judge_acc 仅复核配置(B2/B3)有值。", ""]
     return L
 
@@ -158,6 +180,39 @@ def table_recheck(eps: list[dict]) -> list[str]:
          f"| Steps（代价） | {_fmt(a1['Steps'])} | {_fmt(a2['Steps'])} | {_fmt(d_steps)} |",
          "",
          "> 论证：B2 用「多花的步数」换来 ΔU>0 与更高 judge_acc，即「没把握就再看一眼」是否划算。", ""]
+    return L
+
+
+def table_recheck_strata(eps: list[dict]) -> list[str]:
+    """复核配置按 episode 是否实际触发证据分层，避免零触发样本稀释 ΔU。"""
+    rows = [r for r in eps if r.get("evidence_stratum") in {"evidence", "no_evidence"}]
+    if not rows:
+        return []
+    by_cfg = group_by(rows, "config")
+    L = [
+        "## 复核证据链分层（逐 episode）",
+        "",
+        "| 配置 | 分层 | n | 触发数 | completed | pending | ΔU | macro-F1 | 额外动作 | 额外水平距离(m) |",
+        "|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for cfg in config_order(by_cfg):
+        by_stratum = group_by(by_cfg[cfg], "evidence_stratum")
+        for stratum in ("evidence", "no_evidence"):
+            subset = by_stratum.get(stratum, [])
+            if not subset:
+                continue
+            a = agg(subset)
+            L.append(
+                f"| {cfg} | {stratum} | {a['n']} | {_fmt(a['recheck_triggered'])} | "
+                f"{_fmt(a['recheck_completed'])} | {_fmt(a['recheck_pending'])} | "
+                f"{_fmt(a['dU'])} | {_fmt(a['macro_f1'])} | {_fmt(a['recheck_extra_actions'])} | "
+                f"{_fmt(a['recheck_extra_horizontal_m'])} |"
+            )
+    L += [
+        "",
+        "> completed 是正式确认/排除/未定论；pending 是 episode 结束时截断但已纳入 ΔU 的闭环。",
+        "",
+    ]
     return L
 
 
@@ -259,6 +314,34 @@ def paired_permutation_test(
     return count / n_perm
 
 
+def holm_adjust(p_values: list[float | None]) -> list[float | None]:
+    """Holm family-wise error correction, preserving the input order."""
+    valid = sorted(
+        ((p, idx) for idx, p in enumerate(p_values) if p is not None),
+        key=lambda pair: pair[0],
+    )
+    adjusted: list[float | None] = [None] * len(p_values)
+    running = 0.0
+    m = len(valid)
+    for rank, (p_value, idx) in enumerate(valid):
+        running = max(running, min(1.0, (m - rank) * p_value))
+        adjusted[idx] = running
+    return adjusted
+
+
+def paired_wilcoxon(a: list[float], b: list[float]) -> float | None:
+    """Two-sided Wilcoxon signed-rank p value when SciPy and variation exist."""
+    diffs = [left - right for left, right in zip(a, b)]
+    if len(diffs) < 2 or all(abs(diff) < 1e-12 for diff in diffs):
+        return None
+    try:
+        from scipy.stats import wilcoxon
+
+        return float(wilcoxon(a, b, alternative="two-sided", zero_method="zsplit").pvalue)
+    except (ImportError, ValueError):
+        return None
+
+
 def table_significance(eps: list[dict]) -> list[str]:
     """P6：主配置两两 SR 差异的 bootstrap CI + 配对检验。"""
     by_cfg = group_by(eps, "config")
@@ -275,32 +358,105 @@ def table_significance(eps: list[dict]) -> list[str]:
         L.append(f"| {c} | {point:.3f} ({lo:.3f}, {hi:.3f}) | {len(srs)} |")
     L.append("")
 
-    L.append("| 配置对 | ΔSR | p (配对置换检验) | 说明 |")
-    L.append("|---|---|---|---|")
-    by_id_cfg: dict[str, dict[str, float]] = defaultdict(dict)
+    L.append("| 配置对 | ΔSR | p (配对置换) | p (Wilcoxon) | Holm p | 说明 |")
+    L.append("|---|---|---|---|---|---|")
+    # 同一题多次 repeat 先在 item 内平均，避免把相关重复当成独立样本。
+    by_id_cfg: dict[str, dict[str, list[float]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
     for r in eps:
         rid = r.get("id")
         cfg = r.get("config")
         if rid is None or cfg is None:
             continue
-        by_id_cfg[rid][cfg] = 1.0 if r.get("success") else 0.0
+        by_id_cfg[rid][cfg].append(1.0 if r.get("success") else 0.0)
+    comparisons = []
     for i, c1 in enumerate(present):
         for c2 in present[i + 1:]:
             a, b = [], []
             for rid, vals in by_id_cfg.items():
                 if c1 in vals and c2 in vals:
-                    a.append(vals[c1])
-                    b.append(vals[c2])
+                    a.append(sum(vals[c1]) / len(vals[c1]))
+                    b.append(sum(vals[c2]) / len(vals[c2]))
             if len(a) < 2:
                 continue
             p = paired_permutation_test(a, b)
+            p_wilcoxon = paired_wilcoxon(a, b)
             delta = round(sum(a) / len(a) - sum(b) / len(b), 3)
-            sig = "显著 (p<0.05)" if (p is not None and p < 0.05) else "不显著"
-            L.append(f"| {c1} vs {c2} | {delta:+.3f} | {_fmt(round(p, 4) if p is not None else None)} | {sig} (n={len(a)}) |")
+            comparisons.append((c1, c2, delta, p, p_wilcoxon, len(a)))
+    adjusted = holm_adjust([comparison[3] for comparison in comparisons])
+    for (c1, c2, delta, p, p_wilcoxon, n_pairs), p_holm in zip(comparisons, adjusted):
+        sig = "显著 (Holm p<0.05)" if (p_holm is not None and p_holm < 0.05) else "不显著"
+        L.append(
+            f"| {c1} vs {c2} | {delta:+.3f} | "
+            f"{_fmt(round(p, 4) if p is not None else None)} | "
+            f"{_fmt(round(p_wilcoxon, 4) if p_wilcoxon is not None else None)} | "
+            f"{_fmt(round(p_holm, 4) if p_holm is not None else None)} | "
+            f"{sig} (n={n_pairs}) |"
+        )
     L.append("")
     L.append("> 题量较小时 CI 很宽、p 值不稳定，属正常现象；扩题库规模（E13）后应重跑本表。")
     L.append("")
     return L
+
+
+def table_recheck_significance(eps: list[dict]) -> list[str]:
+    """Evidence-positive policy comparisons for ΔU and damage correctness."""
+    rows = [
+        row for row in eps
+        if str(row.get("config", "")).startswith("E11_")
+        and row.get("evidence_stratum") == "evidence"
+    ]
+    configs = config_order(group_by(rows, "config"))
+    if len(configs) < 2:
+        return []
+    lines = [
+        "## E11 证据阳性配对检验（item 内先聚合 repeats）",
+        "",
+    ]
+    for metric, label in (("delta_u", "ΔU"), ("judge_ok", "damage correctness")):
+        by_item: dict[str, dict[str, list[float]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+        for row in rows:
+            value = row.get(metric)
+            if value is None:
+                continue
+            by_item[row["id"]][row["config"]].append(float(value))
+        comparisons = []
+        for index, left in enumerate(configs):
+            for right in configs[index + 1:]:
+                a, b = [], []
+                for values in by_item.values():
+                    if left in values and right in values:
+                        a.append(sum(values[left]) / len(values[left]))
+                        b.append(sum(values[right]) / len(values[right]))
+                if len(a) < 2:
+                    continue
+                p_perm = paired_permutation_test(a, b)
+                p_wilcoxon = paired_wilcoxon(a, b)
+                effect = sum(a_i - b_i for a_i, b_i in zip(a, b)) / len(a)
+                comparisons.append((left, right, effect, p_perm, p_wilcoxon, len(a)))
+        if not comparisons:
+            continue
+        adjusted = holm_adjust([comparison[3] for comparison in comparisons])
+        lines += [
+            f"### {label}",
+            "",
+            "| 配置对 | 平均配对差 | p (置换) | p (Wilcoxon) | Holm p | n |",
+            "|---|---|---|---|---|---|",
+        ]
+        for comparison, p_holm in zip(comparisons, adjusted):
+            left, right, effect, p_perm, p_wilcoxon, n_pairs = comparison
+            lines.append(
+                f"| {left} vs {right} | {effect:+.4f} | "
+                f"{_fmt(round(p_perm, 4) if p_perm is not None else None)} | "
+                f"{_fmt(round(p_wilcoxon, 4) if p_wilcoxon is not None else None)} | "
+                f"{_fmt(round(p_holm, 4) if p_holm is not None else None)} | "
+                f"{n_pairs} |"
+            )
+        lines.append("")
+    return lines
 
 
 def main() -> int:
@@ -328,11 +484,13 @@ def main() -> int:
            "- 来源：" + ", ".join(f"`{d.name}`" for d in run_dirs), ""]
     out += table_main(eps)
     out += table_recheck(eps)
+    out += table_recheck_strata(eps)
     out += table_difficulty(eps)
     out += table_grounder(eps)
     out += table_disaster(eps)
     if not args.no_significance:
         out += table_significance(eps)
+        out += table_recheck_significance(eps)
 
     text = "\n".join(out)
     report_path = run_dirs[0] / "report.md"
