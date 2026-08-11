@@ -3,7 +3,7 @@
 
 We formulated bird's-eye disaster VLN as joint language-guided navigation and evidence-aware damage judgment, and introduced a calibrated active-reinspection mechanism for this setting.
 Under event-disjoint training, temperature scaling improves in-domain ECE but not held-out ECE, and difference attention no longer shows a large holdout accuracy advantage.
-Most importantly, the available end-to-end study contains only one genuine evidence-triggered episode, while historical navigation SR is low and differences are non-significant.
+The strict six-policy reinspection suite keeps absolute \(\SR\) low, finds no significant pairwise success differences, and still yields too few evidence-triggered episodes for a positive claim about judgment gain or cost-normalized utility.
 Thus the correct conclusion is not that reinspection already improves mission success.
 Rather, \ProjectName provides an executable hypothesis and an auditable protocol: when uncertainty is calibrated, can a UAV spend a fixed sensing budget to obtain more reliable disaster judgments?
-We report the strict perception evidence now available and continue the frozen navigation and reinspection evaluation.
+We answer the perception-calibration half of that question and report that the action-selection half remains open under the frozen evaluation.

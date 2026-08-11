@@ -7,6 +7,6 @@ Hierarchical instruction decomposition, a textual semantic map, and episodic mem
 Our current evidence is deliberately bounded.
 Under a frozen event-disjoint split, temperature scaling reduces test ECE from 0.095 to 0.037 without changing accuracy, but increases holdout ECE from 0.046 to 0.084.
 A difference-attention fusion matches concatenation accuracy on both partitions and does not recover the older holdout accuracy gain observed under a leaky split.
-Navigation success remains low in the historical ablation, and only one of 40 episodes in the available reinspection study encountered actionable evidence.
-We therefore report these results and continue the pre-registered navigation and reinspection evaluation needed to test whether calibrated active reinspection improves decision quality under a fixed flight budget.
+On a 40-task evidence-rich navigation suite with three paired seeds, strict success stays between 0.025 and 0.067, pairwise differences are non-significant, and genuine reinspection triggers remain rare with zero observed uncertainty reduction.
+We therefore treat calibrated active reinspection as an executable, auditable hypothesis rather than a demonstrated navigation or judgment improvement.
 \end{abstract}

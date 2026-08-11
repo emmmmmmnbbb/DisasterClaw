@@ -408,12 +408,21 @@ def table_recheck_significance(eps: list[dict]) -> list[str]:
         and row.get("evidence_stratum") == "evidence"
     ]
     configs = config_order(group_by(rows, "config"))
-    if len(configs) < 2:
-        return []
+    unique_items = sorted({row.get("id") for row in rows if row.get("id")})
     lines = [
         "## E11 证据阳性配对检验（item 内先聚合 repeats）",
         "",
+        f"- evidence episodes: {len(rows)}; unique items: {len(unique_items)}",
+        "",
     ]
+    if len(configs) < 2 or len(unique_items) < 2:
+        lines += [
+            "> underpowered: fewer than two unique evidence-positive items; "
+            "skip policy superiority tests.",
+            "",
+        ]
+        return lines
+    wrote_any = False
     for metric, label in (("delta_u", "ΔU"), ("judge_ok", "damage correctness")):
         by_item: dict[str, dict[str, list[float]]] = defaultdict(
             lambda: defaultdict(list)
@@ -439,6 +448,7 @@ def table_recheck_significance(eps: list[dict]) -> list[str]:
                 comparisons.append((left, right, effect, p_perm, p_wilcoxon, len(a)))
         if not comparisons:
             continue
+        wrote_any = True
         adjusted = holm_adjust([comparison[3] for comparison in comparisons])
         lines += [
             f"### {label}",
@@ -456,6 +466,11 @@ def table_recheck_significance(eps: list[dict]) -> list[str]:
                 f"{n_pairs} |"
             )
         lines.append("")
+    if not wrote_any:
+        lines += [
+            "> underpowered: paired evidence-positive comparisons unavailable.",
+            "",
+        ]
     return lines
 
 

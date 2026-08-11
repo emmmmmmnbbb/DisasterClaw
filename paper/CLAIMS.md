@@ -60,12 +60,13 @@ memory are system components, not standalone contribution claims.
   better for concatenation.
 - Strict YOLO detector (event-disjoint) reaches test mAP@0.5≈0.144 and
   holdout mAP@0.5≈0.175; low recall remains a grounding bottleneck.
-- The historical 40-task navigation run has low SR and no statistically
-  significant B0--B3 improvement. It supports feasibility and failure
-  analysis only until the strict evidence-rich rerun finishes.
-- The historical six-policy reinspection evaluation contains only one
-  evidence-triggering episode. It is underpowered and cannot support a
-  superiority claim.
+- Strict evidence-rich E11 (40 tasks × 6 policies × 3 seeds = 720 episodes):
+  SR 0.025--0.067; all pairwise SR differences non-significant after Holm;
+  only ~3--4 evidence-positive episodes per policy; genuine triggers only for
+  Fixed/InfoGain on one midwest-flooding item; observed ΔU = 0. Supports
+  execution/logging, not policy superiority.
+- Historical B0--B3 (repeat=1) remains a diagnostic navigation baseline until
+  the remaining strict B0--B3/GPS/degraded suites finish.
 - Historical (non-strict) E10/E15 numbers are superseded for claim-making by
   the event-disjoint rerun above.
 

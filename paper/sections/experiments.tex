@@ -14,17 +14,12 @@ We organize the study around six research questions:
 We report all available evidence for these questions, including negative and compromised results.
 Navigation gains are never inferred from perception-only metrics, and \(\semSR\) is never treated as strict success.
 
-\subsection{RQ6: Navigation Ablation Remains Low and Inconclusive}
+\subsection{RQ6: Navigation Success Remains Low}
 \input{tables/navigation}
 
-\tabref{tab:navigation} reports the historical 40-instruction, single-repeat E1 run.
-Strict success is low for every configuration.
-Adding the hierarchical planner leaves \(\SR\) unchanged at 0.075 while increasing navigation error.
-Adding reinspection or memory does not improve strict success.
-The slight semantic-success difference for reinspection is not a substitute for strict target arrival.
-With this sample size, the navigation differences are not statistically significant.
-These results establish a difficult benchmark and expose grounding failures; they do not establish that the supporting stack improves navigation.
-The strict evidence-rich rerun with hybrid grounding, three paired seeds, and the event-disjoint perception stack is \pending.
+\tabref{tab:navigation} reports the historical 40-instruction, single-repeat E1 run as a diagnostic baseline.
+Strict success is low for every configuration, and the historical differences are not statistically significant.
+The strict evidence-rich suite below revisits navigation under hybrid grounding and three paired seeds; those absolute \(\SR\) values remain in the same low regime.
 
 \subsection{RQ1: Calibration Helps In-Domain Confidence, Not Uniformly}
 \input{tables/calibration}
@@ -53,27 +48,27 @@ The earlier historical observation that difference attention substantially raise
 \input{tables/yolo_metrics}
 The detector used for hybrid grounding remains weak under the same split (\tabref{tab:yolo-metrics}); low recall is a localization bottleneck for language-conditioned targeting.
 
-\subsection{RQ2--RQ4: Active Reinspection Is Currently Underpowered}
-The available E11 study evaluates six policies on 40 episodes.
-Pairwise strict-SR differences are non-significant (\(p\geq0.49\)).
-Only one episode contains detected damage evidence and activates genuine reinspection; the other 39 remain at \texttt{risk\_level=none}.
-Although that single episode shows different uncertainty changes across policies, \(n=1\) cannot support a positive conclusion for when to reinspect, judgment gain, or cost-normalized utility.
-The current evidence therefore demonstrates execution and logging, not effectiveness.
-
+\subsection{RQ2--RQ4: Strict Reinspection Remains Underpowered}
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{generated/review_sheets/review_01.jpg}
   \caption{Contact-sheet audit for the evidence-rich reinspection subset.
   Starts are outside the 25\,m success radius and inside the default
-  observation radius; approval is geometry-checked and visually reviewed.
-  Strict policy comparison on this set is \pending.}
+  observation radius; approval is geometry-checked and visually reviewed.}
   \label{fig:evidence-rich}
 \end{figure}
 
-An evidence-rich 40-task subset with starts outside the success radius has been frozen for the strict rerun (\figref{fig:evidence-rich}); its results are \pending.
+\input{tables/reinspection}
 
-\subsection{Pre-Registered Strict Evaluation}
-Event-disjoint manifests, perception checkpoints, and calibration fits are now frozen.
-Remaining work is the paired navigation and reinspection suite with hybrid grounding, three seeds, bootstrap confidence intervals, Wilcoxon or paired permutation tests, and Holm correction over the six-policy family.
-No positive claim will be made if trigger coverage is too low for the pre-specified analysis.
-Appendix~\ref{app:protocol} records the frozen hypotheses and denominators.
+We evaluate six policies on the frozen 40-task evidence-rich set with hybrid grounding and three paired seeds (\figref{fig:evidence-rich}, \tabref{tab:reinspection}).
+Strict \(\SR\) ranges from 0.025 to 0.067.
+All pairwise \(\SR\) differences are non-significant after Holm correction (minimum raw \(p=0.26\)).
+Across 720 episodes, only about three to four episodes per policy are evidence-positive, and genuine reinspection triggers appear only for Fixed (3/120) and InfoGain (2--3/120), concentrated on a single midwest-flooding item.
+Observed \(\Delta U\) on those triggered episodes is zero, so the study cannot support claims about when to reinspect, judgment gain, or cost-normalized utility.
+The correct conclusion is that the controller executes and logs budgeted reinspection, but the current evidence-rich subset still underpowers RQ2--RQ4.
+
+\subsection{Pre-Registered Strict Evaluation Status}
+Event-disjoint manifests, perception checkpoints, calibration fits, and the six-policy reinspection suite are now frozen and reported.
+Remaining robustness suites (B0--B3 under the same set, GPS noise, and forced degraded observation) follow the same protocol.
+No positive claim is made for H3--H4 because trigger coverage and unique evidence-positive items fall below the pre-declared analysis threshold.
+Appendix~\ref{app:protocol} records the hypotheses and denominators.
