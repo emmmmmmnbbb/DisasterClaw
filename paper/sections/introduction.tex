@@ -25,11 +25,11 @@ In particular, improved proposal recall is not interpreted as evidence that hier
 Our current results support three limited claims.
 First, under a frozen event-disjoint split, post-hoc temperature scaling improves in-domain ECE without changing top-1 accuracy, but the same temperature can worsen held-out ECE.
 Second, difference-aware temporal fusion does not recover a large holdout accuracy advantage once training and evaluation events are disjoint.
-Third, an event-disjoint localization U-Net substantially improves building proposal quality relative to the strict YOLO detector, but the end-to-end reinspection suite must still be judged by navigation and trigger statistics, not by localization metrics alone.
+Third, an event-disjoint localization U-Net substantially improves building proposal quality relative to the strict YOLO detector, but the matched E1/E11 suites still record zero strict success and zero reinspection triggers, so localization metrics are not navigation or judgment gains.
 
 Our contributions are:
 \begin{itemize}
     \item a task definition and benchmark protocol for language-guided navigation and damage judgment in georeferenced bird's-eye disaster imagery;
     \item a calibrated, budgeted active-reinspection policy that links dual-temporal uncertainty to UAV sensing actions;
-    \item an honest empirical account of calibration, temporal fusion, localization scaffolding, and low-SR navigation results under a leakage-safe evaluation protocol.
+    \item an honest empirical account of calibration, temporal fusion, localization scaffolding, and zero-SR navigation results under a leakage-safe evaluation protocol.
 \end{itemize}

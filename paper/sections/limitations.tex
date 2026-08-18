@@ -2,14 +2,19 @@
 \label{sec:limitations}
 
 \paragraph{Statistical power and trigger scarcity.}
-The navigation benchmark is small, success rates are low, and the active mechanism triggers on only one available episode.
-Consequently, the paper cannot yet claim that reinspection improves final decisions or navigation.
-A larger benchmark alone is insufficient; it must contain enough evidence-positive episodes to exercise the policy.
+The evidence-rich set has 40 tasks.
+Under the U-Net proposer, 720 reinspection episodes and 480 navigation
+episodes all finish with zero strict success and zero reinspection triggers.
+The controller is therefore never exercised, and the study cannot claim that
+reinspection improves decisions or navigation.
+A larger benchmark alone is insufficient; it must contain enough
+evidence-positive episodes to exercise the policy.
+This run also lacked a reachable VLM/LLM endpoint, so hybrid grounding
+degraded to detector-only proposals.
 
-\paragraph{Historical split leakage.}
-The nominal cross-disaster holdout was evaluated with a model whose training data may include the same disaster types.
-Spatially nearby crops and multiple crops from one building can also create optimistic estimates unless grouping is enforced.
-The current holdout values are retained for transparency but not promoted as strict generalization.
+\paragraph{Remaining robustness suites.}
+GPS-noise and forced-degraded observation suites were not regenerated under
+the U-Net proposer and are not reported as completed results.
 
 \paragraph{Simulation and sensing fidelity.}
 The environment uses georeferenced overhead imagery and approximates altitude changes by changing crop footprint.

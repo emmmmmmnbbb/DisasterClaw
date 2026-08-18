@@ -168,11 +168,19 @@ separates evidence from no-evidence episodes, and applies Holm correction.
 
 ## 5. Paper
 
+Frozen U-Net-proposer E1/E11 ledgers:
+
+- `runs/benchmarks/paper_strict_unet_v1/e1_nav/results.json` (480 episodes)
+- `runs/benchmarks/paper_strict_unet_v1/e11/results.json` (720 episodes)
+
+GPS-noise and forced-degraded suites were not regenerated under U-Net and
+must not be reported as completed results.
+
 ```bash
 cd /home/lc/disasterclaw
-python scripts/benchmarks/export_paper_assets.py
+python scripts/benchmarks/export_paper_assets.py \
+  --navigation runs/benchmarks/paper_strict_unet_v1/e1_nav/results.json \
+  --reinspection runs/benchmarks/paper_strict_unet_v1/e11/results.json \
+  --loc-metrics runs/benchmarks/loc_metrics.json
 latexmk -pdf -cd -interaction=nonstopmode -halt-on-error paper/main.tex
 ```
-
-Replace `--navigation` / `--calibration-dir` with the strict run outputs
-before treating table numbers as final.

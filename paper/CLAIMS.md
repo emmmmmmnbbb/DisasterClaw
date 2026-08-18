@@ -69,14 +69,18 @@ memory are system components, not standalone contribution claims.
 - Strict evidence-rich E11 under the U-Net proposer (40 tasks × 6 policies ×
   3 seeds = 720 episodes): every policy has SR 0, semSR 0.05, mean NE
   587.6 m, SPL 0, and zero damage-evidence observations / reinspection
-  triggers. All episodes complete without benchmark errors. The run supports
-  neither policy superiority nor a claim that localization gains improve
-  navigation or judgment. Source:
+  triggers. All episodes complete without benchmark errors. Source:
   `runs/benchmarks/paper_strict_unet_v1/e11/results.json`.
-- Historical B0--B3 (repeat=1, YOLO proposer) remains a diagnostic navigation
-  baseline until the U-Net strict B0--B3/GPS/degraded suites finish.
-- Historical (non-strict) E10/E15 numbers are superseded for claim-making by
-  the event-disjoint rerun above.
+- Strict E1 under the U-Net proposer (40 tasks × 4 configs × 3 seeds = 480
+  episodes): every config has SR 0 and SPL 0. B0 NE 308.1 m / semSR 0;
+  B1--B3 NE 587.6 m / semSR 0.05. Zero evidence observations and zero
+  reinspection triggers. Source:
+  `runs/benchmarks/paper_strict_unet_v1/e1_nav/results.json`.
+- These runs support neither policy superiority nor a claim that localization
+  gains improve navigation or judgment. GPS-noise and degraded-observation
+  suites were not rerun under U-Net and remain pending.
+- Historical (non-strict / YOLO-proposer) E1/E10/E15 numbers are superseded
+  for claim-making by the event-disjoint U-Net ledgers above.
 
 ## Prohibited claims
 

@@ -14,14 +14,20 @@ We organize the study around six research questions:
 We report all available evidence for these questions, including negative and compromised results.
 Navigation gains are never inferred from perception-only metrics, and \(\semSR\) is never treated as strict success.
 
-\subsection{RQ6: Navigation Success Remains Low}
+\subsection{RQ6: Navigation Success Remains Zero}
 \input{tables/navigation}
 
-\tabref{tab:navigation} reports the historical 40-instruction, single-repeat E1 run under the YOLO proposer as a diagnostic baseline.
-Strict success is low for every configuration, and the historical differences are not statistically significant.
-The authoritative strict suite under the event-disjoint U-Net proposer is written to
-\texttt{runs/benchmarks/paper\_strict\_unet\_v1/e1\_nav} (three paired seeds, hybrid grounding); replace the generated navigation table from that run before treating RQ6 numbers as final.
-We do not interpret localization Dice or proposal recall as navigation success.
+\tabref{tab:navigation} reports the frozen U-Net-proposer E1 suite:
+40 tasks, hybrid grounding, and three paired seeds (480 episodes).
+Every configuration has strict \(\SR=0\) and SPL \(0\).
+The keyword baseline (B0) records mean \(\NE=308.1\) m and \(\semSR=0\);
+HSPM, reinspection, and memory (B1--B3) share mean \(\NE=587.6\) m and
+\(\semSR=0.05\).
+No configuration yields a damage-evidence observation or a reinspection
+trigger, so adding planning, reinspection, or memory cannot be credited with
+a navigation gain.
+We do not interpret localization Dice or proposal recall as navigation
+success, and \(\semSR\) is not treated as strict target success.
 
 \subsection{RQ1: Calibration Helps In-Domain Confidence, Not Uniformly}
 \input{tables/calibration}
@@ -81,12 +87,11 @@ These results do not support claims about when to reinspect, judgment gain,
 or cost-normalized utility.
 
 \subsection{Pre-Registered Strict Evaluation Status}
-Event-disjoint manifests, perception checkpoints (dual-temporal classifier, ResNet34 localizer), calibration fits, and the six-policy reinspection protocol are frozen.
-The U-Net-proposer E11 ledger is frozen at
-\texttt{runs/benchmarks/paper\_strict\_unet\_v1/e11}; the matched E1 ledger
-is still being completed under the same configuration.
+Event-disjoint manifests, perception checkpoints (dual-temporal classifier, ResNet34 localizer), calibration fits, and the U-Net-proposer E1/E11 ledgers are frozen at
+\texttt{runs/benchmarks/paper\_strict\_unet\_v1/}.
 YOLO-proposer ledgers remain available for rollback comparison only.
-Remaining robustness suites (GPS noise and forced degraded observation) follow the same protocol once the U-Net E1/E11 ledgers are frozen.
+GPS-noise and forced-degraded suites were not regenerated under the U-Net
+proposer; they remain pending and are not reported as completed results.
 No positive claim is made for H3--H4 because trigger coverage and unique
-evidence-positive items are both zero in the U-Net E11 suite.
+evidence-positive items are both zero.
 Appendix~\ref{app:protocol} records the hypotheses and denominators.

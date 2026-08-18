@@ -73,17 +73,17 @@ no-data checks; damage severity follows xBD and is not independently
 relabeled.
 
 \paragraph{Current evidence ledger.}
-Historical E1 contains 40 instructions and one repeat per configuration under
-the YOLO proposer; all strict-SR values are at most 0.075.
 Strict event-disjoint calibration uses 71{,}293 test and 69{,}307 holdout building crops.
-Strict baseline temperatures are \(T=1.351\) (concatenation) and \(T=1.330\) (difference attention), with best validation accuracies 0.797 and 0.795.
+The retrained dual-temporal checkpoints report best validation accuracy \(0.797\)
+with fitted temperatures \(T=1.440\) (concatenation) and \(T=1.483\) (difference attention).
 Strict detector metrics are recorded in
 \texttt{runs/benchmarks/paper\_strict\_v1/yolo\_metrics.json}.
 Strict localization metrics are recorded in
 \texttt{runs/benchmarks/loc\_metrics.json}.
-U-Net proposer navigation and reinspection suites are written under
-\texttt{runs/benchmarks/paper\_strict\_unet\_v1/} and must not be mixed with
-YOLO-era episode logs when reporting end-to-end numbers.
+Frozen U-Net-proposer navigation and reinspection ledgers live under
+\texttt{runs/benchmarks/paper\_strict\_unet\_v1/e1\_nav} (480 episodes) and
+\texttt{runs/benchmarks/paper\_strict\_unet\_v1/e11} (720 episodes).
+They must not be mixed with YOLO-era episode logs.
 The manuscript does not extrapolate localization AP into navigation claims.
 
 \paragraph{Artifacts to release.}

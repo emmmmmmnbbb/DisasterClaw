@@ -85,4 +85,4 @@ The hierarchical semantic planner (HSPM) decomposes multi-landmark instructions,
 For building proposals we use an event-disjoint ResNet34 U-Net trained only on pre-disaster tiles from the twelve training events, then convert the predicted mask into boxes by connected components.
 Each box is cropped from the paired pre/post patches and scored by the dual-temporal damage classifier above; segmentation and a vision-language fallback remain available for non-building cues.
 A weak YOLO detector under the same split is retained only as a localization baseline and rollback path.
-Because navigation success stays low and shows no strict-SR improvement attributable to these modules, we treat localization, segmentation, planning, and memory as implementation scaffolding rather than as claimed sources of navigation gains.
+Because the matched E1/E11 suites record zero strict success and no reinspection trigger, we treat localization, segmentation, planning, and memory as implementation scaffolding rather than as claimed sources of navigation or judgment gains.

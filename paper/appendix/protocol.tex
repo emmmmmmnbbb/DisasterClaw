@@ -9,7 +9,7 @@ H4 tests whether any gain remains relative to random and fixed-descent controls.
 These hypotheses are evaluated separately; H1 does not imply H3.
 Under the frozen checkpoints, H1 is supported on the test partition (ECE $0.095\rightarrow0.037$, accuracy unchanged) but not on holdout (ECE $0.046\rightarrow0.084$).
 H2 is not supported as a uniform accuracy or holdout-calibration improvement; both fusions remain near $0.765/0.803$ accuracy.
-H3--H4 are reported as underpowered rather than positive: the strict six-policy suite contains only one unique evidence-positive item with genuine triggers, observed $\Delta U=0$, and all pairwise SR comparisons remain non-significant after Holm correction.
+H3--H4 are reported as underpowered rather than positive: the frozen U-Net-proposer E1 (480) and E11 (720) suites contain zero evidence-positive episodes and zero reinspection triggers, so the controller is never exercised.
 
 \paragraph{Data partition.}
 Disaster events, not crops, are the unit of partition.
