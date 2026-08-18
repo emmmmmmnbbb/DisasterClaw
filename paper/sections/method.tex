@@ -82,5 +82,7 @@ If an episode terminates with an open reinspection, the final observation is flu
 
 \subsection{Supporting Navigation Stack}
 The hierarchical semantic planner (HSPM) decomposes multi-landmark instructions, an STMR-style textual map representation exposes nearby semantic cells to the language model, and memory supports retrieval across explored positions.
-YOLO-style detection~\cite{redmon2016you}, segmentation, and a vision-language fallback provide candidate evidence.
-Because E1 shows low success and no strict-SR improvement from these additions, we treat them as implementation scaffolding and analyze their failures rather than attributing navigation gains to them.
+For building proposals we use an event-disjoint ResNet34 U-Net trained only on pre-disaster tiles from the twelve training events, then convert the predicted mask into boxes by connected components.
+Each box is cropped from the paired pre/post patches and scored by the dual-temporal damage classifier above; segmentation and a vision-language fallback remain available for non-building cues.
+A weak YOLO detector under the same split is retained only as a localization baseline and rollback path.
+Because navigation success stays low and shows no strict-SR improvement attributable to these modules, we treat localization, segmentation, planning, and memory as implementation scaffolding rather than as claimed sources of navigation gains.

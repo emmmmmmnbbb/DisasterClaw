@@ -18,6 +18,7 @@ Performance in this environment is not evidence of safe autonomous deployment.
 
 \paragraph{Perception bottlenecks.}
 Damage labels can be ambiguous even to humans, and domain shift across satellite, crewed-aircraft, and low-altitude UAV imagery can invalidate confidence estimates.
+The event-disjoint U-Net proposer mitigates the previous YOLO recall bottleneck for buildings, but damage grading, open-vocabulary grounding, and trigger coverage can still fail even when proposals are plentiful.
 Calibration measured on one distribution does not guarantee calibration after shift.
 Open-vocabulary vision-language outputs may improve coverage while introducing hallucinated evidence.
 

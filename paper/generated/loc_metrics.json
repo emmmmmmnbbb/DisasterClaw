@@ -1,0 +1,66 @@
+{
+  "generated_at": "2026-08-16T06:36:37+00:00",
+  "weights": "/home/lc/disasterclaw/backend/outputs/building_localization/resnet34_strict_v1.pt",
+  "weights_sha256": "4802e3886249deee3f33a52d4142eea4937111fdf78fdbeb52184ab5d217b189",
+  "data_dir": "/home/lc/datasets/xbd_loc_strict_v1",
+  "manifest_sha256": "bfe1065ea5434a7648a37666e38ea5384372566ca4a25225cbe4f9da25ebee28",
+  "event_split": {
+    "train": [
+      "guatemala-volcano",
+      "hurricane-florence",
+      "hurricane-matthew",
+      "joplin-tornado",
+      "lower-puna-volcano",
+      "midwest-flooding",
+      "portugal-wildfire",
+      "santa-rosa-wildfire",
+      "socal-fire",
+      "sunda-tsunami",
+      "tuscaloosa-tornado",
+      "woolsey-fire"
+    ],
+    "val": [
+      "hurricane-harvey",
+      "mexico-earthquake"
+    ],
+    "test": [
+      "hurricane-michael",
+      "palu-tsunami"
+    ],
+    "holdout": [
+      "moore-tornado",
+      "nepal-flooding",
+      "pinery-bushfire"
+    ]
+  },
+  "change_ckpt": null,
+  "results": {
+    "val": {
+      "n": 586,
+      "dice": 0.7558416524619471,
+      "iou": 0.6320005119903735,
+      "proposal_recall_iou50": 0.48851613122223286,
+      "building_AP50_mean_per_image": 0.4214919117864939,
+      "mean_pred_boxes": 58.20648464163823,
+      "mean_gt_boxes": 76.63651877133105
+    },
+    "test": {
+      "n": 596,
+      "dice": 0.7496314007312117,
+      "iou": 0.6178376769205662,
+      "proposal_recall_iou50": 0.5238367770277736,
+      "building_AP50_mean_per_image": 0.45143622251669047,
+      "mean_pred_boxes": 56.508389261744966,
+      "mean_gt_boxes": 67.3506711409396
+    },
+    "holdout": {
+      "n": 2691,
+      "dice": 0.7825794736620131,
+      "iou": 0.7209018712196589,
+      "proposal_recall_iou50": 0.7061869897752275,
+      "building_AP50_mean_per_image": 0.6846870747773696,
+      "mean_pred_boxes": 12.141583054626533,
+      "mean_gt_boxes": 17.702712746191008
+    }
+  }
+}

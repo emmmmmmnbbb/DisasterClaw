@@ -12,7 +12,10 @@ We use hierarchical instruction decomposition and textual map summaries as suppo
 \paragraph{Overhead disaster assessment.}
 xBD, released with the xView2 challenge, provides large-scale pre/post-disaster satellite imagery and building-level damage labels~\cite{gupta2019xbd}.
 It enables a navigation environment grounded in real disaster geometry rather than a purely synthetic simulator.
-Object detectors such as YOLO~\cite{redmon2016you} and semantic segmentation architectures such as SegFormer~\cite{xie2021segformer} provide useful perception primitives, while modern vision-language models such as Qwen2-VL~\cite{wang2024qwen2vl} offer open-vocabulary interpretation.
+Winning xView2 entries commonly separate building localization from damage classification, often with U-Net-style encoders trained on pre-event imagery before a Siamese damage head.
+We adopt only that localization idea as replaceable scaffolding: an event-disjoint ResNet34 U-Net proposes buildings, while damage probabilities still come from our dual-temporal classifier.
+We do not load public competition weights, which would reintroduce event leakage through the proposer.
+Object detectors such as YOLO~\cite{redmon2016you} and semantic segmentation architectures such as SegFormer~\cite{xie2021segformer} remain useful primitives, while modern vision-language models such as Qwen2-VL~\cite{wang2024qwen2vl} offer open-vocabulary interpretation.
 However, detector confidence is not automatically a reliable probability of correctness, and overhead-to-aerial or cross-disaster transfer remains a major concern.
 
 \paragraph{Calibration and uncertainty.}

@@ -42,8 +42,26 @@ Training uses the twelve remaining events:
 \texttt{woolsey-fire}.
 The corresponding bitemporal building counts are 143{,}230 / 73{,}859 /
 71{,}293 / 69{,}307.
+The localization dataset uses the same event partition with pre-disaster
+images and binary building masks rasterized from post polygons
+(\texttt{/home/lc/datasets/xbd\_loc\_strict\_v1}).
 Training entry points reject any non-disjoint manifest when
 \texttt{--require-event-disjoint} is set.
+
+\paragraph{Building localization scaffolding.}
+The default building proposer is a ResNet34 U-Net trained for eight epochs
+on the strict localization split with Dice+Focal loss and ImageNet encoder
+initialization only.
+Competition champion weights are refused by path guardrails.
+Checkpoint:
+\texttt{backend/outputs/building\_localization/resnet34\_strict\_v1.pt}.
+At inference, pre-event crops yield a building mask; connected components
+become boxes; each box is classified by the dual-temporal damage model.
+Strict localization metrics are recorded in
+\texttt{runs/benchmarks/loc\_metrics.json} and
+\texttt{paper/generated/loc\_metrics\_table.tex}.
+The YOLO detector under the same split remains a rollback baseline
+(\texttt{runs/benchmarks/paper\_strict\_v1/yolo\_metrics.json}).
 
 \paragraph{Evidence-rich reinspection subset.}
 The strict reinspection set contains 40 approved single-target episodes
@@ -55,13 +73,18 @@ no-data checks; damage severity follows xBD and is not independently
 relabeled.
 
 \paragraph{Current evidence ledger.}
-Historical E1 contains 40 instructions and one repeat per configuration; all strict-SR values are at most 0.075.
+Historical E1 contains 40 instructions and one repeat per configuration under
+the YOLO proposer; all strict-SR values are at most 0.075.
 Strict event-disjoint calibration uses 71{,}293 test and 69{,}307 holdout building crops.
 Strict baseline temperatures are \(T=1.351\) (concatenation) and \(T=1.330\) (difference attention), with best validation accuracies 0.797 and 0.795.
 Strict detector metrics are recorded in
 \texttt{runs/benchmarks/paper\_strict\_v1/yolo\_metrics.json}.
-Historical E11 contains 40 episodes per policy, but only one episode presents detected damage evidence and performs genuine reinspection.
-The manuscript does not extrapolate from that single trigger.
+Strict localization metrics are recorded in
+\texttt{runs/benchmarks/loc\_metrics.json}.
+U-Net proposer navigation and reinspection suites are written under
+\texttt{runs/benchmarks/paper\_strict\_unet\_v1/} and must not be mixed with
+YOLO-era episode logs when reporting end-to-end numbers.
+The manuscript does not extrapolate localization AP into navigation claims.
 
 \paragraph{Artifacts to release.}
 The reproducibility package includes event-disjoint manifests, benchmark instructions, configuration snapshots, checkpoint hashes, per-episode JSONL logs, aggregate scripts, and calibration diagrams.

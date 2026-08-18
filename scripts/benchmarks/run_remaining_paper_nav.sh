@@ -7,12 +7,14 @@ PYTHON_BIN="${DISASTERCLAW_PYTHON_BIN:-/home/lc/miniconda3/envs/disasterclaw/bin
 DEVICE="${PAPER_DEVICE:-cuda:0}"
 VLM_DEVICE="${PAPER_VLM_DEVICE:-cuda:2}"
 YOLO_CKPT="${PAPER_YOLO_CKPT:-$REPO_ROOT/runs/train/xbd_yolov8s_strict_v1/weights/best.pt}"
+LOC_CKPT="${PAPER_LOC_CKPT:-$REPO_ROOT/backend/outputs/building_localization/resnet34_strict_v1.pt}"
 DIFF_CKPT="${PAPER_DIFF_CKPT:-$REPO_ROOT/backend/outputs/change_perception/strict_diff_attention_seed0.pt}"
 RECHECK_SET="${PAPER_RECHECK_SET:-$REPO_ROOT/backend/data/benchmarks/vln_recheck_testset.json}"
-RUN_ROOT="${PAPER_RUN_ROOT:-$REPO_ROOT/runs/benchmarks/paper_strict_v1}"
+RUN_ROOT="${PAPER_RUN_ROOT:-$REPO_ROOT/runs/benchmarks/paper_strict_unet_v1}"
 
 mkdir -p "$RUN_ROOT"
 test -f "$YOLO_CKPT"
+test -f "$LOC_CKPT"
 test -f "$DIFF_CKPT"
 test -f "$RECHECK_SET"
 
@@ -24,7 +26,10 @@ if [[ -f "$REPO_ROOT/.env" ]]; then
   set +a
 fi
 export YOLO_WEIGHTS="$YOLO_CKPT"
+export BUILDING_PROPOSER=unet
+export BUILDING_LOC_CKPT="$LOC_CKPT"
 export CHANGE_PERCEPTION_CKPT="$DIFF_CKPT"
+export VLN_CHANGE_PERCEPTION=1
 export PERCEPTION_DEVICE="$DEVICE"
 export VLM_LOCAL_DEVICE="$VLM_DEVICE"
 export VLM_LOCAL_MIN_FREE_GPU_GB="${PAPER_VLM_MIN_FREE_GB:-12}"
@@ -53,6 +58,7 @@ done
   --calibration-dir "$RUN_ROOT/calibration_baseline" \
   --diff-calibration-dir "$RUN_ROOT/calibration_diff_attention" \
   --yolo-metrics "$RUN_ROOT/yolo_metrics.json" \
+  --loc-metrics "$RUN_ROOT/loc_metrics.json" \
   --out "$REPO_ROOT/paper/generated"
 
 echo "Remaining navigation suites completed under $RUN_ROOT"

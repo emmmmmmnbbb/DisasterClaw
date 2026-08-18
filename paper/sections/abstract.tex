@@ -3,10 +3,16 @@ Language-guided aerial navigation could help responders inspect damaged infrastr
 We introduce \ProjectName, a system and benchmark formulation for bird's-eye disaster vision-and-language navigation in georeferenced pre- and post-event imagery.
 Its central mechanism is calibrated uncertainty-driven active reinspection.
 A dual-temporal damage model produces calibrated class probabilities; when uncertainty is high and an action is expected to reduce it, the agent spends a limited budget to descend and recenter before committing to a damage judgment.
-Hierarchical instruction decomposition, a textual semantic map, and episodic memory support this loop but are not presented as success-rate improvements.
+Building proposals come from an event-disjoint ResNet34 U-Net localizer adapted from the xView2 localization stage, with damage labels still produced by the dual-temporal classifier; hierarchical planning, a textual semantic map, and episodic memory support the loop.
+None of these perception or planning modules is presented as a success-rate improvement.
 Our current evidence is deliberately bounded.
 Under a frozen event-disjoint split, temperature scaling reduces test ECE from 0.095 to 0.037 without changing accuracy, but increases holdout ECE from 0.046 to 0.084.
 A difference-attention fusion matches concatenation accuracy on both partitions and does not recover the older holdout accuracy gain observed under a leaky split.
-On a 40-task evidence-rich navigation suite with three paired seeds, strict success stays between 0.025 and 0.067, pairwise differences are non-significant, and genuine reinspection triggers remain rare with zero observed uncertainty reduction.
+Replacing the weak YOLO proposer raises building localization quality (test Dice $0.750$, proposal recall@$0.5$ $0.524$) while leaving the scientific claims about calibration and reinspection unchanged.
+On the same 40-task evidence-rich suite with three paired seeds, all six
+reinspection policies obtain zero strict success and produce no
+damage-evidence observations or reinspection triggers.
+Thus the localization gain does not transfer into end-to-end evidence
+coverage in the evaluated stack.
 We therefore treat calibrated active reinspection as an executable, auditable hypothesis rather than a demonstrated navigation or judgment improvement.
 \end{abstract}

@@ -59,14 +59,22 @@ memory are system components, not standalone contribution claims.
   ECE is slightly better for difference attention, calibrated holdout ECE is
   better for concatenation.
 - Strict YOLO detector (event-disjoint) reaches test mAP@0.5≈0.144 and
-  holdout mAP@0.5≈0.175; low recall remains a grounding bottleneck.
-- Strict evidence-rich E11 (40 tasks × 6 policies × 3 seeds = 720 episodes):
-  SR 0.025--0.067; all pairwise SR differences non-significant after Holm;
-  only ~3--4 evidence-positive episodes per policy; genuine triggers only for
-  Fixed/InfoGain on one midwest-flooding item; observed ΔU = 0. Supports
-  execution/logging, not policy superiority.
-- Historical B0--B3 (repeat=1) remains a diagnostic navigation baseline until
-  the remaining strict B0--B3/GPS/degraded suites finish.
+  holdout mAP@0.5≈0.175; retained only as a localization baseline / rollback.
+- Strict ResNet34 U-Net localizer (event-disjoint; ImageNet init only, no
+  xView2 champion weights): test Dice 0.750, proposal recall@0.5 0.524,
+  building AP@0.5 0.451; holdout Dice 0.783, proposal recall@0.5 0.706,
+  building AP@0.5 0.685. Used as default building proposer; damage labels
+  still come from change_perception. Localization is scaffolding, not a
+  contribution claim.
+- Strict evidence-rich E11 under the U-Net proposer (40 tasks × 6 policies ×
+  3 seeds = 720 episodes): every policy has SR 0, semSR 0.05, mean NE
+  587.6 m, SPL 0, and zero damage-evidence observations / reinspection
+  triggers. All episodes complete without benchmark errors. The run supports
+  neither policy superiority nor a claim that localization gains improve
+  navigation or judgment. Source:
+  `runs/benchmarks/paper_strict_unet_v1/e11/results.json`.
+- Historical B0--B3 (repeat=1, YOLO proposer) remains a diagnostic navigation
+  baseline until the U-Net strict B0--B3/GPS/degraded suites finish.
 - Historical (non-strict) E10/E15 numbers are superseded for claim-making by
   the event-disjoint rerun above.
 
@@ -79,6 +87,10 @@ memory are system components, not standalone contribution claims.
 - Do not claim unseen-disaster generalization from a model whose training
   events overlap the evaluation events.
 - Do not equate improved ECE, Brier score, or NLL with improved accuracy.
+- Do not equate improved localization Dice / proposal recall / building AP
+  with improved navigation SR, damage judgment, or reinspection utility.
 - Do not imply real-flight safety, multi-UAV coordination, or first-person
   UAV validation; the current platform is a single-UAV bird's-eye simulator.
 - Do not report pending strict experiments as completed results.
+- Do not load or cite xView2 champion public weights as the deployed localizer;
+  only event-disjoint retraining from ImageNet is allowed for the proposer.

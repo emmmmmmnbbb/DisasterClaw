@@ -54,6 +54,13 @@ YOLO_WEIGHTS = os.getenv(
 YOLO_CONF_THRESHOLD = float(os.getenv("YOLO_CONF_THRESHOLD", "0.25"))
 # 推理分辨率：xBD 域内权重在 1024² 卫星图上训练，小目标需大 imgsz；RescueNet 旧权重用 640。
 YOLO_IMGSZ = int(os.getenv("YOLO_IMGSZ", "640"))
+# 建筑提议器：unet = ResNet34 U-Net 定位（损伤类由 change_perception 写回）；
+# yolo = 旧检测器路径（可回退对照）。
+BUILDING_PROPOSER = os.getenv("BUILDING_PROPOSER", "unet").strip().lower()
+BUILDING_LOC_CKPT = os.getenv(
+    "BUILDING_LOC_CKPT",
+    str(BACKEND_DIR / "outputs" / "building_localization" / "resnet34_strict_v1.pt"),
+)
 SEGFORMER_MODEL = os.getenv(
     "SEGFORMER_MODEL", "nvidia/segformer-b2-finetuned-ade-512-512"
 )
@@ -91,6 +98,7 @@ _ZH_TO_CHANGE_CLASS = {
     "严重损伤建筑": "major-damage",
     "完全损毁建筑": "destroyed",
 }
+_CHANGE_CLASS_TO_ZH = {v: k for k, v in _ZH_TO_CHANGE_CLASS.items()}
 
 # 检测器 raw class_name → 中文标签。兼容两套权重：
 #   - RescueNet（低空斜拍）：type_* 索引名
@@ -150,6 +158,23 @@ def _inject_sys_path() -> None:
 _YOLO_CLS = None
 _SEG_CLS = None
 _DESC_CLS = None
+_LOC_MOD = None
+_LOC_IMPORT_ERROR: Optional[str] = None
+
+
+def _lazy_building_localization():
+    """懒加载 building_localization；失败时返回 None。"""
+    global _LOC_MOD, _LOC_IMPORT_ERROR
+    if _LOC_MOD is not None or _LOC_IMPORT_ERROR is not None:
+        return _LOC_MOD
+    try:
+        import building_localization as _loc  # noqa: WPS433
+        _LOC_MOD = _loc
+    except Exception as exc:  # noqa: BLE001
+        _LOC_IMPORT_ERROR = str(exc)
+        logger.warning("[Perception] building_localization 加载失败: %s", exc)
+        _LOC_MOD = None
+    return _LOC_MOD
 
 
 def _lazy_import_backends() -> tuple[Any, Any, Any]:
@@ -190,7 +215,10 @@ def _lazy_import_backends() -> tuple[Any, Any, Any]:
         errors.append(f"SceneDescriptor import failed: {exc}")
 
     if errors:
-        raise RuntimeError("; ".join(errors))
+        if BUILDING_PROPOSER == "unet":
+            errors = [e for e in errors if not e.startswith("YOLOTool")]
+        if errors:
+            raise RuntimeError("; ".join(errors))
 
     _YOLO_CLS, _SEG_CLS, _DESC_CLS = yolo_cls, seg_cls, desc_cls
     return yolo_cls, seg_cls, desc_cls
@@ -265,6 +293,7 @@ class DisasterPerception:
     def __init__(self) -> None:
         self._load_lock = threading.Lock()
         self._yolo = None
+        self._localizer = None
         self._segformer = None
         self._descriptor = None
         self._ade20k_names: dict[int, str] = {}
@@ -277,7 +306,11 @@ class DisasterPerception:
 
     @property
     def is_available(self) -> bool:
-        return self._yolo is not None and self._segformer is not None
+        if self._segformer is None:
+            return False
+        if BUILDING_PROPOSER == "unet":
+            return self._localizer is not None
+        return self._yolo is not None
 
     def load(self) -> None:
         """同步加载模型。对 warmup 线程来说，失败时记录错误但不抛出。"""
@@ -328,13 +361,26 @@ class DisasterPerception:
             if PERCEPTION_DEVICE.startswith("cuda:"):
                 device_arg = PERCEPTION_DEVICE.split(":", 1)[1]
 
-            logger.info("[Perception] loading YOLO weights: %s", YOLO_WEIGHTS)
-            self._yolo = YOLOTool(
-                weights=YOLO_WEIGHTS,
-                device=device_arg,
-                conf=YOLO_CONF_THRESHOLD,
-                imgsz=YOLO_IMGSZ,
-            )
+            if BUILDING_PROPOSER == "unet":
+                loc_mod = _lazy_building_localization()
+                if loc_mod is None:
+                    raise RuntimeError(
+                        f"BUILDING_PROPOSER=unet 但 building_localization 不可用: {_LOC_IMPORT_ERROR}"
+                    )
+                logger.info("[Perception] loading building localizer: %s", BUILDING_LOC_CKPT)
+                self._localizer = loc_mod.load_building_localizer(
+                    Path(BUILDING_LOC_CKPT), device=PERCEPTION_DEVICE,
+                )
+                self._yolo = None
+            else:
+                logger.info("[Perception] loading YOLO weights: %s", YOLO_WEIGHTS)
+                self._yolo = YOLOTool(
+                    weights=YOLO_WEIGHTS,
+                    device=device_arg,
+                    conf=YOLO_CONF_THRESHOLD,
+                    imgsz=YOLO_IMGSZ,
+                )
+                self._localizer = None
             logger.info("[Perception] loading SegFormer: %s", SEGFORMER_MODEL)
             self._segformer = SegFormerTool(
                 model_name=SEGFORMER_MODEL,
@@ -343,7 +389,7 @@ class DisasterPerception:
             self._descriptor = SceneDescriptor()
             self._ready = True
             self._last_error = None
-            logger.info("[Perception] ready")
+            logger.info("[Perception] ready (proposer=%s)", BUILDING_PROPOSER)
 
     def last_error(self) -> Optional[str]:
         return self._last_error
@@ -499,11 +545,11 @@ class DisasterPerception:
         patch_path = PERCEPTION_OUTPUT_DIR / f"{patch_id}.png"
         patch.save(patch_path, "PNG")
 
-        # P5：把同一 crop box 套到配准的 pre_disaster 瓦片上，产出配对的 pre patch，
-        # 供 _detect 里逐检测框做双时相变化感知。开关关闭或找不到配对瓦片时静默跳过，
-        # 不影响现有 YOLO-only 路径。
+        # 双时相 / U-Net 定位都需要配准 pre patch：U-Net 在 pre 上定位，
+        # change_perception 用 pre/post 写损伤类。YOLO-only 且未开 CP 时跳过。
         pre_patch_path: Optional[Path] = None
-        if VLN_CHANGE_PERCEPTION and crop_box is not None:
+        need_pre = BUILDING_PROPOSER == "unet" or VLN_CHANGE_PERCEPTION
+        if need_pre and crop_box is not None:
             pre_image_path = self._resolve_paired_pre_image_path(active_tile or {})
             if pre_image_path is not None:
                 try:
@@ -521,6 +567,11 @@ class DisasterPerception:
                         )
                 except Exception as exc:  # noqa: BLE001
                     logger.warning("[Perception] pre patch 裁剪失败: %s", exc)
+            elif BUILDING_PROPOSER == "unet":
+                logger.warning(
+                    "[Perception] U-Net 需要 pre 瓦片但 paired_tile 不可用: %s",
+                    active_tile.get("tile_id"),
+                )
 
         return patch_path, patch_w, patch_h, radius_m, degraded, degraded_reason, pre_patch_path
 
@@ -533,12 +584,44 @@ class DisasterPerception:
         base = patch_path.stem
         vis_path = str(out_dir / f"{base}_det.png")
         json_path = str(out_dir / f"{base}_det.json")
+
+        if BUILDING_PROPOSER == "unet":
+            detections = self._detect_with_unet(patch_path, pre_patch_path, vis_path, json_path)
+        else:
+            detections = self._detect_with_yolo(patch_path, vis_path, json_path)
+
+        # U-Net 路径强制用 change_perception 写损伤类；YOLO 路径仍受开关控制。
+        need_cp = (
+            BUILDING_PROPOSER == "unet"
+            or VLN_CHANGE_PERCEPTION
+        )
+        if need_cp and pre_patch_path is not None and detections:
+            self._attach_change_class_probs(detections, patch_path, pre_patch_path)
+            if BUILDING_PROPOSER == "unet":
+                self._apply_change_class_labels(detections)
+
+        class_counts: dict[str, int] = {}
+        for det in detections:
+            cls = det["class_name"]
+            class_counts[cls] = class_counts.get(cls, 0) + 1
+
+        return {
+            "detections": detections,
+            "num_objects": len(detections),
+            "class_counts": class_counts,
+            "visualization": vis_path if Path(vis_path).exists() else None,
+            "json_file": json_path if Path(json_path).exists() else None,
+            "proposer": BUILDING_PROPOSER,
+        }
+
+    def _detect_with_yolo(
+        self, patch_path: Path, vis_path: str, json_path: str,
+    ) -> list[dict]:
         raw_detections = self._yolo.detect(
             image_path=str(patch_path),
             save_vis=vis_path,
             save_json=json_path,
         )
-
         detections: list[dict] = []
         for det in raw_detections:
             raw_cls = str(det.get("class_name") or "")
@@ -554,22 +637,61 @@ class DisasterPerception:
                     "bbox_xyxy": [float(v) for v in bbox_xyxy],
                 }
             )
+        return detections
 
-        if VLN_CHANGE_PERCEPTION and pre_patch_path is not None and detections:
-            self._attach_change_class_probs(detections, patch_path, pre_patch_path)
+    def _detect_with_unet(
+        self,
+        patch_path: Path,
+        pre_patch_path: Optional[Path],
+        vis_path: str,
+        json_path: str,
+    ) -> list[dict]:
+        """用 pre 图跑定位 U-Net；无 pre 时降级到 post（并打日志）。"""
+        if self._localizer is None:
+            raise RuntimeError("building localizer 未加载")
+        loc_image = pre_patch_path if pre_patch_path is not None else patch_path
+        if pre_patch_path is None:
+            logger.warning(
+                "[Perception] U-Net 定位缺少 pre patch，降级用 post: %s", patch_path.name
+            )
+        raw = self._localizer.propose(loc_image)
+        detections: list[dict] = []
+        for det in raw:
+            bbox_xyxy = det.get("bbox_xyxy") or det.get("bbox") or [0.0, 0.0, 0.0, 0.0]
+            detections.append(
+                {
+                    "class_id": 0,
+                    "class_name": "建筑",  # 分级前占位；CP 成功后写回损伤中文类
+                    "raw_class_name": "building",
+                    "conf": float(det.get("conf", 0.0)),
+                    "bbox": [float(v) for v in bbox_xyxy],
+                    "bbox_xyxy": [float(v) for v in bbox_xyxy],
+                    "proposer": "unet",
+                }
+            )
+        try:
+            boxes = self._localizer.save_overlay(loc_image, Path(vis_path))
+            Path(json_path).write_text(
+                json.dumps({"detections": boxes, "proposer": "unet"}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[Perception] U-Net 可视化失败: %s", exc)
+        return detections
 
-        class_counts: dict[str, int] = {}
+    @staticmethod
+    def _apply_change_class_labels(detections: list[dict]) -> None:
+        """用 class_probs argmax 写回中文损伤类，供 ground_with_yolo 匹配。"""
         for det in detections:
-            cls = det["class_name"]
-            class_counts[cls] = class_counts.get(cls, 0) + 1
-
-        return {
-            "detections": detections,
-            "num_objects": len(detections),
-            "class_counts": class_counts,
-            "visualization": vis_path if Path(vis_path).exists() else None,
-            "json_file": json_path if Path(json_path).exists() else None,
-        }
+            probs = det.get("class_probs")
+            if not isinstance(probs, dict) or not probs:
+                continue
+            best_en = max(probs.items(), key=lambda kv: float(kv[1]))[0]
+            zh = _CHANGE_CLASS_TO_ZH.get(str(best_en))
+            if zh:
+                det["class_name"] = zh
+                det["raw_class_name"] = str(best_en)
+                det["conf"] = float(probs[best_en])
 
     def _attach_change_class_probs(
         self, detections: list[dict], post_patch_path: Path, pre_patch_path: Path,
@@ -578,7 +700,7 @@ class DisasterPerception:
 
         逐框把 post/pre patch 上同一 bbox 位置裁出配对小图，喂给
         change_perception 的 Siamese 多任务头。任何一步失败（模型未加载、
-        checkpoint 缺失等）都静默跳过该框，不影响 YOLO 检测结果本身。
+        checkpoint 缺失等）都静默跳过该框，不影响定位/检测结果本身。
         """
         cp_mod = _lazy_change_perception()
         if cp_mod is None:
@@ -601,7 +723,9 @@ class DisasterPerception:
             return
 
         for det in detections:
-            if det["class_name"] not in _BUILDING_CLASS_NAMES_ZH:
+            cls = det["class_name"]
+            # U-Net 提议在分级前是「建筑」；YOLO 路径仍只处理已知建筑损伤类。
+            if cls not in _BUILDING_CLASS_NAMES_ZH and cls not in {"建筑", "building"}:
                 continue
             try:
                 bbox = tuple(float(v) for v in det["bbox_xyxy"])
@@ -827,7 +951,11 @@ class DisasterPerception:
                 "seg_ms": int(seg_ms),
                 "desc_ms": int(desc_ms),
                 "total_ms": int(crop_ms + det_ms + seg_ms + desc_ms),
-                "change_perception_used": bool(VLN_CHANGE_PERCEPTION and pre_patch_path is not None),
+                "building_proposer": BUILDING_PROPOSER,
+                "change_perception_used": bool(
+                    (BUILDING_PROPOSER == "unet" or VLN_CHANGE_PERCEPTION)
+                    and pre_patch_path is not None
+                ),
             },
         )
 

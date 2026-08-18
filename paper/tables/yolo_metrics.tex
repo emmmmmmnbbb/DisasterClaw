@@ -1,7 +1,9 @@
 \begin{table}[t]
 \centering
-\caption{Strict event-disjoint YOLOv8s detector metrics used by hybrid
-grounding. Low recall remains a localization bottleneck.}
+\caption{Strict event-disjoint YOLOv8s detector metrics retained as a
+localization baseline and rollback path. Low recall motivated replacing the
+building proposer with an event-disjoint U-Net; damage classification remains
+separate.}
 \label{tab:yolo-metrics}
 \resizebox{\columnwidth}{!}{
 \input{generated/yolo_metrics_table.tex}}

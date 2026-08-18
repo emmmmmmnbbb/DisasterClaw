@@ -382,6 +382,7 @@ def env_snapshot() -> dict:
         "timestamp": _dt.datetime.now().isoformat(timespec="seconds"),
         "dataset_mode": os.environ.get("DATASET_MODE", "xbd"),
         "perception_device": os.environ.get("PERCEPTION_DEVICE", "cuda"),
+        "building_proposer": os.environ.get("BUILDING_PROPOSER", "unet"),
         "python": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
         "llm_model": os.environ.get("LLM_MODEL", ""),
         "planner_llm_model": os.environ.get("PLANNER_LLM_MODEL", ""),
@@ -390,6 +391,7 @@ def env_snapshot() -> dict:
     checkpoints = {}
     for name, raw_path in (
         ("yolo", os.environ.get("YOLO_WEIGHTS", "")),
+        ("building_localization", os.environ.get("BUILDING_LOC_CKPT", "")),
         ("change_perception", os.environ.get("CHANGE_PERCEPTION_CKPT", "")),
     ):
         if not raw_path:
@@ -405,6 +407,7 @@ def env_snapshot() -> dict:
             record["bytes"] = path.stat().st_size
         checkpoints[name] = record
     info["checkpoints"] = checkpoints
+    info["vln_change_perception"] = os.environ.get("VLN_CHANGE_PERCEPTION", "")
     info["packages"] = {}
     for package in ("numpy", "scipy", "torchvision", "ultralytics", "transformers"):
         try:
