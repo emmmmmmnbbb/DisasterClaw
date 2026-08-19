@@ -32,6 +32,7 @@ from typing import Callable, Optional
 # 值必须与 perception.YOLO_LABEL_MAP 的中文标签一致。
 _BUILDING_ALL = ["无损伤建筑", "轻微损伤建筑", "严重损伤建筑", "完全损毁建筑"]
 _BUILDING_DAMAGED = ["轻微损伤建筑", "严重损伤建筑", "完全损毁建筑"]
+_BUILDING_GENERIC = {"建筑", "building"}
 
 # 建筑类目标按"具体损伤等级 → 泛化受损 → 任意建筑"分层解析，命中越具体优先级越高，
 # 避免 "完全损毁的建筑" 被泛化词 "损毁"/"建筑" 污染成全部受损等级。
@@ -279,8 +280,11 @@ def ground_with_yolo(
     best_score = -1.0
     for det in obs.detections:
         cls = det.get("class_name")
+        # U-Net 在 change_perception 失败时只标「建筑」；建筑类指令仍应能 grounding。
         if cls not in target_classes:
-            continue
+            wants_building = any(c in _BUILDING_ALL for c in target_classes)
+            if not (wants_building and cls in _BUILDING_GENERIC):
+                continue
         bbox = det.get("bbox") or det.get("bbox_xyxy")
         if not bbox or len(bbox) < 4:
             continue

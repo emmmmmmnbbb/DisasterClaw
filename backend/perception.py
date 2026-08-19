@@ -100,6 +100,9 @@ _ZH_TO_CHANGE_CLASS = {
 }
 _CHANGE_CLASS_TO_ZH = {v: k for k, v in _ZH_TO_CHANGE_CLASS.items()}
 
+GSD_LADDER = os.getenv("GSD_LADDER", "1").strip().lower() in {"1", "true", "yes", "on"}
+_EVIDENCE_ZH = {"轻微损伤建筑", "严重损伤建筑", "完全损毁建筑", "水池/积水区域"}
+
 # 检测器 raw class_name → 中文标签。兼容两套权重：
 #   - RescueNet（低空斜拍）：type_* 索引名
 #   - xBD 域内微调（卫星正射）：英文 damage subtype（gen_xbd_yolo_dataset.py 的类名）
@@ -439,11 +442,11 @@ class DisasterPerception:
         alt: float,
         active_tile: dict,
         patch_id: str,
-    ) -> tuple[Path, int, int, float, bool, str, Optional[Path]]:
+    ) -> tuple[Path, int, int, float, bool, str, Optional[Path], dict]:
         """
         根据 UAV 位置从活动瓦片裁剪视场 patch。
 
-        返回 (patch_path, patch_w, patch_h, radius_m, degraded, degraded_reason, pre_patch_path)
+        返回 (patch_path, patch_w, patch_h, radius_m, degraded, degraded_reason, pre_patch_path, gsd_meta)
         degraded=True 时表示拿不到仿射 / 瓦片图，回退到占位或整图。
         pre_patch_path 仅在 VLN_CHANGE_PERCEPTION=1 且能找到配准的 pre_disaster 瓦片时非 None。
         """
@@ -542,12 +545,25 @@ class DisasterPerception:
             patch_w, patch_h = patch.size
             crop_box = (left_c, top_c, right_c, bottom_c)
 
+        native_gsd = gsd
+        gsd_scale = 1.0
+        effective_gsd = native_gsd
+        if GSD_LADDER:
+            from gsd_ladder import degrade_to_scale, effective_gsd_m, effective_scale
+
+            gsd_scale = effective_scale(alt)
+            effective_gsd = effective_gsd_m(alt, native_gsd_m=native_gsd)
+            patch = degrade_to_scale(patch, gsd_scale)
+
         patch_path = PERCEPTION_OUTPUT_DIR / f"{patch_id}.png"
         patch.save(patch_path, "PNG")
 
         # 双时相 / U-Net 定位都需要配准 pre patch：U-Net 在 pre 上定位，
         # change_perception 用 pre/post 写损伤类。YOLO-only 且未开 CP 时跳过。
+        # pre 瓦片是离线灾前底图（卫星产品），分辨率与 UAV 当前高度无关，
+        # 因此 pre patch 保持原生 GSD，不做阶梯降质；只有 post（实时观测）降质。
         pre_patch_path: Optional[Path] = None
+        pre_image_path: Optional[Path] = None
         need_pre = BUILDING_PROPOSER == "unet" or VLN_CHANGE_PERCEPTION
         if need_pre and crop_box is not None:
             pre_image_path = self._resolve_paired_pre_image_path(active_tile or {})
@@ -573,20 +589,40 @@ class DisasterPerception:
                     active_tile.get("tile_id"),
                 )
 
-        return patch_path, patch_w, patch_h, radius_m, degraded, degraded_reason, pre_patch_path
+        return patch_path, patch_w, patch_h, radius_m, degraded, degraded_reason, pre_patch_path, {
+            "native_gsd_m": native_gsd,
+            "effective_gsd_m": effective_gsd,
+            "gsd_scale": gsd_scale,
+            "gsd_ladder": bool(GSD_LADDER),
+            "alt_m": float(alt),
+            "crop_box": list(crop_box) if crop_box is not None else None,
+            "pre_tile_path": str(pre_image_path) if pre_image_path is not None else None,
+        }
 
     # ------------------------------------------------------------------ #
     #  YOLO / SegFormer 调度（与 rs_agent_system.VisionTools 等价）
     # ------------------------------------------------------------------ #
 
-    def _detect(self, patch_path: Path, pre_patch_path: Optional[Path] = None) -> dict:
+    def _detect(
+        self,
+        patch_path: Path,
+        pre_patch_path: Optional[Path] = None,
+        crop_box: Optional[tuple[int, int, int, int]] = None,
+        pre_tile_path: Optional[str] = None,
+    ) -> dict:
         out_dir = PERCEPTION_OUTPUT_DIR
         base = patch_path.stem
         vis_path = str(out_dir / f"{base}_det.png")
         json_path = str(out_dir / f"{base}_det.json")
 
         if BUILDING_PROPOSER == "unet":
-            detections = self._detect_with_unet(patch_path, pre_patch_path, vis_path, json_path)
+            if pre_tile_path and crop_box is not None:
+                # 整瓦片原生分辨率定位一次（缓存），再把落进视场的框平移到 patch 坐标。
+                # 直接对 256px 视场推理会被 resize 到训练尺寸，建筑尺度偏离训练分布，
+                # 提议塌缩为 0（X0 根因之一）。
+                detections = self._unet_proposals_for_view(pre_tile_path, crop_box, json_path)
+            else:
+                detections = self._detect_with_unet(patch_path, pre_patch_path, vis_path, json_path)
         else:
             detections = self._detect_with_yolo(patch_path, vis_path, json_path)
 
@@ -600,6 +636,9 @@ class DisasterPerception:
             if BUILDING_PROPOSER == "unet":
                 self._apply_change_class_labels(detections)
 
+        n_proposals = len(detections)
+        n_classifier = sum(1 for d in detections if isinstance(d.get("class_probs"), dict) and d.get("class_probs"))
+        n_evidence = sum(1 for d in detections if d.get("class_name") in _EVIDENCE_ZH)
         class_counts: dict[str, int] = {}
         for det in detections:
             cls = det["class_name"]
@@ -612,6 +651,12 @@ class DisasterPerception:
             "visualization": vis_path if Path(vis_path).exists() else None,
             "json_file": json_path if Path(json_path).exists() else None,
             "proposer": BUILDING_PROPOSER,
+            "pipeline": {
+                "n_proposals": n_proposals,
+                "n_crops": n_proposals,
+                "n_classifier": n_classifier,
+                "n_evidence": n_evidence,
+            },
         }
 
     def _detect_with_yolo(
@@ -637,6 +682,57 @@ class DisasterPerception:
                     "bbox_xyxy": [float(v) for v in bbox_xyxy],
                 }
             )
+        return detections
+
+    def _unet_proposals_for_view(
+        self,
+        pre_tile_path: str,
+        crop_box: tuple[int, int, int, int],
+        json_path: str,
+    ) -> list[dict]:
+        """全 pre 瓦片定位（进程内缓存）→ 平移落在 crop_box 内的框到 patch 坐标。"""
+        if self._localizer is None:
+            raise RuntimeError("building localizer 未加载")
+        if not hasattr(self, "_tile_proposal_cache"):
+            self._tile_proposal_cache: dict[str, list[dict]] = {}
+        cached = self._tile_proposal_cache.get(pre_tile_path)
+        if cached is None:
+            cached = self._localizer.propose(pre_tile_path)
+            self._tile_proposal_cache[pre_tile_path] = cached
+            if len(self._tile_proposal_cache) > 32:
+                self._tile_proposal_cache.pop(next(iter(self._tile_proposal_cache)))
+        left, top, right, bottom = [float(v) for v in crop_box]
+        detections: list[dict] = []
+        for det in cached:
+            bbox = det.get("bbox_xyxy") or det.get("bbox") or [0.0, 0.0, 0.0, 0.0]
+            x1, y1, x2, y2 = [float(v) for v in bbox]
+            cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+            if not (left <= cx < right and top <= cy < bottom):
+                continue
+            lx1 = max(0.0, x1 - left)
+            ly1 = max(0.0, y1 - top)
+            lx2 = min(right - left, x2 - left)
+            ly2 = min(bottom - top, y2 - top)
+            if lx2 - lx1 < 2 or ly2 - ly1 < 2:
+                continue
+            detections.append(
+                {
+                    "class_id": 0,
+                    "class_name": "建筑",
+                    "raw_class_name": "building",
+                    "conf": float(det.get("conf", 0.0)),
+                    "bbox": [lx1, ly1, lx2, ly2],
+                    "bbox_xyxy": [lx1, ly1, lx2, ly2],
+                    "proposer": "unet-tile",
+                }
+            )
+        try:
+            Path(json_path).write_text(
+                json.dumps({"detections": detections, "proposer": "unet-tile"}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[Perception] U-Net tile 提议 JSON 写入失败: %s", exc)
         return detections
 
     def _detect_with_unet(
@@ -868,7 +964,7 @@ class DisasterPerception:
     ) -> PerceptionResult:
         self.load()  # 幂等
         crop_t0 = time.perf_counter_ns()
-        patch_path, pw, ph, radius_m, degraded, degraded_reason, pre_patch_path = self._crop_uav_view(
+        patch_path, pw, ph, radius_m, degraded, degraded_reason, pre_patch_path, gsd_meta = self._crop_uav_view(
             lat=lat,
             lon=lon,
             alt=alt,
@@ -878,7 +974,13 @@ class DisasterPerception:
         crop_ms = (time.perf_counter_ns() - crop_t0) // 1_000_000
 
         det_t0 = time.perf_counter_ns()
-        detection = self._detect(patch_path, pre_patch_path=pre_patch_path)
+        crop_box_meta = gsd_meta.get("crop_box")
+        detection = self._detect(
+            patch_path,
+            pre_patch_path=pre_patch_path,
+            crop_box=tuple(crop_box_meta) if crop_box_meta else None,
+            pre_tile_path=gsd_meta.get("pre_tile_path"),
+        )
         det_ms = (time.perf_counter_ns() - det_t0) // 1_000_000
 
         seg_t0 = time.perf_counter_ns()
@@ -956,6 +1058,8 @@ class DisasterPerception:
                     (BUILDING_PROPOSER == "unet" or VLN_CHANGE_PERCEPTION)
                     and pre_patch_path is not None
                 ),
+                **gsd_meta,
+                "pipeline": detection.get("pipeline") or {},
             },
         )
 

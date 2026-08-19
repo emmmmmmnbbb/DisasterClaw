@@ -16,14 +16,9 @@ backend/recheck.py — 灾情不确定性驱动的主动复核（P2，创新主�
 
 触发/收尾逻辑（`RecheckConfig.trigger_mode` 四选一，供 E11 六选一对照做基线）：
     - threshold（默认，向后兼容）：`unc >= trigger` 就触发复核。
-    - info_gain（P5）：把"复核（降高+居中）"和"维持（不复核）"当成两个候选动作，
-      用 GSD-置信度校准曲线的简化确定性代理估计复核动作的期望后验熵下降
-      \(H(P_t) - \mathbb E H(P_{t+1}^{descend})\)（"维持"动作的期望熵下降恒为 0），
-      仅当该增益超过 `min_info_gain` 才复核——等价于 \(a_t^\star=\arg\max_a
-      [H(P_t)-\mathbb E H(P_{t+1}^a)]\) 在两候选动作间取值。
-    - fixed（E11 对照基线"固定降高复核"）：只要有可疑证据就必复核，不看不确定性。
-    - random（E11 对照基线"随机复核"）：以固定概率 `random_prob` 决定是否复核，
-      用同一 seed 复现；作为"复核策略本身有没有信息量"的下界对照。
+    - info_gain：用 GSD 条件期望熵表（优先）或线性高度比启发式估计降高后熵下降。
+    - conformal：预测集合 |C(x)|>1 则复核（覆盖保证由 val 分区 APS 校准）。
+    - fixed / random：对照基线。
 
 闭环：复核到"把握足够 / 预算耗尽 / 到高度下限"后定论——
     confirmed（确认受灾）/ dismissed（证据消退，排除）/ inconclusive（仍存疑），
@@ -52,6 +47,12 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from semantic_map import offset_from_norm
+
+try:
+    from gsd_ladder import ExpectedEntropyTable, effective_gsd_m
+except Exception:  # pragma: no cover
+    ExpectedEntropyTable = None  # type: ignore
+    effective_gsd_m = None  # type: ignore
 
 # 受灾相关（值得复核）的检测类别——救援关注受损建筑与积水，完好建筑/车辆不算证据。
 EVIDENCE_CLASSES = {
@@ -132,26 +133,92 @@ def uncertainty_score(
 
 
 def expected_gsd_gain_ratio(alt: float, descend_step_m: float, alt_min_m: float) -> float:
-    """GSD-置信度校准曲线的简化确定性代理（P5 待确认 5：未来可换真正的贝叶斯/蒙特卡洛版）。
-
-    降高复核后视场半径变小 → 地面分辨率(GSD)变细；用"降高后/降高前的剩余高度比"近似
-    "降高后预期熵 / 当前熵"的比例——已到高度下限时比例=1（降不动，预期没有增益）。
-    """
+    """线性高度比启发式（表缺失时的回退）。已到高度下限时比例=1。"""
     if alt <= alt_min_m:
         return 1.0
     alt_after = max(alt - descend_step_m, alt_min_m)
     return _clamp(alt_after / max(alt, 1e-6), 0.0, 1.0)
 
 
-def info_gain_descend(entropy_now: float, alt: float, descend_step_m: float, alt_min_m: float) -> float:
-    """"降高居中复核"动作的期望信息增益 H(P_t) - E[H(P_{t+1}^{descend})]。
-
-    对照动作"维持（不复核）"的期望信息增益恒为 0（观测不变，熵不变）；
-    因此 arg max_a[...] 退化为"该增益是否超过 min_info_gain"的判断。
-    """
+def info_gain_descend(
+    entropy_now: float,
+    alt: float,
+    descend_step_m: float,
+    alt_min_m: float,
+    pred_class: str = "",
+    entropy_table: Optional["ExpectedEntropyTable"] = None,
+) -> float:
+    """降高复核的期望熵下降。优先用拟合的 \(\hat E[U|GSD,\hat y]\)，否则回退高度比。"""
+    if entropy_table is not None:
+        fitted = entropy_table.info_gain(
+            entropy_now, alt, descend_step_m, alt_min_m, pred_class or "no-damage",
+        )
+        if fitted is not None:
+            return max(0.0, round(fitted, 3))
     ratio = expected_gsd_gain_ratio(alt, descend_step_m, alt_min_m)
     expected_after = entropy_now * ratio
     return max(0.0, round(entropy_now - expected_after, 3))
+
+
+def conformal_aps_scores(probs: list[float], label: int, rng: Optional[random.Random] = None) -> float:
+    """Adaptive Prediction Sets nonconformity score for one labelled example."""
+    k = len(probs)
+    if k <= 0 or label < 0 or label >= k:
+        return 1.0
+    order = sorted(range(k), key=lambda i: -probs[i])
+    cum = 0.0
+    u = (rng.random() if rng is not None else 0.5)
+    for rank, idx in enumerate(order):
+        if idx == label:
+            return _clamp(cum + u * max(probs[idx], 0.0), 0.0, 1.0)
+        cum += max(probs[idx], 0.0)
+    return 1.0
+
+
+def fit_conformal_qhat(
+    rows: list[tuple[dict[str, float], str]],
+    alpha: float = 0.1,
+    class_order: Optional[list[str]] = None,
+) -> float:
+    """Fit APS qhat on (class_probs, true_label) rows from the val partition."""
+    names = class_order or ["no-damage", "minor-damage", "major-damage", "destroyed"]
+    name_to_i = {n: i for i, n in enumerate(names)}
+    scores: list[float] = []
+    rng = random.Random(0)
+    for probs_map, y in rows:
+        vec = [max(0.0, float(probs_map.get(n, 0.0))) for n in names]
+        total = sum(vec) or 1.0
+        vec = [v / total for v in vec]
+        scores.append(conformal_aps_scores(vec, name_to_i.get(str(y), 0), rng))
+    if not scores:
+        return 1.0
+    scores.sort()
+    n = len(scores)
+    q_level = min(1.0, math.ceil((n + 1) * (1.0 - alpha)) / n)
+    idx = min(n - 1, max(0, int(math.ceil(q_level * n) - 1)))
+    return float(scores[idx])
+
+
+def conformal_predict_set(
+    class_probs: dict[str, float],
+    qhat: float,
+    class_order: Optional[list[str]] = None,
+) -> list[str]:
+    """Smallest APS set whose cumulative prob reaches qhat."""
+    names = class_order or ["no-damage", "minor-damage", "major-damage", "destroyed"]
+    items = [(n, max(0.0, float(class_probs.get(n, 0.0)))) for n in names]
+    total = sum(p for _, p in items) or 1.0
+    items = [(n, p / total) for n, p in items]
+    items.sort(key=lambda kv: -kv[1])
+    chosen: list[str] = []
+    cum = 0.0
+    tau = _clamp(float(qhat), 0.0, 1.0)
+    for name, p in items:
+        chosen.append(name)
+        cum += p
+        if cum >= tau:
+            break
+    return chosen or [items[0][0]]
 
 
 @dataclass
@@ -169,10 +236,13 @@ class RecheckConfig:
     cell_m: float = 20.0             # 复核去重的位置量化格
     # P5：升级接口开关，默认值向后兼容（等价于升级前的行为）。
     uncertainty_mode: str = "heuristic"   # "heuristic" | "entropy"
-    trigger_mode: str = "threshold"       # "threshold" | "info_gain" | "fixed" | "random"
+    trigger_mode: str = "threshold"       # "threshold" | "info_gain" | "fixed" | "random" | "conformal"
     min_info_gain: float = 0.05           # trigger_mode="info_gain" 时的最小期望熵下降
     random_prob: float = 0.5              # trigger_mode="random" 时的复核概率
     random_seed: int = 0                  # trigger_mode="random" 时的可复现随机种子
+    entropy_table_path: str = ""          # 拟合的 E[U|GSD,yhat] 表；空则回退高度比启发式
+    conformal_qhat: float = 0.9           # APS 分位数（由 val 拟合）
+    conformal_alpha: float = 0.1          # 目标误覆盖率
 
 
 @dataclass
@@ -199,26 +269,40 @@ class RecheckController:
         self.resolved_log: list[dict] = []  # 供报告/评测：每次定论的不确定性下降
         self.trigger_count = 0  # 本 episode 新触发复核的位置数（按量化位置/闭环计）
         self._rng = random.Random(self.config.random_seed)  # trigger_mode="random" 专用
+        self._entropy_table = None
+        path = (self.config.entropy_table_path or "").strip()
+        if path and ExpectedEntropyTable is not None:
+            try:
+                self._entropy_table = ExpectedEntropyTable.load(path)
+            except Exception:
+                self._entropy_table = None
 
     def _key(self, lat: float, lon: float) -> tuple[int, int]:
         # 用经纬度的粗量化做去重（episode 内百米级，误差无所谓）。
         scale = self.config.cell_m / 111_000.0  # 约略：1 度纬度 ≈ 111km
         return (int(round(lat / scale)), int(round(lon / scale)))
 
-    def _should_recheck(self, unc: float, alt: float) -> bool:
-        """P5：触发判断，`trigger_mode` 二选一。
-
-        threshold：原有阈值判断（向后兼容）。
-        info_gain：只有当"降高居中"动作的期望信息增益超过 min_info_gain 才复核，
-            等价于在 {descend_center, hold} 两候选动作里 arg max 期望熵下降。
-        fixed（E11 基线）：有可疑证据就必复核，不管不确定性数值。
-        random（E11 基线）：以固定概率决定，不看任何信号——用来验证"复核策略
-            是不是真的有信息量"，而不是随便动就有效果。
-        """
+    def _should_recheck(
+        self,
+        unc: float,
+        alt: float,
+        class_probs: Optional[dict[str, float]] = None,
+    ) -> bool:
         cfg = self.config
         if cfg.trigger_mode == "info_gain":
-            gain = info_gain_descend(unc, alt, cfg.descend_step_m, cfg.alt_min_m)
+            pred = ""
+            if class_probs:
+                pred = max(class_probs.items(), key=lambda kv: float(kv[1]))[0]
+            gain = info_gain_descend(
+                unc, alt, cfg.descend_step_m, cfg.alt_min_m,
+                pred_class=pred, entropy_table=self._entropy_table,
+            )
             return gain > cfg.min_info_gain
+        if cfg.trigger_mode == "conformal":
+            if not class_probs:
+                return unc >= cfg.trigger
+            pred_set = conformal_predict_set(class_probs, cfg.conformal_qhat)
+            return len(pred_set) > 1
         if cfg.trigger_mode == "fixed":
             return True
         if cfg.trigger_mode == "random":
@@ -260,7 +344,7 @@ class RecheckController:
         rec = self._state.get(key)
 
         # ── 1) 把握足够 / 无可疑目标 ────────────────────────────────
-        if not has_evidence or not self._should_recheck(unc, alt):
+        if not has_evidence or not self._should_recheck(unc, alt, class_probs=class_probs):
             if rec is not None:
                 # 之前在此处复核过，现在已经有把握 → 定论
                 before = rec["unc0"]

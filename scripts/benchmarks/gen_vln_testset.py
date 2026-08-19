@@ -139,12 +139,35 @@ def sample_start(
     return (lat, lon)
 
 
-def _instruction(cls_phrase: str, direction: str | None, multi_second: str | None = None) -> str:
+def _instruction(
+    cls_phrase: str,
+    direction: str | None,
+    multi_second: str | None = None,
+    rng: random.Random | None = None,
+    rich: bool = False,
+) -> str:
+    """Template or spatially richer phrasing. Rich mode adds bearing/negation/distance."""
+    rng = rng or random.Random(0)
     if multi_second:
-        head = f"先到{cls_phrase}，再前往{multi_second}"
+        templates = [
+            f"先到{cls_phrase}，再前往{multi_second}",
+            f"先检查{cls_phrase}，随后转向{multi_second}",
+        ]
+        head = rng.choice(templates) if rich else templates[0]
     else:
-        head = f"寻找{cls_phrase}"
+        templates = [
+            f"寻找{cls_phrase}",
+            f"定位一栋{cls_phrase}，忽略完好建筑",
+            f"前往最近的{cls_phrase}",
+        ]
+        head = rng.choice(templates) if rich else templates[0]
     if direction:
+        if rich:
+            return rng.choice([
+                f"飞到{direction}侧{head}",
+                f"在起点{direction}方向约数十米处{head}",
+                f"不要向相反方位搜索，沿{direction}侧{head}",
+            ])
         return f"飞到{direction}侧{head}"
     return head
 
@@ -163,7 +186,9 @@ def make_item(
         n, e = latlon_to_meters(start[0], start[1], goals[0]["lat"], goals[0]["lon"])
         direction = bearing_name(n, e)
     second = landmarks[1] if len(landmarks) > 1 else None
-    instruction = _instruction(landmarks[0], direction, second)
+    instruction = _instruction(
+        landmarks[0], direction, second, rng=rng, rich=benchmark_profile == "evidence-rich",
+    )
     item = {
         "id": f"{tile_id}__{rng.randint(1000, 9999)}",
         "tile_id": tile_id,
@@ -188,6 +213,7 @@ def make_item(
             "expected_evidence": True,
             "review": {
                 "status": "pending",
+                "reviewer": "model-assisted + author spot-check (not purely manual)",
                 "checks": {
                     "target_visible_in_post_image": None,
                     "damage_label_unambiguous": None,
@@ -220,7 +246,7 @@ def gen_for_tile(
     disaster = entry.get("disaster") or "unknown"
     items: list[dict] = []
 
-    # 1) 单地标：优先 destroyed / major
+    # 1) 单地标
     for st in PRIORITY_SUBTYPES:
         cands = [b for b in buildings if b["subtype"] == st]
         if cands:
@@ -230,7 +256,7 @@ def gen_for_tile(
                 bounds,
                 bucket,
                 rng,
-                distance_range=_EVIDENCE_RICH_DIST if benchmark_profile == "evidence-rich" else None,
+                distance_range=_EVIDENCE_RICH_DIST if (benchmark_profile == "evidence-rich" and bucket == "easy") else None,
             )
             items.append(make_item(
                 tile_id, disaster, start, [g], [g["class"]],
@@ -239,14 +265,14 @@ def gen_for_tile(
             ))
             break
 
-    # 2) 多地标：两个不同损伤等级的目标（若存在）
+    # 2) 多地标：evidence-rich 也按概率生成，以提升语言复杂度
     distinct: dict[str, dict] = {}
     for b in buildings:
         distinct.setdefault(b["subtype"], b)
-    if benchmark_profile != "evidence-rich" and len(distinct) >= 2 and rng.random() < 0.5:
+    multi_ok = len(distinct) >= 2 and rng.random() < (0.35 if benchmark_profile == "evidence-rich" else 0.5)
+    if multi_ok:
         two = list(distinct.values())[:2]
         start = sample_start(two[0], bounds, bucket, rng)
-        # 先近后远更自然
         two.sort(key=lambda b: geodesic_m(start, (b["lat"], b["lon"])))
         items.append(make_item(
             tile_id, disaster, start, two,
@@ -273,13 +299,27 @@ def main() -> int:
             "初始视场；每题仍须按 review 字段人工核验后方可用于论文。"
         ),
     )
+    ap.add_argument(
+        "--require-eval-events",
+        action="store_true",
+        help="拒绝 train/val 事件（与 --require-event-disjoint 同等强度）",
+    )
     ap.add_argument("--out", default=str(BACKEND / "data" / "benchmarks" / "vln_testset.json"))
     args = ap.parse_args()
+
+    from event_split import EVAL_EVENTS, LEAK_EVENTS, assert_eval_only
 
     rng = random.Random(args.seed)
     dataset_root = xbd_map.resolve_dataset_root(args.dataset_root)
     manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
     wanted = {d.strip() for d in args.disasters.split(",") if d.strip()}
+    if args.require_eval_events:
+        leak = wanted & set(LEAK_EVENTS)
+        if leak:
+            print(f"[ERROR] --require-eval-events 禁止 train/val 事件: {sorted(leak)}", file=sys.stderr)
+            return 2
+        if not wanted:
+            wanted = set(EVAL_EVENTS)
 
     # 按灾种分组 POST + georef 瓦片
     by_disaster: dict[str, list[dict]] = {}
@@ -305,7 +345,7 @@ def main() -> int:
     items: list[dict] = []
     cursors = {d: 0 for d in disasters}
     exhausted: set[str] = set()
-    buckets = ["easy"] if args.profile == "evidence-rich" else ["easy", "medium", "hard"]
+    buckets = ["easy", "medium", "hard"]
     bi = 0
     while len(items) < args.n and len(exhausted) < len(disasters):
         for d in disasters:
@@ -326,6 +366,8 @@ def main() -> int:
                 buckets[bi % len(buckets)],
                 benchmark_profile=args.profile,
             ):
+                if args.require_eval_events:
+                    assert_eval_only(it["disaster"])
                 if len(items) < args.n:
                     items.append(it)
                     bi += 1
@@ -350,10 +392,10 @@ def main() -> int:
         "success_radius_m": 25,
         "benchmark_profile": args.profile,
         "review_protocol": (
-            "人工核验 post 图像中目标可见、损伤标签和指令无歧义、起终点均在有效范围；"
-            "仅 review.status=approved 的题可进入论文主实验。"
+            "模型辅助核验（contact sheet + 几何检查）后由作者抽查；"
+            "不得表述为纯人工审核。仅 review.status=approved 的题进入论文主实验。"
             if args.profile == "evidence-rich" else
-            "自动生成草稿；正式评测前建议人工核验。"
+            "自动生成草稿；正式评测前建议核验。"
         ),
         "stratification": strat,
         "items": items,

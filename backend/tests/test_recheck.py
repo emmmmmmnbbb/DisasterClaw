@@ -383,6 +383,36 @@ def test_zero_trigger_stats() -> None:
     print("[OK] 零触发 episode 输出完整零值统计")
 
 
+def test_conformal_set_trigger() -> None:
+    from recheck import conformal_predict_set, fit_conformal_qhat
+
+    rows = []
+    for i in range(40):
+        p = {"no-damage": 0.85, "minor-damage": 0.05, "major-damage": 0.05, "destroyed": 0.05}
+        rows.append((p, "no-damage"))
+    qhat = fit_conformal_qhat(rows, alpha=0.1)
+    peaked = conformal_predict_set(
+        {"no-damage": 0.97, "minor-damage": 0.01, "major-damage": 0.01, "destroyed": 0.01}, qhat
+    )
+    flat = conformal_predict_set(
+        {"no-damage": 0.28, "minor-damage": 0.24, "major-damage": 0.24, "destroyed": 0.24}, qhat
+    )
+    assert len(peaked) == 1, peaked
+    assert len(flat) > 1, flat
+    det = _det("完全损毁建筑", 0.4)
+    det["class_probs"] = {"no-damage": 0.28, "minor-damage": 0.24, "major-damage": 0.24, "destroyed": 0.24}
+    ctl = RecheckController(RecheckConfig(
+        trigger_mode="conformal", conformal_qhat=qhat, uncertainty_mode="entropy",
+        descend_step_m=10.0, alt_min_m=10.0,
+    ))
+    out = ctl.assess(
+        lat=LAT, lon=LON, alt=30.0, risk_level="low", detections=[det],
+        patch_radius_m=60.0, patch_width=100, patch_height=100,
+    )
+    assert out.kind == "recheck", out
+    print(f"[OK] conformal: qhat={qhat:.3f} peaked={peaked} flat={flat}")
+
+
 def _run_all() -> int:
     tests = [
         test_uncertainty_score,
@@ -405,6 +435,7 @@ def _run_all() -> int:
         test_global_budget_finalizes_latest_observation,
         test_inconclusive_is_completed,
         test_zero_trigger_stats,
+        test_conformal_set_trigger,
     ]
     failed = 0
     for t in tests:

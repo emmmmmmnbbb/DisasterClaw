@@ -1,0 +1,33 @@
+\section{相关工作}
+\label{sec:related}
+
+\paragraph{航空应急侦察与鸟瞰导航。}
+无人机已被用于灾后快速测绘与建筑物损伤初判。AerialVLN 等将 VLN 扩展到空中平台\cite{liu2023aerialvln}，CityNav 则强调地理配准的城市鸟瞰导航\cite{lee2025citynav}。
+本文工作在地理配准的俯视仿真中进行，指令当前仍以损伤类别与方位约束为主，故正文采用``语言条件目标搜索''，避免对标室内 R2R 的过度框架。
+
+\paragraph{分层语义规划与拓扑记忆。}
+CityNavAgent 用大语言模型把空中 VLN 拆成地标、目标与运动三层，并以全局拓扑记忆压缩长程动作空间\cite{zhang2025citynavagent}。
+STMR 把俯视语义地图写成供语言模型阅读的数字网格，强调语义、拓扑与度量应同时进入提示\cite{gao2024stmr}。
+LM-Nav 则把语言模型抽地标、视觉语言模型对齐节点与图搜索沿熟路执行组合起来\cite{shah2023lmnav}。
+本文借用这三条设计，适配到二维地理鸟瞰与有限动作集；实现细节见 \secref{sec:hspm}。
+这是架构借鉴，不是与上述系统的性能对标；端到端消融中打开记忆图并未改善严格成功率（\secref{sec:x3x6}）。
+
+\paragraph{遥感变化检测与 xBD 损伤评估。}
+xBD 提供灾前/灾后配对与四级 FEMA 风格损伤标签\cite{gupta2019xbd}。
+后续变化检测工作（BIT、ChangeFormer、SNUNet 等）表明，显式建模时相差分有助于变化定位，但不自动带来校准良好的类概率\cite{chen2022bit,bandara2022changeformer,fang2022snunet}。
+xView2 优胜方案通常把建筑定位与损伤分类分开。本文只借用定位阶段作为可替换脚手架，损伤头保持双时相分类器不变，且禁止加载公开冠军权重以免泄漏。
+RescueNet 提供与 xBD 四级损伤对齐的低空无人机分割标注\cite{rahnemoonfar2023rescuenet}，本文仅用作评估域。
+
+\paragraph{主动感知与 Next-Best-View。}
+主动感知主张运动与传感联合选择\cite{bajcsy1988active}。三维探索中的 receding-horizon next-best-view 规划是航空机器人的经典工具\cite{bircher2016nbv}。
+本文将动作集收窄为 $\{\mathrm{hold},\mathrm{descend\_center}\}$，以便在双时相分类器上把``再看一眼''做成可对照的预算分配问题。
+
+\paragraph{校准、分布偏移与共形预测。}
+温度缩放是深度网络校准的标准后处理\cite{guo2017calibration}。
+分布偏移下校准往往先于精度崩溃\cite{ovadia2019can}。
+机器人规划中已有用共形预测决定``何时求助''的先例（KnowNo）\cite{ren2023knowno}。
+本文将共形集合大小作为与校准熵并列的触发器，强调覆盖保证而不是把信息增益过度声明为贝叶斯最优。
+
+\paragraph{不确定性内省与具身智能。}
+具身智能需要知道何时观察不够。本文不把端到端成功率为零解释为``机制无效''：若上游从未产生损伤证据，复检控制器根本没有被执行。
+这是实验设计问题，也是本文把机制研究从导航链解耦的原因。

@@ -67,7 +67,23 @@ CONFIGS = {
     "E11_INFOGAIN": {"planner": "hspm", "recheck": True, "memory": False,
                      "change_perception": True,
                      "recheck_extra": {"uncertainty_mode": "entropy", "trigger_mode": "info_gain"},
-                     "desc": "E11: 校准熵 + 信息增益触发"},
+                     "desc": "E11: 校准熵 + 条件期望熵触发"},
+    "E11_CONFORMAL": {"planner": "hspm", "recheck": True, "memory": False,
+                      "change_perception": True,
+                      "recheck_extra": {"uncertainty_mode": "entropy", "trigger_mode": "conformal"},
+                      "desc": "E11: conformal 集合大小触发"},
+    "L0": {"planner": "hspm", "recheck": True, "memory": False, "change_perception": True,
+           "oracle_nav": False, "oracle_grounding": False,
+           "desc": "X3 L0: 无 oracle（现状）"},
+    "L1": {"planner": "hspm", "recheck": True, "memory": False, "change_perception": True,
+           "oracle_nav": False, "oracle_grounding": True,
+           "desc": "X3 L1: oracle grounding"},
+    "L2": {"planner": "hspm", "recheck": True, "memory": False, "change_perception": True,
+           "oracle_nav": True, "oracle_grounding": False,
+           "desc": "X3 L2: oracle nav"},
+    "L3": {"planner": "hspm", "recheck": True, "memory": False, "change_perception": True,
+           "oracle_nav": True, "oracle_grounding": True,
+           "desc": "X3 L3: oracle nav+grounding"},
     # E12 — OROI 打分融合 A/B/C（固定 B1，只切 VLN_OROI_SCORE 与三路权重）。
     "E12_OFF": {"planner": "hspm", "recheck": False, "memory": False,
                 "desc": "E12: OROI 自由选择（=B1，off）"},
@@ -198,6 +214,13 @@ def apply_config(app, cfg: dict, grounder: str, mem_path: str) -> None:
 
     import perception
     perception.VLN_CHANGE_PERCEPTION = bool(cfg.get("change_perception", False))
+    app.VLN_ORACLE_NAV = bool(cfg.get("oracle_nav", False))
+    app.VLN_ORACLE_GROUNDING = bool(cfg.get("oracle_grounding", False))
+    extra_path = extra.get("entropy_table_path") or os.environ.get("VLN_ENTROPY_TABLE", "")
+    if extra_path:
+        app.VLN_ENTROPY_TABLE = extra_path
+    if extra.get("conformal_qhat") is not None:
+        app.VLN_CONFORMAL_QHAT = float(extra["conformal_qhat"])
 
 
 def _predicted_class(report: dict) -> str | None:
@@ -500,7 +523,10 @@ def main() -> int:
                         args.gps_noise_sigma_m,
                         seed=args.seed + rep * 1_000_003 + idx,
                     )
+                    goals = item.get("goals") or []
+                    app.VLN_ORACLE_GOAL = goals[-1] if goals else None
                     report = app.run_vln_episode_headless(item["instruction"], start, source="bench")
+                    app.VLN_ORACLE_GOAL = None
                 except Exception as exc:
                     report = {"ok": False, "error": f"crash: {exc}", "arrived": False}
                     traceback.print_exc()

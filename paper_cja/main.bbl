@@ -1,0 +1,112 @@
+\begin{thebibliography}{10}
+
+\bibitem{anderson2018vision}
+Peter Anderson, Qi~Wu, Damien Teney, Jake Bruce, Mark Johnson, Niko
+  S{\"u}nderhauf, Ian Reid, Stephen Gould, and Anton van~den Hengel.
+\newblock Vision-and-language navigation: Interpreting visually-grounded
+  navigation instructions in real environments.
+\newblock In {\em Proceedings of the IEEE Conference on Computer Vision and
+  Pattern Recognition}, pages 3674--3683, 2018.
+
+\bibitem{bajcsy1988active}
+Ruzena Bajcsy.
+\newblock Active perception.
+\newblock {\em Proceedings of the IEEE}, 76(8):996--1005, 1988.
+
+\bibitem{bandara2022changeformer}
+Wele Gedara~Chaminda Bandara and Vishal~M. Patel.
+\newblock {A} transformer-based siamese network for change detection.
+\newblock In {\em IEEE International Geoscience and Remote Sensing Symposium},
+  pages 207--210, 2022.
+
+\bibitem{bircher2016nbv}
+Andreas Bircher, Mina Kamel, Kostas Alexis, Helen Oleynikova, and Roland
+  Siegwart.
+\newblock Receding horizon ``next-best-view'' planner for 3d exploration.
+\newblock In {\em IEEE International Conference on Robotics and Automation},
+  pages 1462--1468, 2016.
+
+\bibitem{chen2022bit}
+Hao Chen, Zipeng Qi, and Zhenwei Shi.
+\newblock Remote sensing image change detection with transformers.
+\newblock {\em IEEE Transactions on Geoscience and Remote Sensing}, 60:1--14,
+  2022.
+
+\bibitem{fang2022snunet}
+Sheng Fang, Kaiyu Li, Jinyuan Shao, and Zhe Li.
+\newblock {SNUNet-CD}: A densely connected siamese network for change detection
+  of {VHR} images.
+\newblock {\em IEEE Geoscience and Remote Sensing Letters}, 19:1--5, 2022.
+
+\bibitem{gao2024stmr}
+Yunpeng Gao, Zhigang Wang, Pengfei Han, Linglin Jing, Dong Wang, and Bin Zhao.
+\newblock Exploring spatial representation to enhance {LLM} reasoning in aerial
+  vision-language navigation.
+\newblock {\em arXiv preprint arXiv:2410.08500}, 2024.
+
+\bibitem{guo2017calibration}
+Chuan Guo, Geoff Pleiss, Yu~Sun, and Kilian~Q. Weinberger.
+\newblock On calibration of modern neural networks.
+\newblock In {\em Proceedings of the 34th International Conference on Machine
+  Learning}, pages 1321--1330, 2017.
+
+\bibitem{gupta2019xbd}
+Ritwik Gupta, Richard Hosfelt, Sandra Sajeev, Nirav Patel, Bryce Goodman, Jigar
+  Doshi, Eric Heim, Howie Choset, and Matthew Gaston.
+\newblock {xBD}: A dataset for assessing building damage.
+\newblock In {\em Proceedings of the IEEE/CVF Conference on Computer Vision and
+  Pattern Recognition Workshops}, 2019.
+
+\bibitem{lee2025citynav}
+Jungdae Lee, Taiki Miyanishi, Shuhei Kurita, Koya Sakamoto, Daichi Azuma,
+  Yutaka Matsuo, and Nakamasa Inoue.
+\newblock {CityNav}: A large-scale dataset for real-world aerial navigation.
+\newblock In {\em Proceedings of the IEEE/CVF International Conference on
+  Computer Vision}, pages 5912--5922, 2025.
+
+\bibitem{liu2023aerialvln}
+Shubo Liu, Hongsheng Zhang, Yuankai Qi, Peng Wang, Yanning Zhang, and Qi~Wu.
+\newblock {AerialVLN}: Vision-and-language navigation for {UAV}s.
+\newblock In {\em Proceedings of the IEEE/CVF International Conference on
+  Computer Vision}, pages 15384--15394, 2023.
+
+\bibitem{ovadia2019can}
+Yaniv Ovadia, Emily Fertig, Jie Ren, Zachary Nado, D.~Sculley, Sebastian
+  Nowozin, Joshua Dillon, Balaji Lakshminarayanan, and Jasper Snoek.
+\newblock Can you trust your model's uncertainty? {E}valuating predictive
+  uncertainty under dataset shift.
+\newblock In {\em Advances in Neural Information Processing Systems},
+  volume~32, 2019.
+
+\bibitem{rahnemoonfar2023rescuenet}
+Maryam Rahnemoonfar, Tashnim Chowdhury, and Robin Murphy.
+\newblock {RescueNet}: A high resolution {UAV} semantic segmentation dataset
+  for natural disaster damage assessment.
+\newblock {\em Scientific Data}, 10:913, 2023.
+
+\bibitem{ren2023knowno}
+Allen~Z. Ren, Anushri Dixit, Alexandra Bodrova, Sumeet Singh, Stephen Tu, Noah
+  Brown, Peng Xu, Leila Takayama, Fei Xia, Jack Varley, Zhenjia Xu, Dorsa
+  Sadigh, Andy Zeng, and Anirudha Majumdar.
+\newblock Robots that ask for help: Uncertainty alignment for large language
+  model planners.
+\newblock In {\em Conference on Robot Learning}, 2023.
+
+\bibitem{shah2023lmnav}
+Dhruv Shah, Blazej Osinski, and Sergey Levine.
+\newblock {LM-Nav}: Robotic navigation with large pre-trained models of
+  language, vision, and action.
+\newblock In {\em Proceedings of The 6th Conference on Robot Learning}, volume
+  205 of {\em Proceedings of Machine Learning Research}, pages 492--504. PMLR,
+  2023.
+
+\bibitem{zhang2025citynavagent}
+Weichen Zhang, Chen Gao, Shiquan Yu, Ruiying Peng, Baining Zhao, Qian Zhang,
+  Jinqiang Cui, Xinlei Chen, and Yong Li.
+\newblock {CityNavAgent}: Aerial vision-and-language navigation with
+  hierarchical semantic planning and global memory.
+\newblock In {\em Proceedings of the 63rd Annual Meeting of the Association for
+  Computational Linguistics (Volume 1: Long Papers)}, pages 31292--31309,
+  Vienna, Austria, 2025. Association for Computational Linguistics.
+
+\end{thebibliography}

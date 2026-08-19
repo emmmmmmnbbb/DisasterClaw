@@ -1,0 +1,150 @@
+\section{系统架构与仿真平台}
+\label{sec:architecture}
+
+本节描述已实现并可复现的智能体系统与仿真/监控平台。
+它是后续机制实验的运行载体，不是对导航成功率或复检增益的度量声明；
+度量结论见 \secref{sec:x1}--\secref{sec:x3x6}。
+操作界面见图~\ref{fig:arch} 与图~\ref{fig:ui-overview}--\ref{fig:ui-vln}；截图拍摄步骤见仓库 \texttt{paper\_cja/SCREENSHOTS.md}。
+
+\subsection{双模式智能体与有限动作集}
+\label{sec:dualmode}
+系统由 Flask + Socket.IO 后端与 React 前端构成，面向单架无人机、正射地理鸟瞰。
+编排器提供两种互补模式，动作空间显式、有限，不是开放的工具调用循环：大语言模型只负责规划与指认，状态机在 Python 侧闭合。
+
+\paragraph{任务规划模式。}
+操作员在控制台输入一条自然语言任务（例如``飞到选点上空 30\,m 悬停并做受灾检测''）。
+规划器调用语言模型，一次性输出固定模式的动作序列，字段为 $\{\texttt{action},\texttt{params},\texttt{reason}\}$；
+语言模型不可达时按关键词与经纬度规则回退。
+执行器按序调用同一套底层动作，并在控制台逐步回显计划与日志。
+
+\paragraph{语言导航模式。}
+操作员输入目标描述（例如``飞到北侧寻找完全损毁的建筑''）。
+系统进入感知--决策--执行闭环：每步按当前经纬高裁剪机载视场，运行检测/分割/双时相损伤分类，
+可选地由复检控制器发出下降--居中，再由导航器输出相对位移、悬停或停止。
+导航器可切换为关键词贪心基线（套件 B0）或分层语义规划模块 HSPM（B1--B3 与 oracle 阶梯默认，见 \secref{sec:hspm}）。
+
+\paragraph{底层动作。}
+两种模式最终都落到同一动作表：
+\texttt{fly\_to\_geo}（飞到经纬高，必要时对齐最近的灾后瓦片）、
+\texttt{fly\_relative}（北--东--天相对位移）、
+\texttt{hover}、
+\texttt{detect\_disaster}（裁视场并跑感知栈）、
+\texttt{mark\_target}、
+\texttt{report\_observation}。
+语言导航另把 \texttt{stop} 作为回合终止符。
+复检不是第 7 种独立动作枚举，而是在闭环内插入的 \texttt{fly\_relative}（先水平居中、再下降 $10\,\mathrm{m}$）。
+
+\paragraph{感知栈。}
+机载视场半径随高度线性变化（默认 $\mathrm{radius}= \mathrm{clip}(2\cdot h,\,20,\,300)\,\mathrm{m}$），再按瓦片地面采样距离裁成至少 $256\times256$ 的正射块。
+块上并行：建筑提议（默认仅在训练事件灾前瓦片上训练的 ResNet34 U-Net，同切分 YOLO 作对照）、场景分割（SegFormer）、双时相损伤分类，以及进程内加载的 Qwen2.5-VL-7B 开放词汇指认与灾情摘要。
+混合指认路径为检测器类别命中优先、视觉语言模型兜底。
+禁止把定位 Dice 或提议召回写成导航或判断增益。
+
+\subsection{地理配准仿真世界}
+仿真世界把 xBD 灾后（POST）瓦片按地理足迹叠到真实底图上，像素--经纬度由瓦片仿射给出，原生地面采样距离约 $0.5\,\mathrm{m/px}$。
+操作员可按灾害事件浏览瓦片目录、按损毁评分排序、一键激活瓦片并把无人机锚到瓦片中心；
+点选地图外位置时，系统会查找最近的 POST 覆盖并提示是否跳转，避免在无影像区域空飞。
+建筑多边形按 FEMA 四级着色，供操作员对照，\textbf{不}作为智能体的作弊输入。
+
+运动学为二维匀速直线插值，不是六自由度飞控：水平速度 $4$--$14\,\mathrm{m/s}$（默认飞向地理点 $14\,\mathrm{m/s}$、相对位移 $12\,\mathrm{m/s}$），
+巡航高度 $30\,\mathrm{m}$，高度下限 $10\,\mathrm{m}$，不含风扰、惯性、避障与电池消耗。
+视场随高度收缩；离线机制实验里再把高度写成有效 GSD 阶梯（\secref{sec:gsd}）。
+数值预算与步长约定见 \secref{sec:kinematics}。
+
+\subsection{人机协同控制台：平台实际能做的事}
+\label{sec:console}
+前端是实时监控/控制台，不是评测脚本的附属页面。操作员可以完成下列闭环，全部经 Socket.IO 推送世界状态、感知结果与思维链。
+
+\begin{enumerate}
+\item \textbf{选区与对照。} 切换底图（卫星/街道）、叠加 xBD 灾后影像、显示或隐藏建筑足迹与瓦片边界；在真实地理坐标上看到无人机图标与飞行轨迹。
+\item \textbf{手动飞行。} 点地图飞向该点、悬停、标记兴趣点；左栏持续显示经纬高、航向、速度与锚点北东偏移。
+\item \textbf{点选巡检。} 在疑似受损建筑上发 Inspect：自动生成任务规划序列，飞到 30\,m 悬停后跑 \texttt{detect\_disaster}。底栏可在``UAV 视场 / YOLO 标注 / SegFormer''三页签间切换，并显示风险等级、受损/完好/车辆计数与可选的视觉语言模型摘要。
+\item \textbf{语言目标搜索。} 在 VLN 框下发一句话指令，无人机逐步感知并自主飞向目标；底栏显示当前技能、是否命中、距离、语义栅格统计（已探索格、地标、候选目标）以及复检不确定性条。
+\item \textbf{一次性任务规划。} 在 AI Task 框下发复合任务，右侧列出逐步动作与理由，底栏日志同步执行过程，可随时 Stop。
+\item \textbf{独立视觉问答。} 控制台可上传任意图片调用同一套视觉语言模型做灾情分析，不依赖当前视场。
+\end{enumerate}
+
+上述能力用于人机协同演示与单题排错；正文的成功率数字来自无界面的批处理评测脚本，二者不得混用账本。
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+  font=\footnotesize,
+  >=Latex,
+  box/.style={draw, rounded corners=2pt, align=center, inner sep=3.5pt, minimum height=0.95cm},
+  arr/.style={->, thick}
+]
+\node[box, minimum width=11.6cm] (op) {操作员（选区 / 手动飞 / 点选巡检 / 语言指令 / 中止）};
+\node[box, minimum width=11.6cm, below=0.35cm of op] (fe)
+  {实时控制台：态势地图 · 位姿 · 任务 · 感知三视图 · 语义地图与思维链 · 日志};
+\node[box, minimum width=11.6cm, below=0.35cm of fe] (orch)
+  {智能体编排器（任务规划序列 或 语言导航闭环）};
+\node[box, below=0.45cm of orch, xshift=-4.2cm, minimum width=2.5cm] (llm)
+  {语言模型\\视觉语言模型};
+\node[box, below=0.45cm of orch, xshift=-1.4cm, minimum width=2.5cm] (perc)
+  {感知栈\\检测 / 分割 / 损伤};
+\node[box, below=0.45cm of orch, xshift=1.4cm, minimum width=2.5cm] (plan)
+  {HSPM / 基线\\STMR 文字矩阵};
+\node[box, below=0.45cm of orch, xshift=4.2cm, minimum width=2.5cm] (mem)
+  {语义栅格\\拓扑记忆};
+\node[box, minimum width=11.6cm, below=1.85cm of orch] (world)
+  {仿真世界：地理配准 xBD 瓦片 + 二维匀速运动学};
+\draw[arr] (op) -- (fe);
+\draw[arr] (fe) -- (orch);
+\draw[arr] (orch.south) -- (llm.north);
+\draw[arr] (orch.south) -- (perc.north);
+\draw[arr] (orch.south) -- (plan.north);
+\draw[arr] (orch.south) -- (mem.north);
+\draw[arr] (llm.south) -- ++(0,-0.35) -| (world.north);
+\draw[arr] (perc.south) -- ++(0,-0.35) -| (world.north);
+\draw[arr] (plan.south) -- ++(0,-0.35) -| (world.north);
+\draw[arr] (mem.south) -- ++(0,-0.35) -| (world.north);
+\end{tikzpicture}
+\caption{系统分层：操作员经实时控制台驱动编排器，编排器调用语言模型、感知、规划与记忆模块，在地理配准仿真世界上执行有限动作集。}
+\label{fig:arch}
+\end{figure}
+
+\newcommand{\platformshot}[3]{%
+  \begin{figure}[htbp]
+  \centering
+  \IfFileExists{figures/#1.png}{%
+    \includegraphics[width=0.95\linewidth]{figures/#1.png}%
+  }{%
+    \fbox{\parbox{0.92\linewidth}{\centering\vspace{1.6cm}
+    待补截图 \path{paper_cja/figures/#1.png}\\[0.4em]
+    {\small 拍摄步骤见 \texttt{paper\_cja/SCREENSHOTS.md}}
+    \vspace{1.6cm}}}%
+  }%
+  \caption{#2}
+  \label{#3}
+  \end{figure}%
+}
+
+\platformshot{ui_overview}{控制台全貌：顶栏模式切换，左栏无人机位姿，中栏地理配准态势图，右栏任务规划与语言导航输入，底栏感知与日志。}{fig:ui-overview}
+
+\platformshot{map_overlay}{态势地图局部：灾后卫星叠加、按损伤等级着色的建筑足迹、无人机图标与轨迹。建筑足迹仅供操作员对照，不进入智能体观测。}{fig:ui-map}
+
+\platformshot{inspect_perception}{点选巡检后的感知三视图：机载视场、检测框与场景分割；右侧为风险摘要与可选视觉语言模型结论。}{fig:ui-perception}
+
+\platformshot{vln_closedloop}{语言导航进行中：地图轨迹、当前指令、技能与命中状态、语义栅格统计及复检不确定性。}{fig:ui-vln}
+
+\subsection{分层语义规划与记忆栈}
+\label{sec:hspm}
+语言导航闭环默认使用分层语义规划（HSPM），对照 B0 为关键词贪心基线。
+设计借鉴 CityNavAgent 的三层分解\cite{zhang2025citynavagent}，适配到二维地理鸟瞰：
+地标层由语言模型把指令拆成有序子目标；
+目标层在当前子目标不可见时，把语义地图局部窗口交给语言模型做方位常识推理（OROI）；
+运动层把``可见则朝质心步进、不可见则按方位探索''写成一次相对位移，动作仍落在 $\{\texttt{fly\_relative},\texttt{hover},\texttt{stop}\}$。
+本文不做与 CityNavAgent 的性能对标。
+
+目标层不把俯视图像直接交给视觉语言模型，而是把五层地理语义栅格（当前视场、已探索、地标、周边目标、候选目标）渲染为以无人机为中心的数字网格、图例与目标方位摘要（STMR）\cite{gao2024stmr}。
+与原 STMR 的差异在于：本文已有真实地理参考，矩阵由二维语义地图直接切片，无需深度反投影。
+STMR 随 HSPM 一并启用，不是单独开关。
+
+当语言模型或视觉语言模型不可达时，探索回退为螺旋搜索，禁止无方向先验时每步默认向北。
+判到达半径（$35\,\mathrm{m}$）大于成功半径（$25\,\mathrm{m}$），故判到达后先平移至目标估计位置正上方再停止。
+Oracle 指认与 oracle 初始定位用于阶梯诊断，不作为上线策略。
+
+跨任务拓扑记忆把成功轨迹沉淀为节点（观测航点）与边（地表距离），下次相似指令先按文本匹配对齐地标、再用最短路沿熟路预飞\cite{shah2023lmnav}。
+环境变量默认关闭（\texttt{VLN\_MEMORY=0}）；端到端消融中仅 B3 打开。
+B3 在既有结果上并未提高严格成功率，导航误差反而变差（\secref{sec:x3x6}），因此记忆图不得写成已验证的增益模块，只作为可开关的系统能力报告。

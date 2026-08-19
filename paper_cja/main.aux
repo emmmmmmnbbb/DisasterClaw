@@ -1,0 +1,162 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand*\HyPL@Entry[1]{}
+\HyPL@Entry{0<</S/D>>}
+\@writefile{toc}{\contentsline {section}{\numberline {1}引言}{3}{section.1}\protected@file@percent }
+\newlabel{sec:introduction}{{1}{3}{引言}{section.1}{}}
+\citation{anderson2018vision}
+\citation{liu2023aerialvln}
+\citation{gupta2019xbd}
+\citation{zhang2025citynavagent}
+\citation{gao2024stmr}
+\citation{shah2023lmnav}
+\citation{liu2023aerialvln}
+\citation{lee2025citynav}
+\citation{zhang2025citynavagent}
+\citation{gao2024stmr}
+\citation{shah2023lmnav}
+\citation{gupta2019xbd}
+\citation{chen2022bit}
+\citation{bandara2022changeformer}
+\citation{fang2022snunet}
+\citation{rahnemoonfar2023rescuenet}
+\citation{bajcsy1988active}
+\citation{bircher2016nbv}
+\citation{guo2017calibration}
+\citation{ovadia2019can}
+\citation{ren2023knowno}
+\@writefile{toc}{\contentsline {section}{\numberline {2}相关工作}{5}{section.2}\protected@file@percent }
+\newlabel{sec:related}{{2}{5}{相关工作}{section.2}{}}
+\@writefile{toc}{\contentsline {paragraph}{航空应急侦察与鸟瞰导航。}{5}{paragraph*.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{分层语义规划与拓扑记忆。}{5}{paragraph*.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{遥感变化检测与 xBD 损伤评估。}{5}{paragraph*.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{主动感知与 Next-Best-View。}{5}{paragraph*.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{校准、分布偏移与共形预测。}{6}{paragraph*.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{不确定性内省与具身智能。}{6}{paragraph*.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}系统架构与仿真平台}{6}{section.3}\protected@file@percent }
+\newlabel{sec:architecture}{{3}{6}{系统架构与仿真平台}{section.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}双模式智能体与有限动作集}{6}{subsection.3.1}\protected@file@percent }
+\newlabel{sec:dualmode}{{3.1}{6}{双模式智能体与有限动作集}{subsection.3.1}{}}
+\@writefile{toc}{\contentsline {paragraph}{任务规划模式。}{6}{paragraph*.8}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{语言导航模式。}{6}{paragraph*.9}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{底层动作。}{7}{paragraph*.10}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{感知栈。}{7}{paragraph*.11}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}地理配准仿真世界}{7}{subsection.3.2}\protected@file@percent }
+\citation{zhang2025citynavagent}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}人机协同控制台：平台实际能做的事}{8}{subsection.3.3}\protected@file@percent }
+\newlabel{sec:console}{{3.3}{8}{人机协同控制台：平台实际能做的事}{subsection.3.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}分层语义规划与记忆栈}{8}{subsection.3.4}\protected@file@percent }
+\newlabel{sec:hspm}{{3.4}{8}{分层语义规划与记忆栈}{subsection.3.4}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces 系统分层：操作员经实时控制台驱动编排器，编排器调用语言模型、感知、规划与记忆模块，在地理配准仿真世界上执行有限动作集。}}{9}{figure.caption.12}\protected@file@percent }
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{fig:arch}{{1}{9}{系统分层：操作员经实时控制台驱动编排器，编排器调用语言模型、感知、规划与记忆模块，在地理配准仿真世界上执行有限动作集。}{figure.caption.12}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces 控制台全貌：顶栏模式切换，左栏无人机位姿，中栏地理配准态势图，右栏任务规划与语言导航输入，底栏感知与日志。}}{9}{figure.caption.13}\protected@file@percent }
+\newlabel{fig:ui-overview}{{2}{9}{控制台全貌：顶栏模式切换，左栏无人机位姿，中栏地理配准态势图，右栏任务规划与语言导航输入，底栏感知与日志。}{figure.caption.13}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces 态势地图局部：灾后卫星叠加、按损伤等级着色的建筑足迹、无人机图标与轨迹。建筑足迹仅供操作员对照，不进入智能体观测。}}{10}{figure.caption.14}\protected@file@percent }
+\newlabel{fig:ui-map}{{3}{10}{态势地图局部：灾后卫星叠加、按损伤等级着色的建筑足迹、无人机图标与轨迹。建筑足迹仅供操作员对照，不进入智能体观测。}{figure.caption.14}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces 点选巡检后的感知三视图：机载视场、检测框与场景分割；右侧为风险摘要与可选视觉语言模型结论。}}{10}{figure.caption.15}\protected@file@percent }
+\newlabel{fig:ui-perception}{{4}{10}{点选巡检后的感知三视图：机载视场、检测框与场景分割；右侧为风险摘要与可选视觉语言模型结论。}{figure.caption.15}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces 语言导航进行中：地图轨迹、当前指令、技能与命中状态、语义栅格统计及复检不确定性。}}{10}{figure.caption.16}\protected@file@percent }
+\newlabel{fig:ui-vln}{{5}{10}{语言导航进行中：地图轨迹、当前指令、技能与命中状态、语义栅格统计及复检不确定性。}{figure.caption.16}{}}
+\citation{gao2024stmr}
+\citation{shah2023lmnav}
+\@writefile{toc}{\contentsline {section}{\numberline {4}方法与实验协议}{11}{section.4}\protected@file@percent }
+\newlabel{sec:method}{{4}{11}{方法与实验协议}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}预算受限主动重观测}{11}{subsection.4.1}\protected@file@percent }
+\newlabel{sec:baro}{{4.1}{11}{预算受限主动重观测}{subsection.4.1}{}}
+\newlabel{eq:entropy}{{2}{11}{预算受限主动重观测}{equation.2}{}}
+\newlabel{eq:ig}{{3}{12}{预算受限主动重观测}{equation.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}高度--有效 GSD 分辨率阶梯}{12}{subsection.4.2}\protected@file@percent }
+\newlabel{sec:gsd}{{4.2}{12}{高度--有效 GSD 分辨率阶梯}{subsection.4.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}双时相损伤分类与校准}{12}{subsection.4.3}\protected@file@percent }
+\newlabel{sec:classifier}{{4.3}{12}{双时相损伤分类与校准}{subsection.4.3}{}}
+\@writefile{toc}{\contentsline {paragraph}{类别加权与按宏观 F1 选择 checkpoint。}{12}{paragraph*.17}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}触发策略}{13}{subsection.4.4}\protected@file@percent }
+\newlabel{sec:trigger}{{4.4}{13}{触发策略}{subsection.4.4}{}}
+\@writefile{toc}{\contentsline {paragraph}{条件期望熵。}{13}{paragraph*.18}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{共形集合。}{13}{paragraph*.19}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}事件不相交数据协议}{13}{subsection.4.5}\protected@file@percent }
+\newlabel{sec:split}{{4.5}{13}{事件不相交数据协议}{subsection.4.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.6}运动学参数与预算换算}{13}{subsection.4.6}\protected@file@percent }
+\newlabel{sec:kinematics}{{4.6}{13}{运动学参数与预算换算}{subsection.4.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.7}评价指标与可识别性判据}{14}{subsection.4.7}\protected@file@percent }
+\newlabel{sec:metrics}{{4.7}{14}{评价指标与可识别性判据}{subsection.4.7}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {5}实验}{14}{section.5}\protected@file@percent }
+\newlabel{sec:experiments}{{5}{14}{实验}{section.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}训练/验证曲线、类别加权与基线对标}{14}{subsection.5.1}\protected@file@percent }
+\newlabel{sec:x1train}{{5.1}{14}{训练/验证曲线、类别加权与基线对标}{subsection.5.1}{}}
+\@writefile{toc}{\contentsline {paragraph}{训练曲线：确有信号，但不跨事件泛化。}{15}{paragraph*.20}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{类别加权部分缓解塌缩，但未逆转。}{15}{paragraph*.21}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{与标准（非事件不相交）切分对照，拆分协议难度与架构差距（C2）。}{15}{paragraph*.22}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{H2：差分注意力与拼接融合无统计显著差异。}{15}{paragraph*.23}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces 新旧 checkpoint、两种融合架构与两种切分协议的 macro-F1 / 逐类召回对照。}}{16}{table.caption.24}\protected@file@percent }
+\newlabel{tab:cpv2}{{1}{16}{新旧 checkpoint、两种融合架构与两种切分协议的 macro-F1 / 逐类召回对照。}{table.caption.24}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}有效 GSD 与分类质量}{16}{subsection.5.2}\protected@file@percent }
+\newlabel{sec:x1}{{5.2}{16}{有效 GSD 与分类质量}{subsection.5.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}预算受限观测分配}{16}{subsection.5.3}\protected@file@percent }
+\newlabel{sec:x2}{{5.3}{16}{预算受限观测分配}{subsection.5.3}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces 类别加权训练下的逐 epoch train/val macro-F1（C1 证据：训练内有信号、验证集不改善）。}}{17}{table.caption.25}\protected@file@percent }
+\newlabel{tab:traincurve}{{2}{17}{类别加权训练下的逐 epoch train/val macro-F1（C1 证据：训练内有信号、验证集不改善）。}{table.caption.25}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces 事件不相交测试裁块上的高度--GSD 阶梯（$n=400$，类别加权 checkpoint）。}}{18}{table.caption.26}\protected@file@percent }
+\newlabel{tab:gsd}{{3}{18}{事件不相交测试裁块上的高度--GSD 阶梯（$n=400$，类别加权 checkpoint）。}{table.caption.26}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces 同一测试裁块上的类别支持数、原生档预测数与召回。巡航--原生预测翻转 7 次。}}{18}{table.caption.27}\protected@file@percent }
+\newlabel{tab:gsdcls}{{4}{18}{同一测试裁块上的类别支持数、原生档预测数与召回。巡航--原生预测翻转 7 次。}{table.caption.27}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces 有效 GSD 与 macro-F1 / ECE。macro-F1 大致平坦；平均熵随 GSD 变粗\textbf  {单调上升}—— 方向与``下降应降低不确定性''的假设一致（未加权版本曾观察到方向相反，见附录变更记录）， 但幅度很小，仍不足以支撑稳健的跨 GSD 触发决策。}}{19}{figure.caption.28}\protected@file@percent }
+\newlabel{fig:gsd}{{6}{19}{有效 GSD 与 macro-F1 / ECE。macro-F1 大致平坦；平均熵随 GSD 变粗\textbf {单调上升}—— 方向与``下降应降低不确定性''的假设一致（未加权版本曾观察到方向相反，见附录变更记录）， 但幅度很小，仍不足以支撑稳健的跨 GSD 触发决策。}{figure.caption.28}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}功效分析与事件隔离基准}{19}{subsection.5.4}\protected@file@percent }
+\newlabel{sec:x4x5}{{5.4}{19}{功效分析与事件隔离基准}{subsection.5.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces 平均每样本额外观测 $B=0.25$ 时的损伤判定（$n=400$，类别加权 checkpoint，$n_{\mathrm  {flip}}=7$）。}}{20}{table.caption.29}\protected@file@percent }
+\newlabel{tab:budget}{{5}{20}{平均每样本额外观测 $B=0.25$ 时的损伤判定（$n=400$，类别加权 checkpoint，$n_{\mathrm {flip}}=7$）。}{table.caption.29}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {7}{\ignorespaces 额外观测预算与损伤宏观 F1。各策略曲线高度重叠；oracle 曲线是逐样本翻转参照而非宏观 F1 上界。}}{20}{figure.caption.30}\protected@file@percent }
+\newlabel{fig:budget}{{7}{20}{额外观测预算与损伤宏观 F1。各策略曲线高度重叠；oracle 曲线是逐样本翻转参照而非宏观 F1 上界。}{figure.caption.30}{}}
+\citation{rahnemoonfar2023rescuenet}
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces 六策略 Holm 校正下的样本量规划。表中 0.0962 是相对基线 \ensuremath {\mathrm  {SR}}的最小可检测差值，不是成功率本身。}}{21}{table.caption.31}\protected@file@percent }
+\newlabel{tab:power}{{6}{21}{六策略 Holm 校正下的样本量规划。表中 0.0962 是相对基线 \SR 的最小可检测差值，不是成功率本身。}{table.caption.31}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}RescueNet 低空评估域}{21}{subsection.5.5}\protected@file@percent }
+\newlabel{sec:rescuenet}{{5.5}{21}{RescueNet 低空评估域}{subsection.5.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.6}端到端缺陷与探索回退}{21}{subsection.5.6}\protected@file@percent }
+\newlabel{sec:x0x3}{{5.6}{21}{端到端缺陷与探索回退}{subsection.5.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces 卫星训练分类器在 RescueNet 测试影像上的零样本漂移（灾后裁块复制为灾前）。}}{22}{table.caption.32}\protected@file@percent }
+\newlabel{tab:rescue}{{7}{22}{卫星训练分类器在 RescueNet 测试影像上的零样本漂移（灾后裁块复制为灾前）。}{table.caption.32}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.7}Oracle 阶梯与端到端现实检验}{23}{subsection.5.7}\protected@file@percent }
+\newlabel{sec:x3x6}{{5.7}{23}{Oracle 阶梯与端到端现实检验}{subsection.5.7}{}}
+\@writefile{toc}{\contentsline {paragraph}{L2 是 oracle 初始定位，不是 oracle 导航。}{23}{paragraph*.33}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{瓶颈定位在指认层。}{24}{paragraph*.34}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{端到端上机制不可辨识，与离线分水岭闭环。}{24}{paragraph*.35}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{几何扰动不是当前瓶颈；强制退化几何下 SR 显著更低，但样本量不足以单独立因果论证。}{24}{paragraph*.36}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}局限与影响}{24}{section.6}\protected@file@percent }
+\newlabel{sec:limitations}{{6}{24}{局限与影响}{section.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {8}{\ignorespaces Oracle 阶梯：导航与指认逐层替换为 oracle 后的到达能力（事件隔离基准，$n=200$）。}}{25}{table.caption.37}\protected@file@percent }
+\newlabel{tab:oracle}{{8}{25}{Oracle 阶梯：导航与指认逐层替换为 oracle 后的到达能力（事件隔离基准，$n=200$）。}{table.caption.37}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {9}{\ignorespaces 端到端主消融与扰动套件（事件隔离基准）。\ensuremath {\mathrm  {SR}}附 Wilson 95\% 置信区间。 固定下降策略触发次数远小于回合数，因为触发仍受上游``存在损伤证据''门控。}}{25}{table.caption.38}\protected@file@percent }
+\newlabel{tab:e2e}{{9}{25}{端到端主消融与扰动套件（事件隔离基准）。\SR 附 Wilson 95\% 置信区间。 固定下降策略触发次数远小于回合数，因为触发仍受上游``存在损伤证据''门控。}{table.caption.38}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}结论}{26}{section.7}\protected@file@percent }
+\newlabel{sec:conclusion}{{7}{26}{结论}{section.7}{}}
+\bibstyle{plain}
+\bibdata{refs}
+\bibcite{anderson2018vision}{1}
+\bibcite{bajcsy1988active}{2}
+\bibcite{bandara2022changeformer}{3}
+\bibcite{bircher2016nbv}{4}
+\bibcite{chen2022bit}{5}
+\bibcite{fang2022snunet}{6}
+\bibcite{gao2024stmr}{7}
+\bibcite{guo2017calibration}{8}
+\bibcite{gupta2019xbd}{9}
+\bibcite{lee2025citynav}{10}
+\bibcite{liu2023aerialvln}{11}
+\bibcite{ovadia2019can}{12}
+\bibcite{rahnemoonfar2023rescuenet}{13}
+\bibcite{ren2023knowno}{14}
+\bibcite{shah2023lmnav}{15}
+\bibcite{zhang2025citynavagent}{16}
+\@writefile{toc}{\contentsline {section}{\numberline {A}附录：协议、切分与复现}{30}{appendix.A}\protected@file@percent }
+\newlabel{sec:appendix}{{A}{30}{附录：协议、切分与复现}{appendix.A}{}}
+\@writefile{toc}{\contentsline {paragraph}{事件切分。}{30}{paragraph*.40}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{预注册假设（保持）。}{30}{paragraph*.41}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{H2 结果。}{30}{paragraph*.42}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{损伤分类器训练修复。}{30}{paragraph*.43}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{标准（非事件不相交）切分基线。}{31}{paragraph*.44}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{权重溯源（SHA-256 前 16 位）。}{31}{paragraph*.45}\protected@file@percent }
+\@writefile{toc}{\contentsline {paragraph}{复现入口。}{31}{paragraph*.46}\protected@file@percent }
+\gdef \@abspage@last{32}

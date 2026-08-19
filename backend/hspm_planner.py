@@ -303,6 +303,9 @@ class HspmNavigator:
         self.lm_idx = 0
         self.step_index = 0
         self.history: list[dict] = []
+        # LLM 不可达时不得每步默认向北（X0：这会把 48 m 起点送到数百米外）。
+        self._explore_moves: list[tuple[float, float]] = []
+        self._explore_cursor = 0
 
     # ── 生命周期 ────────────────────────────────────────────────────
     def reset(self, instruction: str) -> dict:
@@ -312,6 +315,10 @@ class HspmNavigator:
         self.lm_idx = 0
         self.step_index = 0
         self.history = []
+        self._explore_cursor = 0
+        self._explore_moves = VlnNavigator._build_explore_moves(
+            self.parsed.get("direction"), self.config.explore_step_m
+        )
         # 暴露给上层日志：把 landmark 序列塞进 parsed
         self.parsed["landmarks"] = self.landmarks
         return self.parsed
@@ -391,40 +398,70 @@ class HspmNavigator:
             self._log(dec, subgoal)
             return dec
 
-        # 2) 看不到子目标 → object-level OROI 推理方位 → motion 探索一步
-        stmr = None
-        if self._stmr_provider is not None:
-            try:
-                stmr = self._stmr_provider(snapshot)
-            except Exception:
-                stmr = None
-        stmr_text = (stmr or {}).get("text", "") if stmr else ""
-        direction_hint = self.parsed.get("direction_name", "")
-        if self.config.use_oroi_score:
-            frontier_fn = self._make_frontier_fn(snapshot)
-            bearing, reason = score_oroi(
-                self.instruction, subgoal, stmr_text, direction_hint, self._llm_chat,
-                frontier_fn=frontier_fn, weights=self.config.oroi_weights,
-            )
-        else:
-            bearing, reason = reason_oroi(
-                self.instruction, subgoal, stmr_text, direction_hint, self._llm_chat,
-            )
-        dn, de = _BEARING_VEC.get(bearing, (1.0, 0.0))
-        norm = math.hypot(dn, de) or 1.0
-        step_m = self.config.explore_step_m
-        mn, me = dn / norm * step_m, de / norm * step_m
+        # 2) 看不到子目标 → object-level OROI；LLM 不可用/失败则走螺旋搜索，
+        #    禁止无方向先验时每步默认向北（X0 根因：588 m 量级 NE）。
+        mn, me, explore_reason = self._explore_offset(snapshot, subgoal)
         dec = Decision(
             action="fly_relative",
             params={"north_m": round(mn, 1), "east_m": round(me, 1), "up_m": 0.0, "speed": 12.0},
-            reason=f"[HSPM] 未见「{subgoal}」，OROI 推理朝 {bearing} 探索。{reason}",
-            thought=f"step{self.step_index}: 未见「{subgoal}」，朝 {bearing} 探索 N{mn:+.0f}/E{me:+.0f}m。",
+            reason=f"[HSPM] 未见「{subgoal}」，{explore_reason}",
+            thought=f"step{self.step_index}: 未见「{subgoal}」，探索 N{mn:+.0f}/E{me:+.0f}m。",
             matched=False,
         )
         self._log(dec, subgoal)
         return dec
 
     # ── 工具 ────────────────────────────────────────────────────────
+    def _next_explore_move(self) -> tuple[float, float]:
+        if not self._explore_moves:
+            return (self.config.explore_step_m, 0.0)
+        move = self._explore_moves[self._explore_cursor % len(self._explore_moves)]
+        self._explore_cursor += 1
+        return move
+
+    def _explore_offset(self, snapshot: dict, subgoal: str) -> tuple[float, float, str]:
+        """Return (north_m, east_m, reason) for an unseen-subgoal step."""
+        direction_hint = self.parsed.get("direction_name", "")
+        llm_ok = self._llm_chat is not None
+        stmr = None
+        if llm_ok and self._stmr_provider is not None:
+            try:
+                stmr = self._stmr_provider(snapshot)
+            except Exception:
+                stmr = None
+        stmr_text = (stmr or {}).get("text", "") if stmr else ""
+        can_oroi = llm_ok and (bool(stmr_text) or self.config.use_oroi_score)
+        if can_oroi:
+            try:
+                if self.config.use_oroi_score:
+                    frontier_fn = self._make_frontier_fn(snapshot)
+                    bearing, reason = score_oroi(
+                        self.instruction, subgoal, stmr_text, direction_hint, self._llm_chat,
+                        frontier_fn=frontier_fn, weights=self.config.oroi_weights,
+                    )
+                else:
+                    bearing, reason = reason_oroi(
+                        self.instruction, subgoal, stmr_text, direction_hint, self._llm_chat,
+                    )
+            except Exception as exc:
+                logger.warning("HSPM OROI failed, falling back to spiral: %s", exc)
+                bearing, reason = "", f"OROI 异常回退螺旋 ({exc})"
+            llm_produced = (
+                bearing in _BEARING_VEC
+                and "无 LLM" not in (reason or "")
+                and "失败" not in (reason or "")
+            )
+            if "非法" in (reason or ""):
+                llm_produced = bool(direction_hint) and bearing == direction_hint
+            if llm_produced:
+                dn, de = _BEARING_VEC[bearing]
+                norm = math.hypot(dn, de) or 1.0
+                step_m = self.config.explore_step_m
+                return dn / norm * step_m, de / norm * step_m, f"OROI 朝 {bearing} 探索。{reason}"
+        mn, me = self._next_explore_move()
+        extra = f"方向先验 {direction_hint}" if direction_hint else "无方向先验"
+        return mn, me, f"LLM/地图不可用，按螺旋搜索 {extra} N{mn:+.0f}/E{me:+.0f}m。"
+
     @staticmethod
     def _offset(norm_xy: tuple[float, float], radius_m: float) -> tuple[float, float, float]:
         # VlnNavigator._offset_from_norm 返回 (north_m, east_m, dist_m)

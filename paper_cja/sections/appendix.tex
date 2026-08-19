@@ -1,0 +1,68 @@
+\section{附录：协议、切分与复现}
+\label{sec:appendix}
+
+\paragraph{事件切分。}
+训练：guatemala-volcano, hurricane-florence, hurricane-matthew, joplin-tornado, lower-puna-volcano, midwest-flooding, portugal-wildfire, santa-rosa-wildfire, socal-fire, sunda-tsunami, tuscaloosa-tornado, woolsey-fire。
+验证（温度拟合）：hurricane-harvey, mexico-earthquake。
+测试：hurricane-michael, palu-tsunami。
+留出：nepal-flooding, moore-tornado, pinery-bushfire。
+
+\paragraph{预注册假设（保持）。}
+H1：温度缩放降低事件不相交测试 ECE 且不改变精度。
+H2：差分注意力相对拼接的均匀精度/校准优势。
+H3--H4：信息增益或共形触发相对无/随机/固定下降的判断增益。
+零触发回合对条件 $\Delta U$ 视为缺失，触发率报 0，不得填补成功下降。
+
+\paragraph{H2 结果。}
+差分注意力与拼接融合在事件不相交切分下的验证/测试 macro-F1 互有胜负（\tabref{tab:cpv2}）：
+拼接在验证集选择指标上略高，差分注意力在测试集``损毁''召回上更高。
+按预注册规则，H2 判定为``在当前样本量下无法区分''，两种融合方式均不获得``均匀优势''结论。
+
+\paragraph{损伤分类器训练修复。}
+复核发现早期版本训练日志汇报的验证集 accuracy（$\approx 0.80$）具有误导性：
+在完好类占比 66\%--79\% 的数据上，未加权交叉熵 + 按 accuracy 选 checkpoint 会系统性收敛到常数预测器，
+训练集自身 macro-F1 当时也只有 $\approx 0.22$--$0.25$（三类损伤召回接近 0），说明问题出在训练配方而非某次评测脚本的 bug。
+修复：(i) 类别加权交叉熵（训练集逐类频率倒数）；(ii) 模型选择改为验证集 macro-F1；
+(iii) 训练收尾对 reload 后的 checkpoint 现场核验，数值与训练期间记录不一致则拒绝保存
+（见 \texttt{backend/change\_perception.py} 的 \texttt{macro\_f1\_from\_logits} / \texttt{class\_weights\_from\_records}）。
+另需记录一次排查过程中的假警报：复核者最初误用一份早期废弃的、非事件不相交的小规模数据目录
+（\texttt{xbd\_change/}）复算验证集表现，得到与训练日志严重不符的数字，
+一度怀疑存在 checkpoint 保存/加载 bug；改用训练时真正使用的事件不相交目录
+（\texttt{xbd\_change\_strict\_v1/}，与本节``事件切分''一致）后，
+reload 数值与训练日志完全吻合，排除了保存/加载环节的 bug，问题精确定位到训练配方本身。
+如实记录该假警报是为了让复现者不必重复同一轮排查。
+
+\paragraph{标准（非事件不相交）切分基线。}
+使用 \texttt{gen\_xbd\_change\_dataset.py} 的 \texttt{legacy\_tile\_random} 模式（\texttt{--strict-event-split} 关闭）
+生成 \texttt{xbd\_change\_standard\_v1/}：train/tier3 内按图块 95/5 随机切分为 train/val，官方 test 目录作为 test，
+holdout 灾害事件仍整体排除。该协议与公开 xBD/xView2 基线一致（同一灾害事件的图像可同时出现在 train 与 test，只是不同图块）。
+
+\paragraph{权重溯源（SHA-256 前 16 位）。}
+U-Net 定位器 \texttt{resnet34\_strict\_v1.pt}：\texttt{4802e3886249deee}；
+双时相损伤分类器（当前部署，事件不相交+类别加权+差分注意力）\texttt{strict\_diff\_attention\_seed0\_v2.pt}：\texttt{54df321fad18f054}；
+H2 对照（事件不相交+类别加权+拼接）\texttt{strict\_baseline\_seed0\_v2.pt}：\texttt{a4f38095e4cf6141}；
+协议对照（标准切分+类别加权+拼接）\texttt{standard\_baseline\_seed0.pt}：\texttt{3355700071b30f37}；
+YOLO 对照 \texttt{best.pt}：\texttt{dcd11c194c5bf44b}。
+早期未加权版本 \texttt{strict\_diff\_attention\_seed0.pt}（\texttt{724c30fadd480b43}）保留在仓库中作为对照，不再用于正文结果。
+每次评测的 \texttt{results.json} 内嵌完整哈希、字节数与环境快照。
+
+\paragraph{复现入口。}
+数据根目录由环境变量 \texttt{XBD\_CHANGE\_ROOT}（事件不相交切分）与 \texttt{XBD\_CHANGE\_STANDARD\_ROOT}（官方标准切分）给出，不在正文写绝对路径。
+\begin{verbatim}
+# 重训损伤分类器（类别加权 + 宏观 F1 选择 + 事件不相交断言）
+python backend/change_perception.py train \
+  --data-dir "$XBD_CHANGE_ROOT" --require-event-disjoint \
+  --epochs 8 --class-weighted --diff-attention \
+  --out backend/outputs/change_perception/strict_diff_attention_seed0_v2.pt
+
+# 训练/验证/测试三切分宏观 F1、逐类召回、训练曲线
+python scripts/benchmarks/eval_change_perception_v2.py \
+  --out runs/benchmarks/paper_cja_v2/change_perception_v2_report.json
+
+# 全量实验
+bash scripts/benchmarks/run_cja_experiments.sh
+\end{verbatim}
+权重路径相对于仓库：\texttt{backend/outputs/...}。
+本地视觉语言模型：设 \texttt{VLM\_PROVIDER=qwen\_vl\_local} 与 \texttt{BASE\_MODEL=Qwen/Qwen2.5-VL-7B-Instruct}，由 Transformers 进程内直接加载本地权重（约 16\,GB，bfloat16 推理约需 20\,GB 显存），无需任何外部推理服务。
+投稿前将本中文 LaTeX 按《航空学报》Word 模板转写；表图由 \texttt{paper\_cja/generated} 导出。
+控制台截图放入 \texttt{paper\_cja/figures/}，步骤见 \texttt{paper\_cja/SCREENSHOTS.md}。

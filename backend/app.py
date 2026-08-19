@@ -910,6 +910,12 @@ VLN_RECHECK_MAX_TOTAL = int(os.getenv("VLN_RECHECK_MAX_TOTAL", "8"))  # 单 epis
 VLN_UNCERTAINTY_MODE = (os.getenv("VLN_UNCERTAINTY_MODE", "heuristic") or "heuristic").strip().lower()
 VLN_RECHECK_TRIGGER = (os.getenv("VLN_RECHECK_TRIGGER", "threshold") or "threshold").strip().lower()
 VLN_RECHECK_MIN_INFO_GAIN = float(os.getenv("VLN_RECHECK_MIN_INFO_GAIN", "0.05"))
+VLN_ENTROPY_TABLE = os.getenv("VLN_ENTROPY_TABLE", str(BASE_DIR / "data" / "gsd_entropy_table.json"))
+VLN_CONFORMAL_QHAT = float(os.getenv("VLN_CONFORMAL_QHAT", "0.9"))
+VLN_CONFORMAL_ALPHA = float(os.getenv("VLN_CONFORMAL_ALPHA", "0.1"))
+VLN_ORACLE_NAV = os.getenv("VLN_ORACLE_NAV", "0").lower() in {"1", "true", "yes", "on"}
+VLN_ORACLE_GROUNDING = os.getenv("VLN_ORACLE_GROUNDING", "0").lower() in {"1", "true", "yes", "on"}
+VLN_ORACLE_GOAL: dict | None = None  # set per-episode by the headless bench
 # E11 对照基线专用（trigger_mode="random" 时才生效）：固定复核概率 + 可复现种子。
 VLN_RECHECK_RANDOM_PROB = float(os.getenv("VLN_RECHECK_RANDOM_PROB", "0.5"))
 VLN_RECHECK_RANDOM_SEED = int(os.getenv("VLN_RECHECK_RANDOM_SEED", "0"))
@@ -1175,8 +1181,35 @@ def _vln_memory_prefly(landmarks: list[str], source: str) -> bool:
     return flown > 0
 
 
+def _oracle_ground(parsed: dict, obs: Observation) -> GroundHit | None:
+    goal = VLN_ORACLE_GOAL or {}
+    try:
+        glat, glon = float(goal["lat"]), float(goal["lon"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    snap = state.adapter.snapshot()
+    north_m, east_m = latlon_to_meters(float(snap["lat"]), float(snap["lon"]), glat, glon)
+    radius = float(obs.patch_radius_m or 0.0)
+    if radius <= 0:
+        return None
+    nx = max(0.0, min(1.0, 0.5 + east_m / (2.0 * radius)))
+    ny = max(0.0, min(1.0, 0.5 - north_m / (2.0 * radius)))
+    dist = (north_m * north_m + east_m * east_m) ** 0.5
+    return GroundHit(
+        present=True,
+        norm_xy=(nx, ny),
+        arrived=dist <= VLN_ARRIVAL_RADIUS_M,
+        label=str(goal.get("class") or parsed.get("target_label") or ""),
+        conf=1.0,
+        reason=f"oracle grounding ({dist:.1f}m)",
+        source="oracle",
+    )
+
+
 def _make_vln_grounder(mode: str):
     """按模式构造 grounder：yolo→None(导航器内置)，vlm→VLM，hybrid→YOLO 优先否则 VLM。"""
+    if VLN_ORACLE_GROUNDING:
+        return _oracle_ground
     if mode == "yolo":
         return None
     if mode == "vlm":
@@ -1392,6 +1425,9 @@ def run_vln_episode(instruction: str, source: str = "ai") -> dict | None:
                 uncertainty_mode=VLN_UNCERTAINTY_MODE,
                 trigger_mode=VLN_RECHECK_TRIGGER,
                 min_info_gain=VLN_RECHECK_MIN_INFO_GAIN,
+                entropy_table_path=VLN_ENTROPY_TABLE,
+                conformal_qhat=VLN_CONFORMAL_QHAT,
+                conformal_alpha=VLN_CONFORMAL_ALPHA,
                 random_prob=VLN_RECHECK_RANDOM_PROB,
                 random_seed=VLN_RECHECK_RANDOM_SEED,
             )
@@ -1419,6 +1455,20 @@ def run_vln_episode(instruction: str, source: str = "ai") -> dict | None:
         # 路径长度累计起点（含 P3 记忆预飞段）
         _ep_start = state.adapter.snapshot()
         prev_pos = (float(_ep_start["lat"]), float(_ep_start["lon"]))
+
+        if VLN_ORACLE_NAV and isinstance(VLN_ORACLE_GOAL, dict):
+            try:
+                execute_action(
+                    "fly_to_geo",
+                    {
+                        "lat": float(VLN_ORACLE_GOAL["lat"]),
+                        "lon": float(VLN_ORACLE_GOAL["lon"]),
+                        "alt": float(_ep_start.get("alt", state.hover_altitude_m)),
+                    },
+                    source=source,
+                )
+            except Exception as exc:
+                logger.warning("oracle nav fly_to_geo failed: %s", exc)
 
         target_label = parsed.get("target_label")
         dir_name = parsed.get("direction_name")
@@ -1508,6 +1558,10 @@ def run_vln_episode(instruction: str, source: str = "ai") -> dict | None:
             prev_pos = _cur
 
             # P3：记录轨迹观测点（成功到达后写入记忆图）。
+            _dn, _de = latlon_to_meters(
+                float(_ep_start["lat"]), float(_ep_start["lon"]),
+                float(snap["lat"]), float(snap["lon"]),
+            )
             trajectory.append({
                 "lat": float(snap["lat"]),
                 "lon": float(snap["lon"]),
@@ -1515,6 +1569,10 @@ def run_vln_episode(instruction: str, source: str = "ai") -> dict | None:
                 "labels": dict(result.detection.get("class_counts", {})),
                 "risk": result.risk_level,
                 "summary": result.risk_summary,
+                "pipeline": (result.extras or {}).get("pipeline") or result.detection.get("pipeline"),
+                "effective_gsd_m": (result.extras or {}).get("effective_gsd_m"),
+                "gsd_scale": (result.extras or {}).get("gsd_scale"),
+                "start_dist_m": round((_dn * _dn + _de * _de) ** 0.5, 2),
             })
 
             obs = Observation.from_perception(result)
@@ -1655,6 +1713,23 @@ def run_vln_episode(instruction: str, source: str = "ai") -> dict | None:
 
             if decision.action == "stop" or decision.arrived:
                 arrived = True
+                # X0 修复：判到达但目标不在正下方时，先平移到目标上方再停。
+                # 否则 final NE 恒等于"看见目标那一刻的水平距离"，判到达半径
+                # (35 m) 大于成功半径 (25 m) 时会系统性早停。
+                off = decision.target_offset_m
+                if off is not None:
+                    dist = float(decision.target_dist_m
+                                 or (off[0] ** 2 + off[1] ** 2) ** 0.5)
+                    if dist > 3.0:
+                        fp = {"north_m": round(float(off[0]), 1),
+                              "east_m": round(float(off[1]), 1),
+                              "up_m": 0.0, "speed": 12.0}
+                        res_final = execute_action("fly_relative", fp, source=source)
+                        executed.append({
+                            "action": "final_approach", "params": fp,
+                            "result": res_final,
+                            "reason": f"到达前对准目标（余距 {dist:.0f}m）",
+                        })
                 state.push_log("success", f"VLN 到达: {decision.reason}")
                 break
 

@@ -446,10 +446,50 @@ def get_change_perception() -> ChangePerceptionModel:
 
 # ── 训练 CLI ─────────────────────────────────────────────────────────────────
 
-def _run_epoch(model, loader, device, optimizer=None, change_loss_weight: float = 0.5):
+def macro_f1_from_logits(logits, labels, num_classes: int = NUM_CLASSES) -> tuple[float, list[float]]:
+    """按类别宏平均 F1，附带每类 F1，供不平衡数据下的模型选择/日志使用。
+
+    不能用 accuracy 选 checkpoint：当多数类占比 ~80% 时，一个常数预测器已经能
+    拿到 ~0.8 accuracy，这正是本仓库曾经的 bug——训练日志一直汇报高 accuracy，
+    实际上少数类召回从未离开 0（详见 REVIEW_PACKAGE.md C1 的复核记录）。
+    """
+    preds = logits.argmax(dim=-1)
+    f1s = []
+    for c in range(num_classes):
+        support = int((labels == c).sum())
+        pred_n = int((preds == c).sum())
+        tp = int(((preds == c) & (labels == c)).sum())
+        prec = tp / pred_n if pred_n else 0.0
+        rec = tp / support if support else 0.0
+        f1 = 2 * prec * rec / (prec + rec) if (prec + rec) else 0.0
+        f1s.append(f1)
+    return sum(f1s) / num_classes, f1s
+
+
+def class_weights_from_records(records: list[dict], num_classes: int = NUM_CLASSES) -> "torch.Tensor":
+    """训练集逐类频率的倒数（归一化到均值 1），喂给 CrossEntropyLoss(weight=...)。
+
+    默认（未加权）交叉熵 + 按 accuracy 选 checkpoint，在 no-damage 占比
+    66%-79% 的 xBD 双时相数据上会系统性收敛到常数预测器——这不是过拟合，是
+    优化目标本身对多数类的偏好，训练集自身宏 F1 同样只有 ~0.25（见复核记录）。
+    """
+    _require_torch()
+    counts = [0] * num_classes
+    for r in records:
+        cid = int(r["class_id"])
+        if 0 <= cid < num_classes:
+            counts[cid] += 1
+    counts = [max(1, c) for c in counts]
+    inv = [1.0 / c for c in counts]
+    mean_inv = sum(inv) / len(inv)
+    weights = [v / mean_inv for v in inv]
+    return torch.tensor(weights, dtype=torch.float32)
+
+
+def _run_epoch(model, loader, device, optimizer=None, change_loss_weight: float = 0.5, class_weight=None):
     training = optimizer is not None
     model.train(training)
-    ce = nn.CrossEntropyLoss()
+    ce = nn.CrossEntropyLoss(weight=class_weight.to(device) if class_weight is not None else None)
     bce = nn.BCEWithLogitsLoss()
     total_loss, n_correct, n_total = 0.0, 0, 0
     all_logits, all_labels = [], []
@@ -516,37 +556,65 @@ def train_main(args: argparse.Namespace) -> int:
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
+    class_weight = None
+    if args.class_weighted:
+        class_weight = class_weights_from_records(train_ds.records)
+        print(f"[train] 类别加权（训练集频率倒数，均值归一到 1）: "
+              f"{dict(zip(CLASS_NAMES, [round(float(w), 3) for w in class_weight]))}")
+
+    best_val_macro_f1 = -1.0
     best_val_acc = -1.0
     best_state = None
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     for epoch in range(1, args.epochs + 1):
-        train_loss, train_acc, _, _ = _run_epoch(model, train_loader, device, optimizer)
-        val_loss, val_acc, val_logits, val_labels = _run_epoch(model, val_loader, device, optimizer=None)
+        train_loss, train_acc, train_logits, train_labels = _run_epoch(
+            model, train_loader, device, optimizer, class_weight=class_weight)
+        val_loss, val_acc, val_logits, val_labels = _run_epoch(
+            model, val_loader, device, optimizer=None, class_weight=class_weight)
+        train_macro_f1, _ = macro_f1_from_logits(train_logits, train_labels)
+        val_macro_f1, val_f1s = macro_f1_from_logits(val_logits, val_labels)
         print(
             f"[train] epoch {epoch}/{args.epochs}: "
-            f"train_loss={train_loss:.4f} train_acc={train_acc:.3f} "
-            f"val_loss={val_loss:.4f} val_acc={val_acc:.3f}"
+            f"train_loss={train_loss:.4f} train_acc={train_acc:.3f} train_macroF1={train_macro_f1:.3f} "
+            f"val_loss={val_loss:.4f} val_acc={val_acc:.3f} val_macroF1={val_macro_f1:.3f} "
+            f"val_perclassF1={dict(zip(CLASS_NAMES, [round(f, 3) for f in val_f1s]))}"
         )
-        if val_acc >= best_val_acc:
+        # 用 macro-F1 而不是 accuracy 选 checkpoint：no-damage 占比 66%-79% 时，
+        # accuracy 对常数预测器视而不见（这正是本仓库曾经的 bug 根因，
+        # 见 REVIEW_PACKAGE.md C1 的复核记录）。
+        if val_macro_f1 >= best_val_macro_f1:
+            best_val_macro_f1 = val_macro_f1
             best_val_acc = val_acc
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
         # 长时间训练（I/O bound，单 epoch 数分钟到十几分钟）在共享 GPU 服务器上有被
         # 其它进程挤占显存/被杀的风险；每个 epoch 都落一次盘，避免全白跑。
         torch.save({"model_state": best_state or model.state_dict(),
-                    "temperature": 1.0, "epoch": epoch, "val_acc": best_val_acc,
+                    "temperature": 1.0, "epoch": epoch,
+                    "val_acc": best_val_acc, "val_macro_f1": best_val_macro_f1,
                     "dropout_p": args.dropout, "seed": args.seed,
-                    "use_diff_attention": args.diff_attention},
+                    "use_diff_attention": args.diff_attention,
+                    "class_weighted": args.class_weighted},
                    out_path)
 
     if best_state is not None:
         model.load_state_dict(best_state)
 
-    # 温度标定：在验证集 logits 上拟合（用最后一轮的 val_logits/labels 即可，
-    # 若模型在训练中更新过、最后一轮不是 best epoch，重新跑一次 val 前向）
-    _, _, val_logits, val_labels = _run_epoch(model, val_loader, device, optimizer=None)
+    # 温度标定：在验证集 logits 上拟合，并现场核验 reload 后的 macro-F1/accuracy
+    # 与训练循环里记录的 best 值一致——上一次事故就是这里从未核验，
+    # 让"日志说训练成功"和"checkpoint 实际表现"脱节了两周都没发现。
+    verify_loss, verify_acc, val_logits, val_labels = _run_epoch(
+        model, val_loader, device, optimizer=None, class_weight=class_weight)
+    verify_macro_f1, verify_f1s = macro_f1_from_logits(val_logits, val_labels)
+    if abs(verify_acc - best_val_acc) > 1e-6 or abs(verify_macro_f1 - best_val_macro_f1) > 1e-6:
+        raise RuntimeError(
+            f"[train] checkpoint 核验失败：reload 后 acc={verify_acc:.4f} macroF1={verify_macro_f1:.4f}，"
+            f"与训练期间记录的 best acc={best_val_acc:.4f} macroF1={best_val_macro_f1:.4f} 不一致，"
+            f"拒绝保存可能与日志脱节的 checkpoint。"
+        )
     temperature = fit_temperature(val_logits, val_labels) if val_logits is not None else 1.0
-    print(f"[train] 温度标定完成: T={temperature:.3f}（best val_acc={best_val_acc:.3f}）")
+    print(f"[train] 温度标定完成: T={temperature:.3f}（best val_acc={best_val_acc:.3f}, "
+          f"best val_macroF1={best_val_macro_f1:.3f}, perclassF1={dict(zip(CLASS_NAMES, [round(f, 3) for f in verify_f1s]))}）")
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -556,9 +624,11 @@ def train_main(args: argparse.Namespace) -> int:
             "temperature": temperature,
             "class_names": CLASS_NAMES,
             "best_val_acc": best_val_acc,
+            "best_val_macro_f1": best_val_macro_f1,
             "dropout_p": args.dropout,
             "seed": args.seed,
             "use_diff_attention": args.diff_attention,
+            "class_weighted": args.class_weighted,
         },
         out_path,
     )
@@ -586,6 +656,11 @@ def main() -> int:
         "--require-event-disjoint",
         action="store_true",
         help="训练前要求 manifest.json 声明严格且无事件交集。",
+    )
+    train_ap.add_argument(
+        "--class-weighted",
+        action="store_true",
+        help="按训练集逐类频率倒数加权交叉熵，缓解 no-damage 占多数导致的塌缩（C2）。",
     )
 
     args = ap.parse_args()

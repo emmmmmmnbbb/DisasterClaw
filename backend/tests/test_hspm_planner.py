@@ -228,9 +228,25 @@ def test_degraded_no_crash() -> None:
     )
     nav.reset("找蓝色的建筑")
     dec = nav.step(_obs(degraded=True), SNAP)
-    # degraded → usable=False → 走 OROI 探索分支，不崩
+    # degraded → usable=False → 走螺旋探索分支，不崩
     assert dec.action == "fly_relative"
     print("[OK] degraded 视场不崩，走探索分支")
+
+
+def test_llm_down_does_not_fly_north_every_step() -> None:
+    """X0：LLM 不可达时不得每步默认向北。"""
+    nav = HspmNavigator(
+        config=HspmConfig(explore_step_m=90.0),
+        grounder=lambda p, o: GroundHit(present=False, reason="未见", source="yolo"),
+        llm_chat=None,
+        stmr_provider=lambda snap: None,
+    )
+    nav.reset("寻找完全损毁建筑")
+    moves = [nav.step(_obs(), SNAP).params for _ in range(4)]
+    norths = [m["north_m"] for m in moves]
+    easts = [m["east_m"] for m in moves]
+    assert not all(n > 80 and abs(e) < 1e-6 for n, e in zip(norths, easts)), (norths, easts)
+    print(f"[OK] LLM 宕机螺旋探索: N={norths} E={easts}")
 
 
 def _run_all() -> int:
@@ -248,6 +264,7 @@ def _run_all() -> int:
         test_step_seen_moves_toward,
         test_multi_landmark_progress,
         test_degraded_no_crash,
+        test_llm_down_does_not_fly_north_every_step,
     ]
     failed = 0
     for t in tests:
