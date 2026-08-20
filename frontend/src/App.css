@@ -14,7 +14,7 @@
 
 .bottom-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr) minmax(0, 1fr);
   gap: 14px;
   min-height: 0;
 }
@@ -24,7 +24,8 @@
 .task-panel,
 .map-stage,
 .log-panel,
-.perception-panel {
+.perception-panel,
+.agent-query-panel {
   background: var(--panel);
   backdrop-filter: blur(14px);
   border: 1px solid rgba(171, 152, 117, 0.3);
@@ -49,7 +50,8 @@
 .side-panel,
 .task-panel,
 .log-panel,
-.perception-panel {
+.perception-panel,
+.agent-query-panel {
   min-height: 0;
   overflow: hidden;
 }
@@ -57,7 +59,8 @@
 .side-panel,
 .task-panel,
 .log-panel,
-.perception-panel {
+.perception-panel,
+.agent-query-panel {
   display: flex;
   flex-direction: column;
 }

@@ -71,10 +71,29 @@ try:
     from torchvision import transforms as tv_transforms
 except Exception as exc:  # noqa: BLE001
     torch = None  # type: ignore
-    nn = None  # type: ignore
+    # 提供占位基类，使模块级 `class X(nn.Module)` 在无 torch 时仍能被 import
+    # （实际训练/推理由 _require_torch() 在调用期拦截）。这样纯 CPU 调试、
+    # 评测脚本只取 CLASS_NAMES 常量等场景不必装 GPU 版 torch。
+    class _StubModule:
+        class Module:  # type: ignore[misc]
+            def __init__(self, *args, **kwargs):
+                pass
+        Linear = Conv2d = BatchNorm2d = ReLU = AdaptiveAvgPool2d = \
+            Sequential = Dropout = CrossEntropyLoss = BCEWithLogitsLoss = \
+            Sigmoid = MaxPool2d = ConvTranspose2d = Tanh = staticmethod(lambda *a, **k: None)
+        DataParallel = staticmethod(lambda m, *a, **k: m)
+    nn = _StubModule()  # type: ignore
     DataLoader = Dataset = object  # type: ignore
     tv_models = tv_transforms = None  # type: ignore
     _TORCH_IMPORT_ERROR = str(exc)
+
+
+def _no_grad(func):
+    """torch.no_grad() 的条件装饰器：有 torch 时委托，无 torch 时透传。
+    使模块级 `@_no_grad` 在无 torch 环境也能 import（实际调用由 _require_torch 拦截）。"""
+    if torch is not None:
+        return torch.no_grad()(func)
+    return func
 
 
 def _require_torch() -> None:
@@ -321,7 +340,7 @@ def set_seed(seed: int) -> None:
         torch.cuda.manual_seed_all(seed)
 
 
-@torch.no_grad()
+@_no_grad
 def mc_dropout_logits(model, pre, post, n_passes: int = 30) -> "torch.Tensor":
     """MC-Dropout（Gal & Ghahramani 2016）：保持 dropout 层随机采样、其余（尤其
     BatchNorm）仍用 eval 统计量，跑 n_passes 次前向，返回 [n_passes, B, num_classes]

@@ -413,6 +413,48 @@ def test_conformal_set_trigger() -> None:
     print(f"[OK] conformal: qhat={qhat:.3f} peaked={peaked} flat={flat}")
 
 
+def test_answer_pair_scoring_offline() -> None:
+    """Agent-VQA 答案翻转/纠错/损害离线评分 (计划 7.4 / E4)。
+    在线控制器不读 answer_corrected/answer_harmed，仅离线 score_answer_pairs 填充。"""
+    ctl = RecheckController()
+    # 手动往 resolved_log 注入带 answer_before/after 的记录 (模拟重观测前后答案)
+    ctl.resolved_log = [
+        {"lat": 31.0, "lon": 121.0, "label": "完全损毁建筑", "status": "confirmed",
+         "reduction": 0.2, "rechecks": 1,
+         "answer_before": "严重损伤", "confidence_before": 0.4,
+         "answer_after": "完全损毁", "confidence_after": 0.8},
+        {"lat": 31.1, "lon": 121.1, "label": "严重损伤建筑", "status": "dismissed",
+         "reduction": 0.1, "rechecks": 1,
+         "answer_before": "无损伤", "confidence_before": 0.6,
+         "answer_after": "无损伤", "confidence_after": 0.7},
+    ]
+    # GT: 第一条真值=完全损毁 (重观测纠错), 第二条真值=无损伤 (重观测本应保持但未改, 无害)
+    gt = {(31.0, 121.0): "完全损毁", (31.1, 121.1): "无损伤"}
+    res = ctl.score_answer_pairs(gt)
+    assert res["n_flip"] == 1, res  # 只有第一条 before!=after
+    assert res["n_corrected"] == 1, res  # 严重损伤->完全损毁, GT=完全损毁
+    assert res["n_harmed"] == 0, res
+    stats = ctl.stats()
+    assert stats["n_answer_flip"] == 1 and stats["n_corrected"] == 1 and stats["n_harmed"] == 0
+    print(f"[OK] 答案配对离线评分: {res}")
+
+
+def test_harmed_answer_detected() -> None:
+    """重观测把正确答案改错 -> answer_harmed 应被标记 (计划 E4)。"""
+    ctl = RecheckController()
+    ctl.resolved_log = [
+        {"lat": 31.0, "lon": 121.0, "label": "x", "status": "confirmed",
+         "reduction": 0.1, "rechecks": 1,
+         "answer_before": "完全损毁", "confidence_before": 0.8,
+         "answer_after": "严重损伤", "confidence_after": 0.5},
+    ]
+    gt = {(31.0, 121.0): "完全损毁"}
+    res = ctl.score_answer_pairs(gt)
+    assert res["n_harmed"] == 1, res
+    assert ctl.resolved_log[0]["answer_harmed"] is True
+    print(f"[OK] 有害重观测被检测: {res}")
+
+
 def _run_all() -> int:
     tests = [
         test_uncertainty_score,
@@ -436,6 +478,8 @@ def _run_all() -> int:
         test_inconclusive_is_completed,
         test_zero_trigger_stats,
         test_conformal_set_trigger,
+        test_answer_pair_scoring_offline,
+        test_harmed_answer_detected,
     ]
     failed = 0
     for t in tests:

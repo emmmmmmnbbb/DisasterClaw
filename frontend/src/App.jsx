@@ -6,6 +6,7 @@ import SituationMap from './components/SituationMap'
 import TaskPanel from './components/TaskPanel'
 import LogPanel from './components/LogPanel'
 import PerceptionPanel from './components/PerceptionPanel'
+import AgentQueryPanel from './components/AgentQueryPanel'
 
 export default function App() {
   const {
@@ -19,10 +20,12 @@ export default function App() {
     lastPerception,
     semanticMap,
     vlnThought,
+    agentQueryState,
     setMode,
     executeAction,
     submitAiTask,
     submitVlnTask,
+    submitAgentQuery,
     stopExecution,
   } = useSocket()
 
@@ -39,6 +42,11 @@ export default function App() {
     setMode('ai')
     submitVlnTask(instruction)
   }, [setMode, submitVlnTask])
+
+  const handleSubmitAgentQuery = useCallback((question) => {
+    setMode('ai')
+    submitAgentQuery(question)
+  }, [setMode, submitAgentQuery])
 
   const handleFlyToPoint = useCallback((point) => {
     setMode('manual')
@@ -152,6 +160,7 @@ export default function App() {
           lastAiReport={lastAiReport}
           onSubmitAiTask={handleSubmitAiTask}
           onSubmitVlnTask={handleSubmitVlnTask}
+          onSubmitAgentQuery={handleSubmitAgentQuery}
           onStop={stopExecution}
           onHover={handleHover}
           onFlyToPoint={handleFlyToPoint}
@@ -166,6 +175,7 @@ export default function App() {
           semanticMap={semanticMap}
           vlnThought={vlnThought}
         />
+        <AgentQueryPanel agentQueryState={agentQueryState} />
         <LogPanel logs={logs} />
       </div>
     </div>

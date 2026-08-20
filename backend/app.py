@@ -6,9 +6,11 @@ import os
 import re
 import threading
 import time
+from io import BytesIO
 from pathlib import Path
 
 import requests
+from PIL import Image, ImageDraw
 from flask import Flask, Response, jsonify, request, send_file, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
@@ -30,6 +32,14 @@ from hspm_planner import HspmConfig, HspmNavigator, OroiScoreWeights
 from recheck import EVIDENCE_CLASSES, RecheckConfig, RecheckController
 from memory_graph import MemoryGraph, text_match_scorer
 from vlm_analyzer import VLMAnalyzer
+from agent_vqa import (
+    AgentVqaConfig,
+    AgentVqaController,
+    QuestionSpec,
+    build_evidence_from_perception,
+    parse_question,
+    parse_vlm_json_output,
+)
 from vln_navigator import (
     GroundHit,
     Observation,
@@ -927,6 +937,16 @@ VLN_MEMORY_MIN_SCORE = float(os.getenv("VLN_MEMORY_MIN_SCORE", "0.34"))
 VLN_MEMORY_MAX_HOPS = int(os.getenv("VLN_MEMORY_MAX_HOPS", "6"))
 # 地理门控：匹配到的记忆目标节点离起点超过此距离则视为"别区域同名地标"，不预飞（防跨灾种乱飞）。
 VLN_MEMORY_MAX_DIST_M = float(os.getenv("VLN_MEMORY_MAX_DIST_M", "1500"))
+
+# Agent-VQA 配置 (D3, 计划 7.3)。与 VLN 共享感知/搜索/复核底座，但问答闭环独立。
+AGENT_VQA_CONFIDENCE_THRESHOLD = float(os.getenv("AGENT_VQA_CONFIDENCE_THRESHOLD", "0.5"))
+AGENT_VQA_MAX_SEARCH_STEPS = int(os.getenv("AGENT_VQA_MAX_SEARCH_STEPS", "6"))
+AGENT_VQA_MAX_REOBSERVATIONS = int(os.getenv("AGENT_VQA_MAX_REOBSERVATIONS", "2"))
+AGENT_VQA_VLM_MAX_TOKENS = int(os.getenv("AGENT_VQA_VLM_MAX_TOKENS", "300"))
+AGENT_VQA_ORACLE = os.getenv("AGENT_VQA_ORACLE", "0").lower() in {"1", "true", "yes", "on"}
+# 证据层级 (计划 9.1): raw=仅图像, struct=图像+结构化感知, state=struct+STMR/历史。
+# 控制下发给 VLM 的 evidence_text 是否包含结构化检测/状态信息。
+AGENT_VQA_EVIDENCE_LEVEL = (os.getenv("AGENT_VQA_EVIDENCE_LEVEL", "struct") or "struct").strip().lower()
 
 # 进程内缓存的记忆图（懒加载，跨 episode/任务复用并落盘）。
 _memory_graph: MemoryGraph | None = None
@@ -1913,6 +1933,307 @@ def run_vln_episode_headless(
     return report or {"ok": False, "error": "no_report", "task": instruction}
 
 
+# ───────────────────────── Agent-VQA 闭环 (D3, 计划 7.3) ──────────────────────
+
+def _mark_agent_vqa_target(image_bytes: bytes) -> bytes:
+    """在 VQA 图像中心叠加可见十字；标记像素不进入感知或策略状态。"""
+    with Image.open(BytesIO(image_bytes)) as opened:
+        image = opened.convert("RGB")
+    draw = ImageDraw.Draw(image)
+    cx, cy = image.width // 2, image.height // 2
+    arm = max(12, min(image.width, image.height) // 16)
+    width = max(3, min(image.width, image.height) // 100)
+    for color, extra in (("white", width + 4), ("#ff2d55", width)):
+        draw.line((cx - arm, cy, cx + arm, cy), fill=color, width=extra)
+        draw.line((cx, cy - arm, cx, cy + arm), fill=color, width=extra)
+        draw.ellipse((cx - arm, cy - arm, cx + arm, cy + arm), outline=color, width=extra)
+    out = BytesIO()
+    image.save(out, format="JPEG", quality=95)
+    return out.getvalue()
+
+
+def _action_failed(result: object) -> bool:
+    return isinstance(result, dict) and (
+        result.get("success") is False or result.get("ok") is False
+    )
+
+
+def _make_agent_vqa_controller(source: str) -> AgentVqaController:
+    """构造 Agent-VQA 控制器：复用 VLN 的感知/HSPM 搜索/复核底座，问答闭环独立。
+
+    依赖注入使无模型环境也能跑（VLM/LLM 不可用时控制器自动规则回退）。
+    在线决策只读当前观测；不读测试条目的 answer 或未来图像。
+    """
+    # VLM 结构化问答：读当前 patch 图像字节
+    _vlm = VLMAnalyzer()
+
+    def vlm_answer_fn(image_bytes, perception_result, spec, qid):
+        if not image_bytes:
+            raise RuntimeError("no_patch_bytes")
+        if spec.question_type == "damage":
+            image_bytes = _mark_agent_vqa_target(image_bytes)
+        ev_text = ""
+        # 证据层级 (计划 9.1): raw 不下发结构化证据; struct 下发检测计数; state 额外含 STMR/历史
+        if AGENT_VQA_EVIDENCE_LEVEL != "raw" and perception_result is not None:
+            det = (perception_result.detection or {}).get("class_counts", {})
+            if det:
+                ev_text = json.dumps(det, ensure_ascii=False)
+            if AGENT_VQA_EVIDENCE_LEVEL == "state":
+                smap = getattr(state, "semantic_map", None)
+                if smap is not None:
+                    try:
+                        ev_text = ev_text + "||" + json.dumps(smap.snapshot(), ensure_ascii=False)
+                    except Exception:
+                        pass
+        res = _vlm.answer_image_question(
+            image_bytes=image_bytes,
+            question=spec.raw,
+            choices=_choices_for_spec(spec),
+            evidence_text=ev_text,
+            max_tokens=AGENT_VQA_VLM_MAX_TOKENS,
+        )
+        return res["raw"]
+
+    def perceive_fn():
+        result, snap, _tile = _vln_perceive(source)
+        if result is None and _post_covered(float(snap["lat"]), float(snap["lon"])):
+            raise RuntimeError("perception_backend_unavailable")
+        return result
+
+    def get_position_fn():
+        snap = state.adapter.snapshot()
+        return {"lat": float(snap["lat"]), "lon": float(snap["lon"]), "alt": float(snap["alt"])}
+
+    def get_image_bytes_fn(result):
+        p = getattr(result, "patch_path", "") or ""
+        if p and os.path.exists(p):
+            with open(p, "rb") as f:
+                return f.read()
+        return b""
+
+    # 搜索：一个 episode 只维护一个 HSPM 状态机；每步使用刚得到的真实观测。
+    nav = _make_hspm_navigator()
+    nav_ready = False
+
+    def search_fn(spec, step, perception_result):
+        nonlocal nav_ready
+        try:
+            if not nav_ready:
+                nav.reset(spec.raw)
+                nav_ready = True
+            obs = Observation.from_perception(perception_result)
+            snap = state.adapter.snapshot()
+            decision = nav.step(obs, snap)
+            if decision.action == "stop":
+                return None
+            if decision.action not in {"fly_relative", "fly_to_geo", "hover"}:
+                raise RuntimeError(f"illegal_hspm_action:{decision.action}")
+            params = dict(decision.params or {})
+            executed = execute_action(decision.action, params, source=source)
+            if _action_failed(executed):
+                raise RuntimeError(str(executed.get("message") or "hspm_action_failed"))
+            return params
+        except Exception as exc:
+            logger.warning("Agent-VQA search step failed: %s", exc)
+            return None
+
+    # 重观测：每个 episode 复用同一控制器，确保触发、次数和随机数状态连续。
+    rechecker = RecheckController(RecheckConfig(
+        descend_step_m=VLN_RECHECK_DESCEND_M,
+        alt_min_m=VLN_RECHECK_ALT_MIN_M,
+        max_rechecks=AGENT_VQA_MAX_REOBSERVATIONS,
+        uncertainty_mode=VLN_UNCERTAINTY_MODE,
+        trigger_mode=VLN_RECHECK_TRIGGER,
+        min_info_gain=VLN_RECHECK_MIN_INFO_GAIN,
+        entropy_table_path=VLN_ENTROPY_TABLE,
+        conformal_qhat=VLN_CONFORMAL_QHAT,
+        conformal_alpha=VLN_CONFORMAL_ALPHA,
+        random_prob=VLN_RECHECK_RANDOM_PROB,
+        random_seed=VLN_RECHECK_RANDOM_SEED,
+    ))
+
+    def reobserve_fn(perception_result, spec):
+        snap = state.adapter.snapshot()
+        dets = (perception_result.detection or {}).get("detections", []) if perception_result else []
+        risk_level = getattr(perception_result, "risk_level", "low") or "low"
+        if spec.question_type == "damage" and risk_level == "none" and dets:
+            risk_level = "low"
+        out = rechecker.assess(
+            lat=float(snap["lat"]), lon=float(snap["lon"]), alt=float(snap["alt"]),
+            risk_level=risk_level,
+            detections=dets,
+            patch_radius_m=float(getattr(perception_result, "patch_radius_m", 60.0)),
+            patch_width=int(getattr(perception_result, "patch_width", 100)),
+            patch_height=int(getattr(perception_result, "patch_height", 100)),
+        )
+        if out.kind == "recheck" and out.params:
+            # 真正执行降高+居中，使下一步感知看到放大后的同一目标
+            executed = execute_action("fly_relative", out.params, source=source)
+            if _action_failed(executed):
+                raise RuntimeError(str(executed.get("message") or "reobserve_motion_failed"))
+            return {"kind": "recheck", "params": out.params, "reason": out.reason}
+        return {"kind": out.kind, "params": out.params, "reason": out.reason}
+
+    return AgentVqaController(
+        config=AgentVqaConfig(
+            confidence_threshold=AGENT_VQA_CONFIDENCE_THRESHOLD,
+            max_search_steps=AGENT_VQA_MAX_SEARCH_STEPS,
+            max_reobservations=AGENT_VQA_MAX_REOBSERVATIONS,
+            oracle=AGENT_VQA_ORACLE,
+            allow_target_leak=AGENT_VQA_ORACLE,
+            evidence_level=AGENT_VQA_EVIDENCE_LEVEL,
+        ),
+        vlm_answer_fn=vlm_answer_fn,
+        perceive_fn=perceive_fn,
+        search_fn=search_fn,
+        reobserve_fn=reobserve_fn,
+        get_position_fn=get_position_fn,
+        get_image_bytes_fn=get_image_bytes_fn,
+        is_cancelled_fn=state._stop_event.is_set,
+    )
+
+
+def _choices_for_spec(spec: QuestionSpec) -> list[str] | None:
+    from agent_vqa import (BEARING_CHOICES, COUNT_CHOICES, DAMAGE_CHOICES, PRESENCE_CHOICES)
+    if spec.question_type == "presence":
+        return PRESENCE_CHOICES
+    if spec.question_type == "damage":
+        return DAMAGE_CHOICES
+    if spec.question_type == "count":
+        return COUNT_CHOICES
+    if spec.question_type == "spatial":
+        return BEARING_CHOICES
+    return None
+
+
+def _execute_agent_vqa_action(decision: str, action: str, params: dict | None, source: str) -> None:
+    """把 Agent-VQA 控制器的高层决策映射到底层动作 (计划 5.3)。"""
+    if decision == "answer" or decision == "abstain":
+        if action == "report_observation":
+            execute_action("report_observation", {
+                "content": f"Agent-VQA: {decision}",
+                "level": "info" if decision == "answer" else "warn",
+            }, source=source)
+        # stop 是控制器的逻辑终止符，不下发给飞行适配器。
+        return
+    if decision in ("continue_search", "reobserve") and params:
+        execute_action("fly_relative", params, source=source)
+        if decision == "reobserve":
+            execute_action("detect_disaster", {}, source=source)
+
+
+def run_agent_vqa_episode(question: str, source: str = "ai", item: dict | None = None) -> dict | None:
+    """运行一次 Agent-VQA episode (计划 7.3)。
+
+    返回最终 report dict（含 answer / decision / trajectory / budget），也通过
+    socket 广播 agent_query_started / agent_query_update / agent_query_result。
+    """
+    if not state._task_lock.acquire(blocking=False):
+        state.push_log("warn", "当前已有任务在执行，忽略新的 Agent-VQA 问题")
+        return {"ok": False, "error": "busy", "question": question}
+
+    task_started_ns = time.time_ns()
+    spec = parse_question(question)
+    report: dict | None = None
+    try:
+        state.is_executing = True
+        state._stop_event.clear()
+        state._sync_world_from_adapter()
+        if SEMANTIC_MAP_ENABLED:
+            snap = state.adapter.snapshot()
+            state.semantic_map = SemanticMap(
+                origin_lat=float(snap["lat"]), origin_lon=float(snap["lon"]),
+                cell_size_m=SEMANTIC_MAP_CELL_M, instruction=question,
+            )
+        else:
+            state.semantic_map = None
+        state.emit_system_status()
+        state.emit_world()
+        state.push_log("info", f"收到 Agent-VQA 问题: {question}")
+        socketio.emit("agent_query_started", {
+            "question": question, "question_type": spec.question_type,
+            "source": source, "ts_ns": task_started_ns,
+            "ts_ms": task_started_ns // 1_000_000,
+        })
+
+        ctl = _make_agent_vqa_controller(source)
+        # 逐步广播轨迹（不阻塞闭环）；最终结果由 agent_query_result 统一发出
+        def _on_step(rec: dict) -> None:
+            socketio.emit("agent_query_update", rec)
+        ans = ctl.run(
+            question, question_id=f"agentvqa_{task_started_ns}", item=item, on_step=_on_step,
+        )
+        # 执行最终动作
+        last = ctl.trajectory[-1] if ctl.trajectory else None
+        if last:
+            _execute_agent_vqa_action(last.decision, last.action, None, source)
+
+        failed_reasons = {"cancelled", "execution_error", "out_of_coverage", "planner_unavailable"}
+        report = {
+            "ok": ans.reason_code not in failed_reasons,
+            "cancelled": ans.reason_code == "cancelled",
+            "question": question,
+            "question_type": spec.question_type,
+            "answer": ans.to_dict(),
+            "trajectory": ctl.trajectory_dicts(),
+            "fallback_used": ctl.fallback_used,
+            "degraded_reason": ctl.degraded_reason,
+            "n_steps": len(ctl.trajectory),
+        }
+        socketio.emit("agent_query_result", report)
+        log_level = "warn" if ans.reason_code == "cancelled" else "info"
+        state.push_log(log_level, f"Agent-VQA 完成: decision={ans.decision} reason={ans.reason_code}")
+    except Exception as exc:
+        logger.exception("Agent-VQA episode failed")
+        report = {"ok": False, "error": f"execution_error: {exc}", "question": question}
+        socketio.emit("agent_query_result", report)
+        state.push_log("error", f"Agent-VQA 失败: {exc}")
+    finally:
+        state.is_executing = False
+        state._task_lock.release()
+        state.emit_system_status()
+    return report
+
+
+def run_agent_vqa_episode_headless(
+    question: str,
+    start: dict,
+    item: dict | None = None,
+    source: str = "bench",
+) -> dict:
+    """无头评测入口：把 UAV 放到指定起点后同步跑一次 Agent-VQA episode (计划 7.3)。
+
+    与 run_agent_vqa_episode 共享同一套感知/问答/搜索/重观测逻辑。item 仅在
+    oracle 配置下用于诊断；非 oracle 时忽略 item 的 answer/target，不泄漏在线信息。
+    """
+    try:
+        lat = float(start["lat"])
+        lon = float(start["lon"])
+        alt = float(start.get("alt", state.hover_altitude_m))
+    except (KeyError, TypeError, ValueError) as exc:
+        return {"ok": False, "error": f"bad_start: {exc}", "question": question}
+
+    entry = xbd_store.find_tile_containing(lat, lon, stage_priority=("post_disaster",))
+    if entry is None:
+        return {"ok": False, "error": "start_not_covered", "question": question,
+                "start": {"lat": lat, "lon": lon, "alt": alt}}
+
+    state.activate_xbd_tile(entry)
+    state.adapter.reset_origin(lat, lon, alt=alt)
+    state._sync_world_from_adapter()
+
+    report = run_agent_vqa_episode(question, source=source, item=item)
+    if isinstance(report, dict):
+        report.setdefault("tile_id", entry.get("tile_id"))
+        report.setdefault("disaster", entry.get("disaster"))
+        report["start"] = {"lat": lat, "lon": lon, "alt": alt}
+        if item is not None:
+            # 离线评分字段：记录 GT 供评测脚本计算 corrected/harmed，在线控制器不读
+            report["gt_answer"] = item.get("answer")
+            report["gt_target"] = item.get("target")
+    return report or {"ok": False, "error": "no_report", "question": question}
+
+
 # ───────────────────────────── REST API ────────────────────────────────
 
 @app.route("/api/status", methods=["GET"])
@@ -2022,6 +2343,23 @@ def api_vlm_analyze():
         {"module": "vlm"},
     )
     return jsonify({"ok": True, **result})
+
+
+@app.route("/api/agent/query", methods=["POST"])
+def api_agent_query():
+    """Agent-VQA REST 入口 (计划 7.3)。同步返回最终 report；socket 同时广播轨迹。"""
+    data = request.get_json(silent=True) or {}
+    question = str(data.get("question", "")).strip()
+    if not question:
+        return jsonify({"ok": False, "error": "missing 'question'"}), 400
+    start = data.get("start")  # 可选: {"lat","lon","alt"}; 缺省用当前 UAV 位姿
+    if isinstance(start, dict) and {"lat", "lon"} <= set(start.keys()):
+        report = run_agent_vqa_episode_headless(question, start, source="api")
+    else:
+        report = run_agent_vqa_episode(question, source="api")
+    if not isinstance(report, dict):
+        return jsonify({"ok": False, "error": "no_report"}), 502
+    return jsonify(report)
 
 
 # ───────────────────────────── xBD API ─────────────────────────────────
@@ -2503,6 +2841,17 @@ def on_vln_task(data):
         return
     state.mode = "ai"
     start_background_job(run_vln_episode, instruction)
+
+
+@socketio.on("agent_query")
+def on_agent_query(data):
+    """Agent-VQA Socket 入口 (计划 7.3 / 8.2)。"""
+    payload = data or {}
+    question = str(payload.get("question") or "").strip()
+    if not question:
+        return
+    state.mode = "ai"
+    start_background_job(run_agent_vqa_episode, question)
 
 
 @socketio.on("stop_execution")

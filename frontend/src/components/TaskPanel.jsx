@@ -30,6 +30,7 @@ export default function TaskPanel({
   lastAiReport,
   onSubmitAiTask,
   onSubmitVlnTask,
+  onSubmitAgentQuery,
   onStop,
   onHover,
   onFlyToPoint,
@@ -38,6 +39,7 @@ export default function TaskPanel({
 }) {
   const [draft, setDraft] = useState('飞到当前地图中心附近进行低空观察，并给出简短态势汇报。')
   const [vlnDraft, setVlnDraft] = useState('飞到北侧寻找完全损毁的建筑。')
+  const [agentDraft, setAgentDraft] = useState('北侧视野内是否存在完全损毁的建筑？')
 
   useEffect(() => {
     if (!selectedPoint) return
@@ -98,6 +100,35 @@ export default function TaskPanel({
           <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
             <button className="btn btn-accent" onClick={() => onSubmitVlnTask(vlnDraft)} disabled={!vlnDraft.trim() || !onSubmitVlnTask}>
               Run VLN
+            </button>
+            <button
+              className="btn btn-danger"
+              onClick={onStop}
+              disabled={!systemStatus.is_executing}
+              style={{ padding: '4px 10px', fontSize: 12 }}
+            >
+              Stop
+            </button>
+          </div>
+        </div>
+
+        <div style={{ padding: 16, borderRadius: 18, background: 'var(--panel-strong)', border: '1px solid rgba(171,152,117,0.24)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>Ask Agent · 灾情问答</div>
+            <span style={{ color: 'var(--ink-soft)', fontSize: 11 }}>主演示入口</span>
+          </div>
+          <div style={{ color: 'var(--ink-soft)', fontSize: 12, marginBottom: 8, lineHeight: 1.5 }}>
+            提一个灾情问题（是否存在 / 损伤等级 / 数量 / 方位），Agent 会自主搜索证据、必要时重观测，再给出结构化回答。
+          </div>
+          <textarea
+            rows={3}
+            value={agentDraft}
+            onChange={(event) => setAgentDraft(event.target.value)}
+            placeholder='例如："北侧视野内是否存在完全损毁的建筑？"'
+          />
+          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+            <button className="btn btn-warm" onClick={() => onSubmitAgentQuery?.(agentDraft)} disabled={!agentDraft.trim() || !onSubmitAgentQuery}>
+              Ask Agent
             </button>
             <button
               className="btn btn-danger"

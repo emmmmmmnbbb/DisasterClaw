@@ -339,7 +339,10 @@ class BuildingLocalizer:
         resized = pil.resize((self.imgsz, self.imgsz), Image.BILINEAR) if (
             orig_w != self.imgsz or orig_h != self.imgsz
         ) else pil
-        tensor = self.tf(resized).unsqueeze(0).to(self.device)
+        model_dtype = next(self.model.parameters()).dtype
+        tensor = self.tf(resized).unsqueeze(0).to(
+            device=self.device, dtype=model_dtype,
+        )
         logits = self.model(tensor)
         logits = _align_logits_to_input(logits, (self.imgsz, self.imgsz))
         probs = torch.sigmoid(logits)[0, 0].detach().float().cpu().numpy()
@@ -395,9 +398,13 @@ def load_building_localizer(
     device = device or os.getenv("PERCEPTION_DEVICE", "cuda" if torch.cuda.is_available() else "cpu")
     blob = torch.load(path, map_location="cpu")
     state = blob["model_state"] if isinstance(blob, dict) and "model_state" in blob else blob
-    model = ResNet34UNet(pretrained=False)
+    # Transformers temporarily changes PyTorch's process-wide default dtype
+    # while loading Qwen. Perception and VLM warm up concurrently, so an
+    # implicit constructor dtype here is a race. This custom checkpoint was
+    # trained in FP32; bind it explicitly for deterministic startup.
+    model = ResNet34UNet(pretrained=False).float()
     model.load_state_dict(state)
-    model.to(device)
+    model.to(device=device, dtype=torch.float32)
     return BuildingLocalizer(
         model=model,
         device=device,

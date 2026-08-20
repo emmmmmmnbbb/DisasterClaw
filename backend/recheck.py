@@ -257,6 +257,15 @@ class RecheckOutcome:
     reduction: Optional[float] = None      # 不确定性下降量（>0 表示更有把握了）
     count: int = 0                         # 该位置已复核次数
     reason: str = ""
+    # Agent-VQA 答案追踪字段 (计划 7.4)。answer_corrected / answer_harmed 仅离线
+    # 评测阶段计算，在线控制器不可读取 (通过 record_answer_pair 单独写入)。
+    answer_before: Optional[str] = None
+    confidence_before: Optional[float] = None
+    answer_after: Optional[str] = None
+    confidence_after: Optional[float] = None
+    answer_changed: Optional[bool] = None
+    answer_corrected: Optional[bool] = None   # 离线评测填充
+    answer_harmed: Optional[bool] = None      # 离线评测填充
 
 
 class RecheckController:
@@ -443,6 +452,11 @@ class RecheckController:
             "uncertainty_after": out.uncertainty,
             "reduction": out.reduction,
             "rechecks": out.count,
+            "answer_before": out.answer_before,
+            "confidence_before": out.confidence_before,
+            "answer_after": out.answer_after,
+            "confidence_after": out.confidence_after,
+            "answer_changed": out.answer_changed,
         })
 
     def finalize(self) -> None:
@@ -481,6 +495,11 @@ class RecheckController:
         finalized_pending = sum(
             1 for r in self.resolved_log if r.get("status") == "episode_end"
         )
+        # Agent-VQA 答案翻转统计 (计划 7.4 / E4)。answer_corrected / answer_harmed
+        # 由 score_answer_pairs() 离线填充，在线控制器不读这些字段。
+        flips = [r for r in self.resolved_log if r.get("answer_changed")]
+        corrected = [r for r in self.resolved_log if r.get("answer_corrected")]
+        harmed = [r for r in self.resolved_log if r.get("answer_harmed")]
         return {
             "triggered": self.trigger_count,
             "resolved": n,
@@ -493,4 +512,34 @@ class RecheckController:
             "uncertainty_reduction_sum": round(sum(red), 3),
             "avg_uncertainty_reduction": round(sum(red) / len(red), 3) if red else 0.0,
             "pending": len(self._state),
+            "n_answer_flip": len(flips),
+            "n_corrected": len(corrected),
+            "n_harmed": len(harmed),
         }
+
+    def score_answer_pairs(self, gt_answer: dict) -> dict:
+        """离线评测：根据 GT 答案填充 answer_corrected / answer_harmed (计划 7.4 / E4)。
+
+        gt_answer: {lat_lon_key: true_answer_str} 或 {recheck_key: true_answer_str}。
+        仅在评测阶段调用；在线控制器不可读取。返回 {n_flip, n_corrected, n_harmed}。
+        """
+        n_flip = n_corrected = n_harmed = 0
+        for r in self.resolved_log:
+            before = r.get("answer_before")
+            after = r.get("answer_after")
+            if before is None or after is None:
+                continue
+            changed = before != after
+            r["answer_changed"] = changed
+            if changed:
+                n_flip += 1
+            key = (round(r.get("lat") or 0.0, 5), round(r.get("lon") or 0.0, 5))
+            gt = gt_answer.get(key) or gt_answer.get(r.get("label"))
+            if gt is not None and changed:
+                if before != gt and after == gt:
+                    r["answer_corrected"] = True
+                    n_corrected += 1
+                elif before == gt and after != gt:
+                    r["answer_harmed"] = True
+                    n_harmed += 1
+        return {"n_flip": n_flip, "n_corrected": n_corrected, "n_harmed": n_harmed}

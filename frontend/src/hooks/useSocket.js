@@ -20,6 +20,8 @@ export function useSocket() {
   const [lastPerception, setLastPerception] = useState(null)
   const [semanticMap, setSemanticMap] = useState(null)
   const [vlnThought, setVlnThought] = useState(null)
+  // Agent-VQA 问答状态 (D4, 计划 8.2)。与 VLN 状态独立，新任务开始时清理。
+  const [agentQueryState, setAgentQueryState] = useState(null)
 
   useEffect(() => {
     const loadSnapshot = async () => {
@@ -58,10 +60,32 @@ export function useSocket() {
     // VLN（语言导航）相关：语义地图快照 + 每步思考/grounding/复核状态
     socket.on('semantic_map', setSemanticMap)
     socket.on('ai_thought', setVlnThought)
+    // Agent-VQA：开始 / 逐步更新 / 最终结果 (计划 8.2)
+    socket.on('agent_query_started', (payload) => {
+      setAgentQueryState({
+        phase: 'running',
+        question: payload?.question || '',
+        questionType: payload?.question_type || '',
+        source: payload?.source || '',
+        tsMs: payload?.ts_ms || 0,
+        steps: [],
+        result: null,
+      })
+    })
+    socket.on('agent_query_update', (step) => {
+      setAgentQueryState((prev) => {
+        if (!prev) return prev
+        return { ...prev, steps: [...(prev.steps || []), step] }
+      })
+    })
+    socket.on('agent_query_result', (result) => {
+      setAgentQueryState((prev) => prev ? { ...prev, phase: 'done', result } : { phase: 'done', result })
+    })
     socket.on('task_started', () => {
-      // 新任务开始：清空上一次 VLN 状态，避免残留误导
+      // 新任务开始：清空上一次 VLN 状态与 Agent-VQA 状态，避免残留误导
       setVlnThought(null)
       setSemanticMap(null)
+      setAgentQueryState(null)
     })
     socket.on('log', (entry) => {
       setLogs((prev) => {
@@ -89,6 +113,10 @@ export function useSocket() {
     socketRef.current?.emit('vln_task', { instruction })
   }, [])
 
+  const submitAgentQuery = useCallback((question) => {
+    socketRef.current?.emit('agent_query', { question })
+  }, [])
+
   const stopExecution = useCallback(() => {
     socketRef.current?.emit('stop_execution')
   }, [])
@@ -104,10 +132,12 @@ export function useSocket() {
     lastPerception,
     semanticMap,
     vlnThought,
+    agentQueryState,
     setMode,
     executeAction,
     submitAiTask,
     submitVlnTask,
+    submitAgentQuery,
     stopExecution,
   }
 }
