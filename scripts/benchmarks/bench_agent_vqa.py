@@ -151,6 +151,23 @@ def file_hash(path: Path) -> str:
     return h.hexdigest()[:16]
 
 
+def load_completed_rows(path: Path) -> dict[tuple[str, str], dict]:
+    """Load the latest durable row for each (config, qid) resume key."""
+    rows: dict[tuple[str, str], dict] = {}
+    if not path.is_file():
+        return rows
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            rec = json.loads(line)
+        except Exception:
+            continue
+        qid = rec.get("qid") or ""
+        cfg = rec.get("config") or ""
+        if qid and cfg:
+            rows[(cfg, qid)] = rec
+    return rows
+
+
 def env_snapshot() -> dict:
     import importlib.metadata
     info = {
@@ -209,8 +226,10 @@ def score_episode(report: dict, item: dict) -> dict:
     n_harming_reobservations = sum(
         1 for p in reobserve_pairs if p["before_correct"] and not p["after_correct"]
     )
+    n_reobserve_skips = sum(1 for t in traj if t.get("reobserve_kind") == "skip")
     difficulty = item.get("difficulty", "")
     difficulty_band = difficulty.get("distance", "") if isinstance(difficulty, dict) else difficulty
+    ans_evidence = ans.get("evidence") or {}
     return {
         "qid": item.get("id") or "",
         "config": report.get("config", "") if report else "",
@@ -234,6 +253,7 @@ def score_episode(report: dict, item: dict) -> dict:
         "initial_pred_answer": preds[0] if preds else "",
         "reobserve_pairs": reobserve_pairs,
         "n_reobservations": len(reobserve_pairs),
+        "n_reobserve_skips": n_reobserve_skips,
         "answer_corrected": answer_corrected,
         "answer_harmed": answer_harmed,
         "n_correcting_reobservations": n_correcting_reobservations,
@@ -244,6 +264,8 @@ def score_episode(report: dict, item: dict) -> dict:
         "ok": report.get("ok", False) if report else False,
         "error": report.get("error", "") if report else "",
         "wall_s": report.get("wall_s", 0.0) if report else 0.0,
+        "trajectory": traj,
+        "evidence": ans_evidence,
     }
 
 
@@ -266,6 +288,9 @@ def aggregate(rows: list[dict]) -> dict:
         "flip_rate": round(len(flipped) / n, 4),
         "fallback_rate": round(len(fallback) / n, 4),
         "n_steps_mean": round(sum(r.get("n_steps", 0) for r in rows) / n, 2),
+        "n_reobservations": sum(int(r.get("n_reobservations", 0) or 0) for r in rows),
+        "n_reobserve_skips": sum(int(r.get("n_reobserve_skips", 0) or 0) for r in rows),
+        "n_triggered": sum(1 for r in rows if int(r.get("n_reobservations", 0) or 0) > 0),
     }
     by_type = {}
     for qt in ("presence", "damage", "count", "spatial"):
@@ -296,7 +321,10 @@ def aggregate(rows: list[dict]) -> dict:
     invalid_schema = {}
     for r in rows:
         if r.get("ok") and not r.get("correct"):
-            key = "abstain" if r.get("abstain") else "wrong_answer"
+            if r.get("reason_code") == "invalid_output":
+                key = "invalid_output"
+            else:
+                key = "abstain" if r.get("abstain") else "wrong_answer"
         elif not r.get("ok"):
             key = "execution_error"
         else:
@@ -311,7 +339,7 @@ def aggregate(rows: list[dict]) -> dict:
 
 
 def md_table(per_config: dict) -> str:
-    cols = ["config", "n", "accuracy", "abstain_rate", "flip_rate", "n_steps_mean"]
+    cols = ["config", "n", "accuracy", "abstain_rate", "n_steps_mean", "n_reobservations", "n_reobserve_skips"]
     lines = ["| " + " | ".join(cols) + " |",
              "| " + " | ".join(["---"] * len(cols)) + " |"]
     for name, rec in per_config.items():
@@ -393,17 +421,11 @@ def main() -> int:
 
     # 续跑: 收集已完成 (config, qid)
     done_keys: set = set()
+    done_rows: dict[tuple[str, str], dict] = {}
     raw_path = out_dir / "episodes.jsonl"
     if args.resume and raw_path.is_file():
-        for line in raw_path.read_text(encoding="utf-8").splitlines():
-            try:
-                rec = json.loads(line)
-                qid = rec.get("qid") or ""
-                cfg = rec.get("config") or ""
-                if qid and cfg:
-                    done_keys.add((cfg, qid))
-            except Exception:
-                pass
+        done_rows = load_completed_rows(raw_path)
+        done_keys = set(done_rows)
         print(f"[bench] resume: 跳过 {len(done_keys)} 条已完成记录")
 
     print("[bench] 正在导入 app (首次会加载/预热感知 + 本地 VLM, 可能耗时数分钟)...")
@@ -423,6 +445,7 @@ def main() -> int:
         for idx, item in enumerate(items):
             qid = item.get("id") or f"{item.get('tile_id','')}_{item.get('question_type','')}_{idx}"
             if (cfg_name, qid) in done_keys:
+                cfg_rows.append(done_rows[(cfg_name, qid)])
                 print(f"  [{cfg_name}] {idx + 1}/{len(items)} skip (done)")
                 continue
             t0 = time.time()
@@ -500,7 +523,8 @@ def main() -> int:
         f"{' (dirty)' if results['env'].get('git_dirty') else ''}\n\n"
         f"## 主消融表 (E1-E5)\n\n{table}\n\n"
         f"> accuracy=全题口径 (弃答算错); answer_acc=仅作答题; abstain_rate 越低越好;\n"
-        f"> flip_rate=重观测后答案翻转比例; n_steps_mean=平均动作步数 (越少越经济)。\n"
+        f"> n_reobservations=策略实际触发的重观测次数; n_reobserve_skips=策略被询问但决定跳过。\n"
+        f"> 两者同时为 0 且 max_reobs>0，说明动作通道未接通，结果不可用于主动 VQA 结论。\n"
         f"> 在线字段与离线评分严格分离; correct/corrected/harmed 仅由 GT 离线计算。\n"
     )
     (out_dir / "summary.md").write_text(summary_md, encoding="utf-8")

@@ -72,6 +72,8 @@ def aggregate(rows):
         "fallback_rate": round(len(fallback) / n, 4),
         "n_steps_mean": round(sum(r.get("n_steps", 0) for r in rows) / n, 2),
         "confidence_mean": _mean([r.get("confidence") for r in rows]),
+        "n_reobservations": sum(int(r.get("n_reobservations", 0) or 0) for r in rows),
+        "n_reobserve_skips": sum(int(r.get("n_reobserve_skips", 0) or 0) for r in rows),
     }
     # 分题型
     by_type = {}
@@ -122,7 +124,10 @@ def aggregate(rows):
     fail = defaultdict(int)
     for r in rows:
         if r.get("ok") and not r.get("correct"):
-            fail["abstain" if r.get("abstain") else "wrong_answer"] += 1
+            if r.get("reason_code") == "invalid_output":
+                fail["invalid_output"] += 1
+            else:
+                fail["abstain" if r.get("abstain") else "wrong_answer"] += 1
         elif not r.get("ok"):
             fail["execution_error"] += 1
     agg["failure_taxonomy"] = dict(fail)
@@ -217,10 +222,12 @@ def hindsight_oracle_rows(hold_rows, always_rows):
             chosen, source = h, "A0_HOLD"
             harmful += 1
         elif hc and ac:
-            chosen, source = min((h, a), key=lambda r: (r.get("n_steps", 0), -(r.get("confidence") or 0)))
+            chosen = min((h, a), key=lambda r: (r.get("n_steps", 0), -(r.get("confidence") or 0)))
+            source = "A0_HOLD" if chosen is h else "A2_ALWAYS"
             both_correct += 1
         else:
-            chosen, source = max((h, a), key=lambda r: (not r.get("abstain"), r.get("confidence") or 0))
+            chosen = max((h, a), key=lambda r: (not r.get("abstain"), r.get("confidence") or 0))
+            source = "A0_HOLD" if chosen is h else "A2_ALWAYS"
             neither_correct += 1
         rec = dict(chosen)
         rec["config"] = "O_REF"
@@ -260,6 +267,18 @@ def main() -> int:
     for r in run_dirs:
         if not r.is_dir():
             print(f"[ERROR] run 目录不存在: {r}", file=sys.stderr)
+            return 2
+        result_path = r / "results.json"
+        if not result_path.is_file():
+            print(f"[ERROR] run 缺少 results.json，无法验证有效性: {r}", file=sys.stderr)
+            return 2
+        try:
+            result_meta = json.loads(result_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            print(f"[ERROR] 无法解析 {result_path}: {exc}", file=sys.stderr)
+            return 2
+        if result_meta.get("valid_for_analysis") is not True:
+            print(f"[ERROR] run 已标记 valid_for_analysis=false，拒绝聚合: {r}", file=sys.stderr)
             return 2
 
     out_dir = Path(args.out) if args.out else (run_dirs[0] / "reports")

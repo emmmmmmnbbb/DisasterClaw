@@ -2066,13 +2066,31 @@ def _make_agent_vqa_controller(source: str) -> AgentVqaController:
             patch_width=int(getattr(perception_result, "patch_width", 100)),
             patch_height=int(getattr(perception_result, "patch_height", 100)),
         )
-        if out.kind == "recheck" and out.params:
-            # 真正执行降高+居中，使下一步感知看到放大后的同一目标
-            executed = execute_action("fly_relative", out.params, source=source)
+        audit = {
+            "kind": out.kind,
+            "params": out.params,
+            "reason": out.reason,
+            "uncertainty": out.uncertainty,
+            "label": out.label,
+        }
+        # Agent-VQA A2_ALWAYS 是“额外观测上限”对照：即使当前 detector 没有给出
+        # 可疑目标，也应执行一次中心下降重观测，验证动作通道和额外图像本身的价值。
+        if out.kind == "skip" and VLN_RECHECK_TRIGGER == "fixed":
+            up_m = -min(VLN_RECHECK_DESCEND_M, max(0.0, float(snap["alt"]) - VLN_RECHECK_ALT_MIN_M))
+            if up_m < 0:
+                audit.update({
+                    "kind": "recheck",
+                    "params": {"north_m": 0.0, "east_m": 0.0, "up_m": round(up_m, 1), "speed": 10.0},
+                    "reason": "A2_ALWAYS 固定基线：无论当前证据是否充分，强制获取一次更高分辨率观测。",
+                })
+        if audit["kind"] == "recheck" and audit["params"]:
+            # 真正执行降高+居中，使下一步感知看到放大后的同一目标。
+            # 同一分支同时覆盖策略原生 recheck 与 A2 fixed 强制对照。
+            executed = execute_action("fly_relative", audit["params"], source=source)
             if _action_failed(executed):
                 raise RuntimeError(str(executed.get("message") or "reobserve_motion_failed"))
-            return {"kind": "recheck", "params": out.params, "reason": out.reason}
-        return {"kind": out.kind, "params": out.params, "reason": out.reason}
+            return audit
+        return audit
 
     return AgentVqaController(
         config=AgentVqaConfig(

@@ -15,22 +15,33 @@ SPLIT="${2:?}"
 N_GPU="${3:?}"
 TAG="${4:-parallel}"
 shift 4 || true
-EXTRA="$*"
+EXTRA_ARGS=("$@")
 
 REPO=/home/lc/disasterclaw
 cd "$REPO/backend"
 set -a; source ../.env; set +a
 
 PIDS=()
+# GPU_IDS: 逗号分隔的物理 GPU 编号，默认 0..N_GPU-1。
+# 某张卡故障时例如 GPU_IDS=0,1,2 N_GPU=3，避免新进程枚举坏卡导致 CUDA init 失败。
+IFS=',' read -r -a GPU_IDS_ARR <<< "${GPU_IDS:-$(seq -s, 0 $((N_GPU - 1)))}"
+if [[ ${#GPU_IDS_ARR[@]} -ne $N_GPU ]]; then
+  echo "[ERROR] GPU_IDS 数量 ${#GPU_IDS_ARR[@]} 与 N_GPU=$N_GPU 不一致" >&2
+  exit 2
+fi
 for i in $(seq 0 $((N_GPU - 1))); do
-  export PERCEPTION_DEVICE="cuda:$i"
-  export VLM_LOCAL_DEVICE="cuda:$i"
+  phys="${GPU_IDS_ARR[$i]}"
   outdir="../runs/benchmarks/cja_agent_vqa/${TAG}_shard${i}of${N_GPU}"
-  echo "[launch] GPU $i -> $outdir  configs=$CONFIGS split=$SPLIT shard $i/$N_GPU"
-  python ../scripts/benchmarks/bench_agent_vqa.py \
-    --configs "$CONFIGS" --split "$SPLIT" --shard "$i/$N_GPU" \
-    --out-dir "$outdir" --tag "${TAG}_s${i}" --resume $EXTRA \
-    > "$outdir.log" 2>&1 &
+  mkdir -p "$outdir"
+  echo "[launch] shard $i/$N_GPU physical GPU $phys -> $outdir  configs=$CONFIGS split=$SPLIT"
+  # 错开加载，避免 4 份 Qwen2.5-VL-7B 同时进 CPU 内存。
+  if [[ "$i" -gt 0 ]]; then sleep 25; fi
+  PERCEPTION_DEVICE="cuda:$phys" VLM_LOCAL_DEVICE="cuda:$phys" \
+    HF_HUB_OFFLINE=1 MPLCONFIGDIR=/tmp/disasterclaw-mpl \
+    python ../scripts/benchmarks/bench_agent_vqa.py \
+      --configs "$CONFIGS" --split "$SPLIT" --shard "$i/$N_GPU" \
+      --out-dir "$outdir" --tag "${TAG}_s${i}" --resume "${EXTRA_ARGS[@]}" \
+      > "${outdir}.log" 2>&1 &
   PIDS+=($!)
 done
 
@@ -45,12 +56,19 @@ for p in "${PIDS[@]}"; do
 done
 
 echo "[launch] merging shards with report_agent_vqa.py..."
-RUNS=""
+RUNS=()
 for i in $(seq 0 $((N_GPU - 1))); do
-  RUNS="$RUNS ../runs/benchmarks/cja_agent_vqa/${TAG}_shard${i}of${N_GPU}"
+  RUNS+=("../runs/benchmarks/cja_agent_vqa/${TAG}_shard${i}of${N_GPU}")
 done
-python ../scripts/benchmarks/report_agent_vqa.py \
-  --runs $RUNS --out "../runs/benchmarks/cja_agent_vqa/${TAG}_reports" || true
+if [[ $FAIL -eq 0 ]]; then
+  if ! python ../scripts/benchmarks/report_agent_vqa.py \
+    --runs "${RUNS[@]}" --out "../runs/benchmarks/cja_agent_vqa/${TAG}_reports"; then
+    echo "[ERROR] shard report merge failed" >&2
+    FAIL=1
+  fi
+else
+  echo "[ERROR] at least one shard failed; skipping merged report" >&2
+fi
 
 echo "[launch] all done (fail=$FAIL). merged reports in ${TAG}_reports/"
 exit $FAIL

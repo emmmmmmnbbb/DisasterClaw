@@ -94,3 +94,39 @@ def test_damage_marker_is_visible_at_image_center() -> None:
     center = marked.getpixel((64, 64))
     assert max(center) > 100
     assert center != (0, 0, 0)
+
+
+def test_fixed_policy_forces_center_descent_when_rechecker_skips(monkeypatch) -> None:
+    class Rechecker:
+        def __init__(self, config):
+            pass
+
+        def assess(self, **kwargs):
+            return type("Outcome", (), {
+                "kind": "skip", "params": None, "reason": "no evidence",
+                "uncertainty": 0.0, "label": "",
+            })()
+
+    actions = []
+    monkeypatch.setattr(app, "RecheckController", Rechecker)
+    monkeypatch.setattr(app, "VLMAnalyzer", lambda: object())
+    monkeypatch.setattr(app, "VLN_RECHECK_TRIGGER", "fixed")
+    monkeypatch.setattr(app, "VLN_RECHECK_DESCEND_M", 10.0)
+    monkeypatch.setattr(app, "VLN_RECHECK_ALT_MIN_M", 10.0)
+    monkeypatch.setattr(
+        app.state.adapter, "snapshot",
+        lambda: {"lat": 30.0, "lon": 120.0, "alt": 30.0},
+    )
+    monkeypatch.setattr(
+        app, "execute_action",
+        lambda action, params, source="": actions.append((action, params)) or {"success": True},
+    )
+
+    ctl = app._make_agent_vqa_controller("test")
+    out = ctl._reobserve(_Perception(), parse_question("当前视场是否存在完全损毁建筑？"))
+
+    assert out["kind"] == "recheck"
+    assert out["params"] == {
+        "north_m": 0.0, "east_m": 0.0, "up_m": -10.0, "speed": 10.0,
+    }
+    assert actions == [("fly_relative", out["params"])]

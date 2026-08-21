@@ -429,6 +429,10 @@ class StepRecord:
     budget_after: int
     fallback_used: bool = False
     degraded_reason: str = ""
+    evidence: dict = field(default_factory=dict)
+    reobserve_kind: str = ""
+    reobserve_reason: str = ""
+    uncertainty: Optional[float] = None
 
     def to_dict(self) -> dict:
         return {
@@ -439,6 +443,10 @@ class StepRecord:
             "reason_code": self.reason_code, "action": self.action,
             "budget_before": self.budget_before, "budget_after": self.budget_after,
             "fallback_used": self.fallback_used, "degraded_reason": self.degraded_reason,
+            "evidence": self.evidence,
+            "reobserve_kind": self.reobserve_kind,
+            "reobserve_reason": self.reobserve_reason,
+            "uncertainty": self.uncertainty,
         }
 
 
@@ -513,6 +521,10 @@ class AgentVqaController:
                 return self._final(qid, spec, "", 0.0, decision="abstain",
                                    reason="out_of_coverage", action="stop")
             obs_id = getattr(result, "patch_id", f"obs{step}")
+            # Capture the pose that produced this observation. reobserve_fn
+            # executes motion synchronously, so reading position later would
+            # incorrectly attach the post-action altitude to the pre-action image.
+            observation_position = self._pos()
             ev = build_evidence_from_perception(result, spec, obs_id)
 
             # 2) 生成候选答案 (VLM 不可用时规则回退)
@@ -525,9 +537,11 @@ class AgentVqaController:
             # 同一个 confidence threshold 后只在执行阶段换名字。
             decision, reason, action = self._decide(spec, ev, ans, search_budget, reobs_budget)
 
+            # 重观测是否发生由注入的策略决定 (random/fixed/entropy/conformal/info_gain)。
+            # 不得要求当前帧已经匹配到题面 subtype：A3 的科学点正是
+            # “当前 argmax 不是目标类、但 class_probs 熵高 → 下降再看”。
             reobserve_outcome = None
-            if (decision == "answer" and reobs_budget > 0 and self._reobserve is not None
-                    and ev.target_subtype):
+            if decision == "answer" and reobs_budget > 0 and self._reobserve is not None:
                 reobserve_outcome = self._safe_reobserve(result, spec)
                 if reobserve_outcome is None:
                     decision, reason, action = "abstain", "execution_error", "stop"
@@ -535,7 +549,8 @@ class AgentVqaController:
                     decision, reason, action = "reobserve", "low_confidence", "fly_relative"
 
             self._record(qid, obs_id, spec, ans, ev, decision, reason, action,
-                          search_budget, reobs_budget)
+                          search_budget, reobs_budget, reobserve_outcome,
+                          observation_position=observation_position)
             if on_step is not None and self.trajectory:
                 try:
                     on_step(self.trajectory[-1].to_dict())
@@ -677,15 +692,23 @@ class AgentVqaController:
 
     # ── 内部: 记录与收尾 ──────────────────────────────────────────────────────
     def _record(self, qid, obs_id, spec, ans, ev, decision, reason, action,
-                 search_budget, reobs_budget):
+                 search_budget, reobs_budget, reobserve_outcome=None,
+                 observation_position=None):
+        outcome = reobserve_outcome or {}
+        unc = outcome.get("uncertainty")
         self.trajectory.append(StepRecord(
-            question_id=qid, observation_id=obs_id, position=self._pos(),
+            question_id=qid, observation_id=obs_id,
+            position=observation_position or self._pos(),
             question_type=spec.question_type, candidate_answer=ans.answer,
             confidence=ans.confidence, evidence_ids=[obs_id],
             decision=decision, reason_code=reason, action=action,
             budget_before=search_budget + reobs_budget,
             budget_after=search_budget + reobs_budget - (1 if decision in ("continue_search", "reobserve") else 0),
             fallback_used=self.fallback_used, degraded_reason=self.degraded_reason,
+            evidence=ev.to_dict() if ev else {},
+            reobserve_kind=str(outcome.get("kind") or ""),
+            reobserve_reason=str(outcome.get("reason") or ""),
+            uncertainty=None if unc is None else float(unc),
         ))
 
     def _final(self, qid, spec, answer, conf, decision, reason, action) -> VqaAnswer:

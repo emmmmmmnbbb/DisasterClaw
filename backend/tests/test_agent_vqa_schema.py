@@ -256,6 +256,17 @@ def test_vlm_prompt_names_machine_readable_evidence_sources() -> None:
     assert "绝不能填写证据描述句" in AGENT_VQA_SYSTEM_PROMPT
 
 
+def test_vlm_prompt_states_decision_reason_pairing() -> None:
+    """D5 pilot100 观测到 6/100 spatial 题输出 decision=answer 且
+    reason_code=target_missing（模型明知无目标仍给方位猜测）。旧 prompt 只列出
+    decision 和 reason_code 各自的封闭集合，从未告知二者必须配对，
+    模型无从得知这是非法组合。这里锁定 prompt 显式讲清配对规则，
+    防止未来改动悄悄丢掉这条约束。"""
+    assert "decision 与 reason_code 必须成对" in AGENT_VQA_SYSTEM_PROMPT
+    assert "target_missing 或" in AGENT_VQA_SYSTEM_PROMPT
+    assert "low_confidence 来蒙混过关" in AGENT_VQA_SYSTEM_PROMPT
+
+
 def _run_all() -> int:
     tests = [
         test_parse_four_question_types, test_parse_chinese_and_english_punct,
@@ -271,6 +282,7 @@ def _run_all() -> int:
         test_build_evidence_picks_matching_target, test_build_evidence_no_match,
         test_evidence_does_not_use_scene_text_as_label, test_closed_sets_complete,
         test_vlm_prompt_names_machine_readable_evidence_sources,
+        test_vlm_prompt_states_decision_reason_pairing,
     ]
     failed = 0
     for t in tests:

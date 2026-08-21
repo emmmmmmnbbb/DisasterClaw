@@ -118,24 +118,70 @@ def test_target_missing_continues_search_then_abstains() -> None:
 
 def test_low_confidence_triggers_reobserve() -> None:
     reobs_calls = []
+    altitude = {"value": 30.0}
     def reobserve_fn(result, spec):
         reobs_calls.append(1)
+        altitude["value"] -= 10.0
         return {"kind": "recheck",
-                "params": {"north_m": 0.0, "east_m": 0.0, "up_m": -10.0}}
+                "params": {"north_m": 0.0, "east_m": 0.0, "up_m": -10.0},
+                "reason": "policy_recheck", "uncertainty": 0.8}
     ctl = AgentVqaController(
         config=AgentVqaConfig(max_search_steps=0, max_reobservations=2,
                               confidence_threshold=0.6),
         vlm_answer_fn=_vlm_low_conf,  # 总是 0.3 < 0.6
         perceive_fn=lambda: _FakePerception([_det("完全损毁建筑", 0.4)]),
         reobserve_fn=reobserve_fn,
-        get_position_fn=lambda: {"lat": 30.0, "lon": 120.0, "alt": 30.0},
+        get_position_fn=lambda: {"lat": 30.0, "lon": 120.0, "alt": altitude["value"]},
     )
     ans = ctl.run("当前视场是否存在完全损毁建筑？", "q3")
     assert len(reobs_calls) == 2, f"应用完 2 次重观测预算, 实际 {len(reobs_calls)}"
     assert ans.decision == "abstain" or ans.decision == "answer"
     # 预算用完后用最后一次观测作答。
     assert ans.decision == "answer" and ans.reason_code == "sufficient_evidence", ans
+    assert [r.position["alt"] for r in ctl.trajectory] == [30.0, 20.0, 10.0]
     print(f"[OK] 低置信 -> reobserve {len(reobs_calls)} 次后预算耗尽")
+
+
+def test_reobserve_policy_runs_without_matching_subtype() -> None:
+    """题面要完全损毁、当前只有无损伤框时，仍应把观测交给策略 (计划 E4)。"""
+    calls = []
+    def reobserve_fn(result, spec):
+        calls.append(spec.question_type)
+        return {"kind": "recheck",
+                "params": {"north_m": 0.0, "east_m": 0.0, "up_m": -10.0},
+                "reason": "entropy_high", "uncertainty": 0.7}
+    ctl = AgentVqaController(
+        config=AgentVqaConfig(max_search_steps=0, max_reobservations=1),
+        vlm_answer_fn=_vlm_confident,
+        perceive_fn=lambda: _FakePerception([_det("无损伤建筑", 0.55)]),
+        reobserve_fn=reobserve_fn,
+        get_position_fn=lambda: {"lat": 30.0, "lon": 120.0, "alt": 30.0},
+    )
+    ctl.run("当前视场是否存在完全损毁建筑？", "q_nomatch")
+    assert calls == ["presence"], calls
+    kinds = [r.reobserve_kind for r in ctl.trajectory]
+    assert "recheck" in kinds, kinds
+
+
+def test_reobserve_skip_is_recorded_and_answers() -> None:
+    def reobserve_fn(result, spec):
+        return {"kind": "skip", "reason": "把握足够或无可疑灾情目标，无需复核。",
+                "uncertainty": 0.12}
+    ctl = AgentVqaController(
+        config=AgentVqaConfig(max_search_steps=0, max_reobservations=2),
+        vlm_answer_fn=_vlm_confident,
+        perceive_fn=lambda: _FakePerception([_det("完全损毁建筑", 0.9)]),
+        reobserve_fn=reobserve_fn,
+        get_position_fn=lambda: {"lat": 30.0, "lon": 120.0, "alt": 30.0},
+    )
+    ans = ctl.run("当前视场是否存在完全损毁建筑？", "q_skip")
+    assert ans.decision == "answer" and not ans.abstain
+    assert len(ctl.trajectory) == 1
+    rec = ctl.trajectory[0]
+    assert rec.decision == "answer"
+    assert rec.reobserve_kind == "skip"
+    assert rec.uncertainty == 0.12
+    assert rec.evidence.get("target_subtype") == "destroyed"
 
 
 # ── 4. VLM 不可用 -> 规则回退 ───────────────────────────────────────────────────
@@ -298,6 +344,8 @@ def _run_all() -> int:
         test_sufficient_evidence_answers,
         test_target_missing_continues_search_then_abstains,
         test_low_confidence_triggers_reobserve,
+        test_reobserve_policy_runs_without_matching_subtype,
+        test_reobserve_skip_is_recorded_and_answers,
         test_vlm_unavailable_uses_rule_fallback,
         test_vlm_invalid_output_uses_rule_fallback,
         test_non_oracle_ignores_item_answer_and_target,
