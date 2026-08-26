@@ -49,10 +49,20 @@ from typing import Optional
 from semantic_map import offset_from_norm
 
 try:
-    from gsd_ladder import ExpectedEntropyTable, effective_gsd_m
+    # 改动一：视场收缩阶梯取代合成模糊阶梯。GSD ∝ alt 的关系在两者下都成立，
+    # 所以 expected_gsd_gain_ratio() 的公式不变，只有默认高度需要重标定。
+    from fov_ladder import ExpectedEntropyTable, eff_gsd_for_alt as effective_gsd_m
 except Exception:  # pragma: no cover
     ExpectedEntropyTable = None  # type: ignore
     effective_gsd_m = None  # type: ignore
+
+try:
+    import fov_ladder as _FL
+    _DEFAULT_ALT_MIN_M = _FL.alt_min_m()
+    _DEFAULT_DESCEND_M = _FL.descend_step_m(2)
+except Exception:  # pragma: no cover
+    _DEFAULT_ALT_MIN_M = 10.0
+    _DEFAULT_DESCEND_M = 10.0
 
 # 受灾相关（值得复核）的检测类别——救援关注受损建筑与积水，完好建筑/车辆不算证据。
 EVIDENCE_CLASSES = {
@@ -225,12 +235,15 @@ def conformal_predict_set(
 class RecheckConfig:
     conf_threshold: float = 0.5      # 证据置信度"够格"阈值
     trigger: float = 0.5             # 触发复核的不确定性阈值（trigger_mode="threshold" 时用）
-    # descend_step_m / alt_min_m 默认值须严格小于调用方的巡航高度（app.py 的
-    # DEFAULT_HOVER_ALTITUDE_M=30m），否则"复核"从第一次 assess() 起就恒等于"已到
-    # 高度下限"，永远拿不到 kind="recheck" 的真实降高机动（E11 实测发现的根因，
-    # 而不是 stats() 的记账问题）。10/10 给 30m 巡航留出两步各 10m 的真实降高空间。
-    descend_step_m: float = 10.0     # 每次复核下降的高度
-    alt_min_m: float = 10.0          # 高度下限（防止贴地）
+    # descend_step_m / alt_min_m 必须严格小于调用方的巡航高度，否则"复核"从第一次
+    # assess() 起就恒等于"已到高度下限"，永远拿不到 kind="recheck" 的真实降高机动
+    # （E11 实测发现的根因，而不是 stats() 的记账问题）。
+    #
+    # 改动一重标定后：巡航 1330.2 m（3×3 瓦片 / 1.5 m/px）、下限 443.4 m
+    # （1 瓦片 / 原生 0.5 m/px），单步 443.4 m 刚好两步到底。默认值直接从
+    # fov_ladder 取，避免两处常量漂移。
+    descend_step_m: float = _DEFAULT_DESCEND_M   # 每次复核下降的高度
+    alt_min_m: float = _DEFAULT_ALT_MIN_M        # 高度下限（= 视场恰好一整瓦片）
     max_rechecks: int = 2            # 同一位置最多复核次数
     recenter_max_m: float = 40.0     # 复核单步水平居中的最大位移
     cell_m: float = 20.0             # 复核去重的位置量化格

@@ -2,53 +2,66 @@
 \contentsline {section}{\numberline {2}相关工作}{5}{section.2}%
 \contentsline {paragraph}{航空应急侦察与鸟瞰导航。}{5}{paragraph*.2}%
 \contentsline {paragraph}{分层语义规划与拓扑记忆。}{5}{paragraph*.3}%
-\contentsline {paragraph}{遥感变化检测与 xBD 损伤评估。}{5}{paragraph*.4}%
-\contentsline {paragraph}{主动感知与 Next-Best-View。}{5}{paragraph*.5}%
+\contentsline {paragraph}{遥感变化检测与 xBD 损伤评估。}{6}{paragraph*.4}%
+\contentsline {paragraph}{主动感知与 Next-Best-View。}{6}{paragraph*.5}%
 \contentsline {paragraph}{校准、分布偏移与共形预测。}{6}{paragraph*.6}%
 \contentsline {paragraph}{不确定性内省与具身智能。}{6}{paragraph*.7}%
-\contentsline {section}{\numberline {3}系统架构与仿真平台}{6}{section.3}%
-\contentsline {subsection}{\numberline {3.1}双模式智能体与有限动作集}{6}{subsection.3.1}%
-\contentsline {paragraph}{任务规划模式。}{6}{paragraph*.8}%
-\contentsline {paragraph}{语言导航模式。}{6}{paragraph*.9}%
+\contentsline {section}{\numberline {3}系统架构与仿真平台}{7}{section.3}%
+\contentsline {subsection}{\numberline {3.1}双模式智能体与有限动作集}{7}{subsection.3.1}%
+\contentsline {paragraph}{任务规划模式。}{7}{paragraph*.8}%
+\contentsline {paragraph}{语言导航模式。}{7}{paragraph*.9}%
 \contentsline {paragraph}{底层动作。}{7}{paragraph*.10}%
-\contentsline {paragraph}{感知栈。}{7}{paragraph*.11}%
-\contentsline {subsection}{\numberline {3.2}地理配准仿真世界}{7}{subsection.3.2}%
-\contentsline {subsection}{\numberline {3.3}人机协同控制台：平台实际能做的事}{8}{subsection.3.3}%
-\contentsline {subsection}{\numberline {3.4}分层语义规划与记忆栈}{8}{subsection.3.4}%
-\contentsline {section}{\numberline {4}方法与实验协议}{11}{section.4}%
-\contentsline {subsection}{\numberline {4.1}预算受限主动重观测}{11}{subsection.4.1}%
-\contentsline {subsection}{\numberline {4.2}高度--有效 GSD 分辨率阶梯}{12}{subsection.4.2}%
-\contentsline {subsection}{\numberline {4.3}双时相损伤分类与校准}{12}{subsection.4.3}%
-\contentsline {paragraph}{类别加权与按宏观 F1 选择 checkpoint。}{12}{paragraph*.17}%
-\contentsline {subsection}{\numberline {4.4}触发策略}{13}{subsection.4.4}%
-\contentsline {paragraph}{条件期望熵。}{13}{paragraph*.18}%
-\contentsline {paragraph}{共形集合。}{13}{paragraph*.19}%
-\contentsline {subsection}{\numberline {4.5}事件不相交数据协议}{13}{subsection.4.5}%
-\contentsline {subsection}{\numberline {4.6}运动学参数与预算换算}{13}{subsection.4.6}%
-\contentsline {subsection}{\numberline {4.7}评价指标与可识别性判据}{14}{subsection.4.7}%
-\contentsline {section}{\numberline {5}实验}{14}{section.5}%
-\contentsline {subsection}{\numberline {5.1}训练/验证曲线、类别加权与基线对标}{14}{subsection.5.1}%
-\contentsline {paragraph}{训练曲线：确有信号，但不跨事件泛化。}{15}{paragraph*.20}%
-\contentsline {paragraph}{类别加权部分缓解塌缩，但未逆转。}{15}{paragraph*.21}%
-\contentsline {paragraph}{与标准（非事件不相交）切分对照，拆分协议难度与架构差距（C2）。}{15}{paragraph*.22}%
-\contentsline {paragraph}{H2：差分注意力与拼接融合无统计显著差异。}{15}{paragraph*.23}%
-\contentsline {subsection}{\numberline {5.2}有效 GSD 与分类质量}{16}{subsection.5.2}%
-\contentsline {subsection}{\numberline {5.3}预算受限观测分配}{16}{subsection.5.3}%
-\contentsline {subsection}{\numberline {5.4}功效分析与事件隔离基准}{19}{subsection.5.4}%
-\contentsline {subsection}{\numberline {5.5}RescueNet 低空评估域}{21}{subsection.5.5}%
-\contentsline {subsection}{\numberline {5.6}端到端缺陷与探索回退}{21}{subsection.5.6}%
-\contentsline {subsection}{\numberline {5.7}Oracle 阶梯与端到端现实检验}{23}{subsection.5.7}%
-\contentsline {paragraph}{L2 是 oracle 初始定位，不是 oracle 导航。}{23}{paragraph*.33}%
-\contentsline {paragraph}{瓶颈定位在指认层。}{24}{paragraph*.34}%
-\contentsline {paragraph}{端到端上机制不可辨识，与离线分水岭闭环。}{24}{paragraph*.35}%
-\contentsline {paragraph}{几何扰动不是当前瓶颈；强制退化几何下 SR 显著更低，但样本量不足以单独立因果论证。}{24}{paragraph*.36}%
-\contentsline {section}{\numberline {6}局限与影响}{24}{section.6}%
-\contentsline {section}{\numberline {7}结论}{26}{section.7}%
-\contentsline {section}{\numberline {A}附录：协议、切分与复现}{30}{appendix.A}%
-\contentsline {paragraph}{事件切分。}{30}{paragraph*.40}%
-\contentsline {paragraph}{预注册假设（保持）。}{30}{paragraph*.41}%
-\contentsline {paragraph}{H2 结果。}{30}{paragraph*.42}%
-\contentsline {paragraph}{损伤分类器训练修复。}{30}{paragraph*.43}%
-\contentsline {paragraph}{标准（非事件不相交）切分基线。}{31}{paragraph*.44}%
-\contentsline {paragraph}{权重溯源（SHA-256 前 16 位）。}{31}{paragraph*.45}%
-\contentsline {paragraph}{复现入口。}{31}{paragraph*.46}%
+\contentsline {paragraph}{感知栈。}{8}{paragraph*.11}%
+\contentsline {subsection}{\numberline {3.2}地理配准仿真世界}{8}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}人机协同控制台：平台实际能做的事}{9}{subsection.3.3}%
+\contentsline {subsection}{\numberline {3.4}分层语义规划与记忆栈}{9}{subsection.3.4}%
+\contentsline {section}{\numberline {4}方法与实验协议}{12}{section.4}%
+\contentsline {subsection}{\numberline {4.1}预算受限主动重观测}{12}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}视场收缩式观测模型}{13}{subsection.4.2}%
+\contentsline {paragraph}{马赛克合成。}{14}{paragraph*.18}%
+\contentsline {paragraph}{ROI 作用域与场景池。}{14}{paragraph*.19}%
+\contentsline {paragraph}{灾前通道保持原生分辨率。}{14}{paragraph*.21}%
+\contentsline {subsection}{\numberline {4.3}感知底座：公开披露的损伤分类组件}{15}{subsection.4.3}%
+\contentsline {subsection}{\numberline {4.4}触发策略}{16}{subsection.4.4}%
+\contentsline {paragraph}{条件期望熵。}{16}{paragraph*.22}%
+\contentsline {paragraph}{共形集合。}{16}{paragraph*.23}%
+\contentsline {subsection}{\numberline {4.5}事件不相交数据协议}{16}{subsection.4.5}%
+\contentsline {subsection}{\numberline {4.6}运动学参数与预算换算}{17}{subsection.4.6}%
+\contentsline {subsection}{\numberline {4.7}评价指标与可识别性判据}{17}{subsection.4.7}%
+\contentsline {section}{\numberline {5}实验}{18}{section.5}%
+\contentsline {paragraph}{两套观测模型不得混账。}{18}{paragraph*.24}%
+\contentsline {subsection}{\numberline {5.1}训练/验证曲线、类别加权与基线对标}{18}{subsection.5.1}%
+\contentsline {paragraph}{训练曲线：确有信号，但不跨事件泛化。}{18}{paragraph*.25}%
+\contentsline {paragraph}{类别加权部分缓解塌缩，但未逆转。}{19}{paragraph*.26}%
+\contentsline {paragraph}{与标准（非事件不相交）切分对照，拆分协议难度与架构差距。}{19}{paragraph*.27}%
+\contentsline {paragraph}{H2：差分注意力与拼接融合无统计显著差异。}{19}{paragraph*.28}%
+\contentsline {subsection}{\numberline {5.2}旧观测模型：有效 GSD 与分类质量}{21}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}旧观测模型：预算受限观测分配}{21}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}视场收缩观测的几何落地与 leaky 感知诊断}{23}{subsection.5.4}%
+\contentsline {paragraph}{几何不变量。}{23}{paragraph*.36}%
+\contentsline {paragraph}{三档端到端样例。}{24}{paragraph*.37}%
+\contentsline {paragraph}{三方检测器对照：损伤分级坍缩的根源是跨事件泛化。}{25}{paragraph*.39}%
+\contentsline {paragraph}{可识别性前置检查与 Agent-VQA pilot。}{25}{paragraph*.41}%
+\contentsline {paragraph}{留出事件复现。}{25}{paragraph*.42}%
+\contentsline {paragraph}{仍未完成的检查。}{26}{paragraph*.43}%
+\contentsline {subsection}{\numberline {5.5}功效分析与事件隔离基准}{26}{subsection.5.5}%
+\contentsline {subsection}{\numberline {5.6}RescueNet 低空评估域}{26}{subsection.5.6}%
+\contentsline {subsection}{\numberline {5.7}端到端缺陷与探索回退}{28}{subsection.5.7}%
+\contentsline {subsection}{\numberline {5.8}Oracle 阶梯与端到端现实检验}{29}{subsection.5.8}%
+\contentsline {paragraph}{L2 是 oracle 初始定位，不是 oracle 导航。}{29}{paragraph*.46}%
+\contentsline {paragraph}{瓶颈定位在指认层。}{29}{paragraph*.47}%
+\contentsline {paragraph}{端到端上机制不可辨识，与离线分水岭闭环。}{30}{paragraph*.48}%
+\contentsline {paragraph}{几何扰动不是当前瓶颈；强制退化几何下 SR 显著更低，但样本量不足以单独立因果论证。}{30}{paragraph*.49}%
+\contentsline {section}{\numberline {6}局限与影响}{30}{section.6}%
+\contentsline {section}{\numberline {7}结论}{32}{section.7}%
+\contentsline {section}{\numberline {A}附录：协议、切分与复现}{36}{appendix.A}%
+\contentsline {paragraph}{事件切分。}{36}{paragraph*.53}%
+\contentsline {paragraph}{视场阶梯常量。}{36}{paragraph*.54}%
+\contentsline {paragraph}{底图来源。}{36}{paragraph*.55}%
+\contentsline {paragraph}{感知底座双轨。}{36}{paragraph*.56}%
+\contentsline {paragraph}{预注册假设（保持）。}{37}{paragraph*.57}%
+\contentsline {paragraph}{H2 结果。}{37}{paragraph*.58}%
+\contentsline {paragraph}{损伤分类器训练修复。}{37}{paragraph*.59}%
+\contentsline {paragraph}{标准（非事件不相交）切分基线。}{37}{paragraph*.60}%
+\contentsline {paragraph}{权重溯源（SHA-256 前 16 位）。}{38}{paragraph*.61}%
+\contentsline {paragraph}{复现入口。}{38}{paragraph*.62}%

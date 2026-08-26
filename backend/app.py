@@ -48,6 +48,7 @@ from vln_navigator import (
     ground_with_yolo,
     parse_ground_xy,
 )
+import fov_ladder
 from world import DEFAULT_BASEMAP, WorldModel
 from xbd_map import build_annotation_geojson
 
@@ -57,7 +58,13 @@ logger = logging.getLogger("disasterclaw.app")
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIST = BASE_DIR.parent / "frontend" / "dist"
 FALLBACK_ANCHOR = {"lat": 31.2304, "lon": 121.4737, "label": "Shanghai Fallback Anchor"}
-DEFAULT_HOVER_ALTITUDE_M = 30.0
+# 改动一（视场收缩式降高）重标定高度尺度：固定 1024 px 传感器 + 60° 视场角下，
+# 「最小视场 = 恰好一整张 xBD 瓦片(512 m)」唯一确定下限高度 443.4 m（原生 0.5 m/px），
+# 3×3 瓦片巡航对应 1330.2 m（1.5 m/px）。旧的 30 m 巡航 / 0.5 m·px⁻¹ 在物理上差两个
+# 数量级（review2 B2），重标定后 0.5 m/px 与 443 m 自洽。
+DEFAULT_HOVER_ALTITUDE_M = float(
+    os.getenv("DEFAULT_HOVER_ALTITUDE_M", str(fov_ladder.alt_cruise_m()))
+)
 # 默认初始瓦片：
 #   xbd 模式     → palu-tsunami_00000118_post_disaster  (~1540 destroyed，1024x1024 卫星)
 #   rescuenet 模式 → rescuenet_12215_post_disaster       (4 destroyed + 14 major，4000x3000 无人机高清)
@@ -904,14 +911,20 @@ HSPM_STMR_WINDOW_M = float(os.getenv("HSPM_STMR_WINDOW_M", "200"))
 HSPM_STMR_GRID_N = int(os.getenv("HSPM_STMR_GRID_N", "20"))
 # P2：灾情不确定性驱动主动复核（默认关，VLN_RECHECK=1 开）。
 VLN_RECHECK = os.getenv("VLN_RECHECK", "0").lower() in {"1", "true", "yes", "on"}
-# 已知问题修复（E11 实测发现，2026-07）：巡航高度 DEFAULT_HOVER_ALTITUDE_M=30m 恰好等于
-# 旧默认的复核高度下限 30m，导致 recheck.py 里 `alt <= alt_min_m` 从 episode 一开始就恒真——
-# 复核一旦触发，第一次 assess() 就会因为"已到高度下限"直接走"预算耗尽/到高度下限"分支直接
-# resolve，永远拿不到 kind="recheck" 的真实"降高+居中再观测"机动，且这次 resolve 的
-# before/after 是同一次观测（reduction 恒为 0）。改成 10m 后，30m 巡航高度下有 20m 真实可降
-# 的空间，配合 descend_step_m=10m 可以真正做两步"逼近观测"再收尾，ΔU 才有意义可算。
-VLN_RECHECK_DESCEND_M = float(os.getenv("VLN_RECHECK_DESCEND_M", "10"))
-VLN_RECHECK_ALT_MIN_M = float(os.getenv("VLN_RECHECK_ALT_MIN_M", "10"))
+# 已知问题修复（E11 实测发现，2026-07）：巡航高度若等于复核高度下限，recheck.py 里
+# `alt <= alt_min_m` 从 episode 一开始就恒真——复核一旦触发，第一次 assess() 就会因为
+# "已到高度下限"直接 resolve，永远拿不到 kind="recheck" 的真实"降高+居中再观测"机动，
+# 且这次 resolve 的 before/after 是同一次观测（reduction 恒为 0）。
+#
+# 改动一重标定后该不变量由 fov_ladder 保证并有单测锁死
+# （test_fov_ladder.py::test_recheck_altitude_invariant_holds）：
+# 巡航 1330.2 m > 下限 443.4 m，单步 443.4 m，两步到底。
+VLN_RECHECK_DESCEND_M = float(
+    os.getenv("VLN_RECHECK_DESCEND_M", str(fov_ladder.descend_step_m(2)))
+)
+VLN_RECHECK_ALT_MIN_M = float(
+    os.getenv("VLN_RECHECK_ALT_MIN_M", str(fov_ladder.alt_min_m()))
+)
 VLN_RECHECK_MAX = int(os.getenv("VLN_RECHECK_MAX", "2"))          # 同一位置最多复核次数
 VLN_RECHECK_MAX_TOTAL = int(os.getenv("VLN_RECHECK_MAX_TOTAL", "8"))  # 单 episode 复核机动总上限
 # P5（升级接口落地，仍是 C2 的实现细节，非新增贡献）：

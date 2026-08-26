@@ -12,43 +12,45 @@
 编排器提供两种互补模式，动作空间显式、有限，不是开放的工具调用循环：大语言模型只负责规划与指认，状态机在 Python 侧闭合。
 
 \paragraph{任务规划模式。}
-操作员在控制台输入一条自然语言任务（例如``飞到选点上空 30\,m 悬停并做受灾检测''）。
+操作员在控制台输入一条自然语言任务（例如``飞到选点上空巡航高度悬停并做受灾检测''）。
 规划器调用语言模型，一次性输出固定模式的动作序列，字段为 $\{\texttt{action},\texttt{params},\texttt{reason}\}$；
 语言模型不可达时按关键词与经纬度规则回退。
 执行器按序调用同一套底层动作，并在控制台逐步回显计划与日志。
 
 \paragraph{语言导航模式。}
 操作员输入目标描述（例如``飞到北侧寻找完全损毁的建筑''）。
-系统进入感知--决策--执行闭环：每步按当前经纬高裁剪机载视场，运行检测/分割/双时相损伤分类，
+系统进入感知--决策--执行闭环：每步按当前经纬高渲染机载视场，运行检测/分割/双时相损伤分类，
 可选地由复检控制器发出下降--居中，再由导航器输出相对位移、悬停或停止。
 导航器可切换为关键词贪心基线（套件 B0）或分层语义规划模块 HSPM（B1--B3 与 oracle 阶梯默认，见 \secref{sec:hspm}）。
 
 \paragraph{底层动作。}
-两种模式最终都落到同一动作表：
-\texttt{fly\_to\_geo}（飞到经纬高，必要时对齐最近的灾后瓦片）、
-\texttt{fly\_relative}（北--东--天相对位移）、
-\texttt{hover}、
-\texttt{detect\_disaster}（裁视场并跑感知栈）、
-\texttt{mark\_target}、
-\texttt{report\_observation}。
-语言导航另把 \texttt{stop} 作为回合终止符。
-复检不是第 7 种独立动作枚举，而是在闭环内插入的 \texttt{fly\_relative}（先水平居中、再下降 $10\,\mathrm{m}$）。
+两种模式最终都落到同一动作表：飞到经纬高、相对位移、悬停、检测、标记与报告
+（接口名为 \texttt{fly\_to\_geo} / \texttt{fly\_relative} / \texttt{hover} /
+\texttt{detect\_disaster} / \texttt{mark\_target} / \texttt{report\_observation}）。
+语言导航另把停止作为回合终止符。
+复检不是第 7 种独立动作枚举，而是在闭环内插入的相对位移（先水平居中、再按视场阶梯下降一档）。
 
 \paragraph{感知栈。}
-机载视场半径随高度线性变化（默认 $\mathrm{radius}= \mathrm{clip}(2\cdot h,\,20,\,300)\,\mathrm{m}$），再按瓦片地面采样距离裁成至少 $256\times256$ 的正射块。
-块上并行：建筑提议（默认仅在训练事件灾前瓦片上训练的 ResNet34 U-Net，同切分 YOLO 作对照）、场景分割（SegFormer）、双时相损伤分类，以及进程内加载的 Qwen2.5-VL-7B 开放词汇指认与灾情摘要。
+机载观测由固定传感器边长 $1024\,\mathrm{px}$ 与固定水平视场角 $60^\circ$ 决定地面足迹（\secref{sec:gsd}）。
+巡航高度 $1330\,\mathrm{m}$ 对应 $3\times3$ 瓦片、$1.50\,\mathrm{m/px}$；下限 $443\,\mathrm{m}$ 对应恰好一整张瓦片、$0.50\,\mathrm{m/px}$。
+渲染顺序为：Esri World Imagery 背景，叠加窗口内全部有地理配准的 xBD 灾后瓦片，色调协调后重采样到 $1024^2$。
+灾前通道保持原生 GSD，不随高度降质；建筑提议在灾前整瓦片上以原生分辨率运行并按瓦片缓存，再把框仿射映射进当前视场，跨瓦片重叠以 IoU $0.55$ 做 NMS。
+在线闭环默认已切换为 xView2 冠军检测后端（\texttt{DETECTOR\_BACKEND} 分派已落地）：灾前/灾后窗口喂双时相损伤分类，检测框按 ROI 过滤后再送下游。
+事件不相交训练的 ResNet34 U-Net 定位与轻量双时相头保留为可回退的对照基线。
+同切分 YOLO 与 SegFormer 场景分割、进程内加载的 Qwen2.5-VL-7B 开放词汇指认与灾情摘要仍作为并列模块。
 混合指认路径为检测器类别命中优先、视觉语言模型兜底。
 禁止把定位 Dice 或提议召回写成导航或判断增益。
 
 \subsection{地理配准仿真世界}
-仿真世界把 xBD 灾后（POST）瓦片按地理足迹叠到真实底图上，像素--经纬度由瓦片仿射给出，原生地面采样距离约 $0.5\,\mathrm{m/px}$。
+仿真世界把 xBD 灾后瓦片按地理足迹叠到 Esri 卫星底图上，像素--经纬度由瓦片仿射给出，原生地面采样距离 $0.5\,\mathrm{m/px}$。
+后端按当前视场窗口合成马赛克；控制台当前仍以激活瓦片为主显示，窗口内多瓦片叠加以及 FOV 足迹 / ROI 框的可视化尚未完成，不得把前端截图读成已经展示了``降高 = 收视场''。
 操作员可按灾害事件浏览瓦片目录、按损毁评分排序、一键激活瓦片并把无人机锚到瓦片中心；
 点选地图外位置时，系统会查找最近的 POST 覆盖并提示是否跳转，避免在无影像区域空飞。
 建筑多边形按 FEMA 四级着色，供操作员对照，\textbf{不}作为智能体的作弊输入。
 
 运动学为二维匀速直线插值，不是六自由度飞控：水平速度 $4$--$14\,\mathrm{m/s}$（默认飞向地理点 $14\,\mathrm{m/s}$、相对位移 $12\,\mathrm{m/s}$），
-巡航高度 $30\,\mathrm{m}$，高度下限 $10\,\mathrm{m}$，不含风扰、惯性、避障与电池消耗。
-视场随高度收缩；离线机制实验里再把高度写成有效 GSD 阶梯（\secref{sec:gsd}）。
+巡航高度 $1330\,\mathrm{m}$，高度下限 $443\,\mathrm{m}$，不含风扰、惯性、避障与电池消耗。
+视场随高度收缩，有效 GSD 由式~\eqref{eq:fov} 给出。
 数值预算与步长约定见 \secref{sec:kinematics}。
 
 \subsection{人机协同控制台：平台实际能做的事}
@@ -58,7 +60,7 @@
 \begin{enumerate}
 \item \textbf{选区与对照。} 切换底图（卫星/街道）、叠加 xBD 灾后影像、显示或隐藏建筑足迹与瓦片边界；在真实地理坐标上看到无人机图标与飞行轨迹。
 \item \textbf{手动飞行。} 点地图飞向该点、悬停、标记兴趣点；左栏持续显示经纬高、航向、速度与锚点北东偏移。
-\item \textbf{点选巡检。} 在疑似受损建筑上发 Inspect：自动生成任务规划序列，飞到 30\,m 悬停后跑 \texttt{detect\_disaster}。底栏可在``UAV 视场 / YOLO 标注 / SegFormer''三页签间切换，并显示风险等级、受损/完好/车辆计数与可选的视觉语言模型摘要。
+\item \textbf{点选巡检。} 在疑似受损建筑上发 Inspect：自动生成任务规划序列，飞到巡航高度悬停后跑 \texttt{detect\_disaster}。底栏可在``UAV 视场 / YOLO 标注 / SegFormer''三页签间切换，并显示风险等级、受损/完好/车辆计数与可选的视觉语言模型摘要。
 \item \textbf{语言目标搜索。} 在 VLN 框下发一句话指令，无人机逐步感知并自主飞向目标；底栏显示当前技能、是否命中、距离、语义栅格统计（已探索格、地标、候选目标）以及复检不确定性条。
 \item \textbf{一次性任务规划。} 在 AI Task 框下发复合任务，右侧列出逐步动作与理由，底栏日志同步执行过程，可随时 Stop。
 \item \textbf{独立视觉问答。} 控制台可上传任意图片调用同一套视觉语言模型做灾情分析，不依赖当前视场。
@@ -82,13 +84,13 @@
 \node[box, below=0.45cm of orch, xshift=-4.2cm, minimum width=2.5cm] (llm)
   {语言模型\\视觉语言模型};
 \node[box, below=0.45cm of orch, xshift=-1.4cm, minimum width=2.5cm] (perc)
-  {感知栈\\检测 / 分割 / 损伤};
+  {感知栈\\马赛克视场 / 检测 / 损伤};
 \node[box, below=0.45cm of orch, xshift=1.4cm, minimum width=2.5cm] (plan)
   {HSPM / 基线\\STMR 文字矩阵};
 \node[box, below=0.45cm of orch, xshift=4.2cm, minimum width=2.5cm] (mem)
   {语义栅格\\拓扑记忆};
 \node[box, minimum width=11.6cm, below=1.85cm of orch] (world)
-  {仿真世界：地理配准 xBD 瓦片 + 二维匀速运动学};
+  {仿真世界：Esri 底图 + 地理配准 xBD 马赛克 + 二维匀速运动学};
 \draw[arr] (op) -- (fe);
 \draw[arr] (fe) -- (orch);
 \draw[arr] (orch.south) -- (llm.north);

@@ -6,12 +6,37 @@
 验证（温度拟合）：hurricane-harvey, mexico-earthquake。
 测试：hurricane-michael, palu-tsunami。
 留出：nepal-flooding, moore-tornado, pinery-bushfire。
+视场收缩场景池另加覆盖率门槛：巡航窗口真实 xBD 覆盖 $\ge 0.80$，合格 $495/4312$ 张有地理配准的灾后瓦片（\tabref{tab:roipool}）。
+midwest-flooding 与 guatemala-volcano 因此完全退出可用 ROI 池；这一偏倚属于场景定义，不是评测后筛选。
+覆盖率门槛不改变事件不相交协议：训练/验证/测试/留出仍按事件互斥。
+
+\paragraph{视场阶梯常量。}
+传感器边长 $1024\,\mathrm{px}$，水平视场角 $60^\circ$，瓦片跨度 $512\,\mathrm{m}$。
+下限 $h_{\min}=443.405\,\mathrm{m}$（$1.0$ 瓦片，$0.50\,\mathrm{m/px}$），巡航 $h_{\mathrm{cruise}}=1330.215\,\mathrm{m}$（$3.0$ 瓦片，$1.50\,\mathrm{m/px}$），单步下降 $443.405\,\mathrm{m}$。
+实现见 \texttt{backend/fov\_ladder.py}；马赛克合成见 \texttt{backend/mosaic.py}、\texttt{backend/basemap.py}。
+默认 \texttt{MOSAIC\_VIEW=1}；\texttt{MOSAIC\_VIEW=0} 仅用于复现旧合成模糊产物，新实验不得走该路径。
+
+\paragraph{底图来源。}
+Esri World Imagery，attribution：Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community。
+缓存未命中且无网络时必须报错，不得静默返回灰图。
+Esri 影像不参与 ROI 内真值或评分。
+
+\paragraph{感知底座双轨。}
+轨 A 封装见 \texttt{backend/detectors/}，现成冠军权重的产物必须写 \texttt{leaky=true}。
+评测脚本位于 \texttt{scripts/benchmarks/}，
+结果目录为 \texttt{runs/benchmarks/detector\_backends/}
+（legacy、res34 单模型、全集成各一份 JSON）。
+轨 A 权重在官方 train+tier3 上训练，见过测试/留出事件，不得进入正式主表。
+轨 B（事件不相交重训）已完成：损伤 F1 $0.017$，与轨 A 的 $0.630$ 差距约 $97\%$ 来自事件曝光。
+在线感知默认已切换到轨 A（xView2 冠军检测后端），legacy 路径保留为可回退对照。
 
 \paragraph{预注册假设（保持）。}
 H1：温度缩放降低事件不相交测试 ECE 且不改变精度。
 H2：差分注意力相对拼接的均匀精度/校准优势。
 H3--H4：信息增益或共形触发相对无/随机/固定下降的判断增益。
 零触发回合对条件 $\Delta U$ 视为缺失，触发率报 0，不得填补成功下降。
+新观测模型构成新系统，其预注册（配置冻结、判据、留出事件）与 pilot/留出已按新协议执行；旧留出已经消费，不得重跑，也不得因其结果调节新机制。
+新系统的留出事件为 moore-tornado 与 nepal-flooding（pinery-bushfire 因覆盖率门槛下候选过少而剔除），与 pilot 事件（hurricane-michael、palu-tsunami）互斥。
 
 \paragraph{H2 结果。}
 差分注意力与拼接融合在事件不相交切分下的验证/测试 macro-F1 互有胜负（\tabref{tab:cpv2}）：
@@ -22,7 +47,7 @@ H3--H4：信息增益或共形触发相对无/随机/固定下降的判断增益
 复核发现早期版本训练日志汇报的验证集 accuracy（$\approx 0.80$）具有误导性：
 在完好类占比 66\%--79\% 的数据上，未加权交叉熵 + 按 accuracy 选 checkpoint 会系统性收敛到常数预测器，
 训练集自身 macro-F1 当时也只有 $\approx 0.22$--$0.25$（三类损伤召回接近 0），说明问题出在训练配方而非某次评测脚本的 bug。
-修复：(i) 类别加权交叉熵（训练集逐类频率倒数）；(ii) 模型选择改为验证集 macro-F1；
+修复：(i) 类别加权交叉熵（训练集逐类频率倒数）；(ii) 模型选择改为验证集宏观 F1；
 (iii) 训练收尾对 reload 后的 checkpoint 现场核验，数值与训练期间记录不一致则拒绝保存
 （见 \texttt{backend/change\_perception.py} 的 \texttt{macro\_f1\_from\_logits} / \texttt{class\_weights\_from\_records}）。
 另需记录一次排查过程中的假警报：复核者最初误用一份早期废弃的、非事件不相交的小规模数据目录
@@ -44,11 +69,17 @@ H2 对照（事件不相交+类别加权+拼接）\texttt{strict\_baseline\_seed
 协议对照（标准切分+类别加权+拼接）\texttt{standard\_baseline\_seed0.pt}：\texttt{3355700071b30f37}；
 YOLO 对照 \texttt{best.pt}：\texttt{dcd11c194c5bf44b}。
 早期未加权版本 \texttt{strict\_diff\_attention\_seed0.pt}（\texttt{724c30fadd480b43}）保留在仓库中作为对照，不再用于正文结果。
+xView2 冠军权重体积约 $5.3\,\mathrm{GB}$（四架构 $\times$ loc/cls $\times$ 3 seed），路径相对于仓库 \texttt{backend/outputs/xview2\_first/weights/}；凡使用这些权重的评测必须写 \texttt{leaky=true}。
 每次评测的 \texttt{results.json} 内嵌完整哈希、字节数与环境快照。
 
 \paragraph{复现入口。}
 数据根目录由环境变量 \texttt{XBD\_CHANGE\_ROOT}（事件不相交切分）与 \texttt{XBD\_CHANGE\_STANDARD\_ROOT}（官方标准切分）给出，不在正文写绝对路径。
+项目环境为 conda \texttt{disasterclaw}。
 \begin{verbatim}
+# 视场几何与马赛克不变量
+python -m pytest backend/tests/test_fov_ladder.py \
+  backend/tests/test_mosaic.py backend/tests/test_detectors.py
+
 # 重训损伤分类器（类别加权 + 宏观 F1 选择 + 事件不相交断言）
 python backend/change_perception.py train \
   --data-dir "$XBD_CHANGE_ROOT" --require-event-disjoint \
@@ -59,10 +90,14 @@ python backend/change_perception.py train \
 python scripts/benchmarks/eval_change_perception_v2.py \
   --out runs/benchmarks/paper_cja_v2/change_perception_v2_report.json
 
-# 全量实验
+# 检测器离线对照（轨 A 产物必须带 leaky）
+python scripts/benchmarks/eval_detector_backends.py
+
+# 全量实验（旧观测模型账本）
 bash scripts/benchmarks/run_cja_experiments.sh
 \end{verbatim}
-权重路径相对于仓库：\texttt{backend/outputs/...}。
-本地视觉语言模型：设 \texttt{VLM\_PROVIDER=qwen\_vl\_local} 与 \texttt{BASE\_MODEL=Qwen/Qwen2.5-VL-7B-Instruct}，由 Transformers 进程内直接加载本地权重（约 16\,GB，bfloat16 推理约需 20\,GB 显存），无需任何外部推理服务。
+权重路径相对于仓库 \texttt{backend/outputs/}。
+本地视觉语言模型由 Transformers 进程内加载，约 16\,GB 权重、bfloat16 推理约 20\,GB 显存，无需外部服务。
+环境变量为 \texttt{VLM\_PROVIDER} 与 \texttt{BASE\_MODEL}，默认 Qwen2.5-VL-7B。
 投稿前将本中文 LaTeX 按《航空学报》Word 模板转写；表图由 \texttt{paper\_cja/generated} 导出。
-控制台截图放入 \texttt{paper\_cja/figures/}，步骤见 \texttt{paper\_cja/SCREENSHOTS.md}。
+截图步骤见 \texttt{paper\_cja/SCREENSHOTS.md}。

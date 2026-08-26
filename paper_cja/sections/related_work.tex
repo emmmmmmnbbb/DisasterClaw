@@ -15,8 +15,10 @@ LM-Nav 则把语言模型抽地标、视觉语言模型对齐节点与图搜索�
 \paragraph{遥感变化检测与 xBD 损伤评估。}
 xBD 提供灾前/灾后配对与四级 FEMA 风格损伤标签\cite{gupta2019xbd}。
 后续变化检测工作（BIT、ChangeFormer、SNUNet 等）表明，显式建模时相差分有助于变化定位，但不自动带来校准良好的类概率\cite{chen2022bit,bandara2022changeformer,fang2022snunet}。
-xView2 优胜方案通常把建筑定位与损伤分类分开。本文只借用定位阶段作为可替换脚手架，损伤头保持双时相分类器不变，且禁止加载公开冠军权重以免泄漏。
-RescueNet 提供与 xBD 四级损伤对齐的低空无人机分割标注\cite{rahnemoonfar2023rescuenet}，本文仅用作评估域。
+xView2 优胜方案通常把建筑定位与损伤分类分开，现成冠军权重至今仍是该基准上常用的参照上界。
+这些权重在官方按瓦片划分的 train+tier3 上训练，会见过本文按事件留出的测试/holdout 灾害，因此不能直接当作事件不相交主结果。
+本文采用双轨协议：现成权重只作 leaky 诊断上界，干净主结果要求同一架构在事件不相交协议下重训（\secref{sec:classifier}）。
+在线闭环默认仍使用自训练的双时相损伤头；RescueNet 提供与 xBD 四级损伤对齐的低空无人机分割标注\cite{rahnemoonfar2023rescuenet}，本文仅用作评估域。
 
 \paragraph{主动感知与 Next-Best-View。}
 主动感知主张运动与传感联合选择\cite{bajcsy1988active}。三维探索中的 receding-horizon next-best-view 规划是航空机器人的经典工具\cite{bircher2016nbv}。

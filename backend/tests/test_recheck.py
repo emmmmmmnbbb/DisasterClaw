@@ -107,8 +107,14 @@ def test_info_gain_descend() -> None:
     print(f"[OK] info_gain_descend：远离下限={g_far} > 靠近下限={g_near_floor} > 已到下限={g_at_floor}")
 
 
+# 改动一把默认 alt_min_m 从 10 m 重标定到 443.4 m（视场=一整瓦片）。以下测试验证的是
+# 复核**逻辑**，与绝对高度尺度无关，因此按本文件既有约定显式钉住高度参数，
+# 而不是让它们随 fov_ladder 的默认值漂移。
+LEGACY_ALT = dict(alt_min_m=10.0, descend_step_m=10.0)
+
+
 def test_trigger_recheck() -> None:
-    ctl = RecheckController()
+    ctl = RecheckController(RecheckConfig(**LEGACY_ALT))
     out = ctl.assess(
         lat=LAT, lon=LON, alt=120.0, risk_level="low",
         detections=[_det("严重损伤建筑", 0.35, bbox=[70, 10, 90, 30])],
@@ -122,7 +128,7 @@ def test_trigger_recheck() -> None:
 
 
 def test_skip_when_confident() -> None:
-    ctl = RecheckController()
+    ctl = RecheckController(RecheckConfig(**LEGACY_ALT))
     out = ctl.assess(
         lat=LAT, lon=LON, alt=120.0, risk_level="high",
         detections=[_det("完全损毁建筑", 0.9)],
@@ -133,7 +139,7 @@ def test_skip_when_confident() -> None:
 
 
 def test_budget_exhausted_resolves() -> None:
-    ctl = RecheckController(RecheckConfig(max_rechecks=2))
+    ctl = RecheckController(RecheckConfig(max_rechecks=2, **LEGACY_ALT))
     kw = dict(
         lat=LAT, lon=LON, risk_level="low",
         detections=[_det("严重损伤建筑", 0.3)],
@@ -163,7 +169,7 @@ def test_altitude_floor() -> None:
 
 
 def test_improvement_resolves_confirmed() -> None:
-    ctl = RecheckController()
+    ctl = RecheckController(RecheckConfig(**LEGACY_ALT))
     # 第一次：可疑低置信 → 复核
     o1 = ctl.assess(
         lat=LAT, lon=LON, alt=120.0, risk_level="low",
@@ -222,7 +228,7 @@ def test_assess_entropy_info_gain_modes() -> None:
 
 
 def test_degraded_no_recenter() -> None:
-    ctl = RecheckController()
+    ctl = RecheckController(RecheckConfig(**LEGACY_ALT))
     out = ctl.assess(
         lat=LAT, lon=LON, alt=120.0, risk_level="low",
         detections=[_det("严重损伤建筑", 0.3, bbox=[70, 10, 90, 30])],
@@ -238,7 +244,7 @@ def test_trigger_mode_fixed_always_rechecks() -> None:
     """E11 基线 trigger_mode='fixed'：只要有可疑证据就必复核，不看不确定性数值——
     即使 risk='high' 且 conf 很高（heuristic 模式下 unc 会很低、threshold 模式会 skip），
     fixed 模式仍应触发复核。"""
-    cfg = RecheckConfig(trigger_mode="fixed")
+    cfg = RecheckConfig(trigger_mode="fixed", **LEGACY_ALT)
     ctl = RecheckController(cfg)
     out = ctl.assess(
         lat=LAT, lon=LON, alt=120.0, risk_level="high",
@@ -253,7 +259,7 @@ def test_trigger_mode_random_reproducible() -> None:
     """E11 基线 trigger_mode='random'：同一 random_seed 下行为可复现（两次独立
     controller 用相同 seed，对同一输入序列应产生完全相同的 skip/recheck 序列）。"""
     def _make_ctl() -> RecheckController:
-        return RecheckController(RecheckConfig(trigger_mode="random", random_prob=0.5, random_seed=7))
+        return RecheckController(RecheckConfig(trigger_mode="random", random_prob=0.5, random_seed=7, **LEGACY_ALT))
 
     det = _det("严重损伤建筑", 0.5, bbox=[70, 10, 90, 30])
     kinds_a = []
@@ -273,7 +279,7 @@ def test_finalize_flushes_pending_reduction() -> None:
     """回归测试（对应 E11 实测发现的 ΔU≈0 统计漏洞）：episode 在复核循环走到正式
     定论之前就结束（到达终点/步数耗尽）时，finalize() 应该把这个"未收尾"的位置
     也按最新一次观测补记进 avg_uncertainty_reduction，而不是让它从统计里消失。"""
-    ctl = RecheckController()
+    ctl = RecheckController(RecheckConfig(**LEGACY_ALT))
     # 第一次：可疑低置信 → 触发复核（此时还没到 resolve，episode 假设到这里就结束了）。
     out1 = ctl.assess(
         lat=LAT, lon=LON, alt=120.0, risk_level="low",
@@ -305,7 +311,7 @@ def test_finalize_flushes_pending_reduction() -> None:
 def test_finalize_uses_latest_observation() -> None:
     """finalize() 应该用"最新一次观测"而不是首次触发时的不确定性来算下降量——
     模拟"复核了一次、把握有所提升但还没触发 resolve 判定"的场景。"""
-    ctl = RecheckController(RecheckConfig(max_rechecks=3))
+    ctl = RecheckController(RecheckConfig(max_rechecks=3, **LEGACY_ALT))
     kw = dict(
         lat=LAT, lon=LON,
         patch_radius_m=60.0, patch_width=100, patch_height=100,
@@ -329,7 +335,7 @@ def test_finalize_uses_latest_observation() -> None:
 def test_global_budget_finalizes_latest_observation() -> None:
     """全局动作预算耗尽后仍应接收最后一次机动后的观测并正式收尾，而不是让
     app 跳过 assess()、最终拿首次观测冒充 U_after。"""
-    ctl = RecheckController(RecheckConfig(max_rechecks=3))
+    ctl = RecheckController(RecheckConfig(max_rechecks=3, **LEGACY_ALT))
     kw = dict(
         lat=LAT, lon=LON, patch_radius_m=60.0, patch_width=100, patch_height=100,
     )
@@ -352,7 +358,7 @@ def test_global_budget_finalizes_latest_observation() -> None:
 
 def test_inconclusive_is_completed() -> None:
     """未定论是完整走完预算后的正式结果，不应归到 episode 截断 pending。"""
-    ctl = RecheckController(RecheckConfig(max_rechecks=1))
+    ctl = RecheckController(RecheckConfig(max_rechecks=1, **LEGACY_ALT))
     kw = dict(
         lat=LAT, lon=LON, risk_level="low",
         detections=[_det("严重损伤建筑", 0.3)],
@@ -369,7 +375,7 @@ def test_inconclusive_is_completed() -> None:
 
 def test_zero_trigger_stats() -> None:
     """无证据 episode 应输出完整的零值字段，供 no-evidence 分层使用。"""
-    ctl = RecheckController()
+    ctl = RecheckController(RecheckConfig(**LEGACY_ALT))
     out = ctl.assess(
         lat=LAT, lon=LON, alt=120.0, risk_level="none", detections=[],
         patch_radius_m=60.0, patch_width=100, patch_height=100,
@@ -416,7 +422,7 @@ def test_conformal_set_trigger() -> None:
 def test_answer_pair_scoring_offline() -> None:
     """Agent-VQA 答案翻转/纠错/损害离线评分 (计划 7.4 / E4)。
     在线控制器不读 answer_corrected/answer_harmed，仅离线 score_answer_pairs 填充。"""
-    ctl = RecheckController()
+    ctl = RecheckController(RecheckConfig(**LEGACY_ALT))
     # 手动往 resolved_log 注入带 answer_before/after 的记录 (模拟重观测前后答案)
     ctl.resolved_log = [
         {"lat": 31.0, "lon": 121.0, "label": "完全损毁建筑", "status": "confirmed",
@@ -441,7 +447,7 @@ def test_answer_pair_scoring_offline() -> None:
 
 def test_harmed_answer_detected() -> None:
     """重观测把正确答案改错 -> answer_harmed 应被标记 (计划 E4)。"""
-    ctl = RecheckController()
+    ctl = RecheckController(RecheckConfig(**LEGACY_ALT))
     ctl.resolved_log = [
         {"lat": 31.0, "lon": 121.0, "label": "x", "status": "confirmed",
          "reduction": 0.1, "rechecks": 1,

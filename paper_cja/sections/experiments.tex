@@ -1,13 +1,19 @@
 \section{实验}
 \label{sec:experiments}
 
-实验按自下而上顺序报告：先分类器能力核查，再有效 GSD 与观测分配，再功效与基准，最后 oracle 阶梯与端到端现实检验。
+实验按自下而上顺序报告：先分类器能力核查，再旧观测模型上的有效 GSD 与观测分配，再新几何的落地验证与 leaky 感知诊断，再功效与基准，最后 oracle 阶梯与端到端现实检验。
 不把定位提升写成导航贡献，也不把 \semSR 当作严格成功。
-评价指标与可识别性判据见 \secref{sec:metrics}：若巡航档与原生档几乎不翻转，则预算分配策略不可识别。
+评价指标与可识别性判据见 \secref{sec:metrics}。
+
+\paragraph{两套观测模型不得混账。}
+\secref{sec:x1train}--\secref{sec:x2} 与 \secref{sec:x3x6} 的数字全部在旧观测模型上获得：巡航 $30\,\mathrm{m}$、下限 $10\,\mathrm{m}$、对同一裁块做合成高斯模糊，分类裁块约 $96\times96$。
+它们作为该构造上的历史记录保留，并用于反事实排除。
+\secref{sec:mosaic} 报告视场收缩模型的几何落地、三方检测器对照与可识别性前置检查，以及新底座上的 Agent-VQA pilot。
+旧 Agent-VQA 留出（分支 C）同属旧系统，不能充当新系统的验证集。
 
 \subsection{训练/验证曲线、类别加权与基线对标}
 \label{sec:x1train}
-审稿意见 C1 指出：本文此前从未报告损伤分类器在训练/验证集上的逐类表现，
+此前从未报告损伤分类器在训练/验证集上的逐类表现，
 因此``损伤头先失败''这一归因无法与``训练本身失败（数据/标签 bug）''区分。
 我们据此补做三组对照实验，结果汇总于 \tabref{tab:cpv2} 与 \tabref{tab:traincurve}。
 
@@ -23,14 +29,14 @@
 测试集 macro-F1 从 $0.220$ 升至 $0.276$，``损毁''类召回从 $0.007$ 恢复到 $0.164$；
 但``轻微损伤''与``严重损伤''召回仍接近 0。加权训练有效但不充分，核心瓶颈判断不变。
 
-\paragraph{与标准（非事件不相交）切分对照，拆分协议难度与架构差距（C2）。}
+\paragraph{与标准（非事件不相交）切分对照，拆分协议难度与架构差距。}
 本文刻意使用比公开 xBD 基线更严格的事件级切分（不同灾害事件，见 \secref{sec:x1train} 前言），
 但由此产生的 macro-F1 $\approx 0.7$（文献常见数值）与本文 $\approx 0.28$ 之间的差距，
 可能来自(i)评测协议更难，也可能来自(ii)本文架构/训练配方偏简单（轻量 ResNet18 双塔、8 epoch、无集成）。
 我们用同一架构在\textbf{官方标准切分}（图像级随机切分，训练/测试可共享灾害事件，与文献协议一致）上重训一次以分离两个因素：
 测试集 macro-F1 升至 $0.308$（\tabref{tab:cpv2} 末行）——比事件不相交高约 $0.03$--$0.04$，但仍远低于文献的 $\sim 0.7$。
-据此，协议难度只能解释差距的一小部分（$\lesssim 0.04$），大部分差距（$0.31\to0.7$）应归因于架构/训练规模的局限，
-应作为本文的诚实局限性陈述（\secref{sec:limitations}），而不是继续在本文内追赶公开基线的理由——
+据此，协议难度只能解释差距的一小部分（$\lesssim 0.04$）。
+剩余差距的归因由 \secref{sec:mosaic} 的三方对照给出：同一 SOTA 架构事件不相交重训（轨 B）的损伤 F1 仅 $0.017$，与加载见过评测事件的现成权重 $0.630$ 差距约 $97\%$ 来自事件曝光——即架构/训练规模不是充分解释，跨事件泛化才是瓶颈。
 直接借用公开预训练权重会因其训练集覆盖本文全部 val/test/holdout 事件而构成泄漏（见 \secref{sec:related}、附录）。
 
 \paragraph{H2：差分注意力与拼接融合无统计显著差异。}
@@ -40,21 +46,25 @@
 
 \begin{table}[htbp]
 \centering
+\small
+\setlength{\tabcolsep}{3pt}
 \caption{新旧 checkpoint、两种融合架构与两种切分协议的 macro-F1 / 逐类召回对照。}
 \label{tab:cpv2}
-\input{generated/change_perception_v2_table}
+\resizebox{\linewidth}{!}{\input{generated/change_perception_v2_table}}
 \end{table}
 
 \begin{table}[htbp]
 \centering
-\caption{类别加权训练下的逐 epoch train/val macro-F1（C1 证据：训练内有信号、验证集不改善）。}
+\small
+\setlength{\tabcolsep}{3pt}
+\caption{类别加权训练下的逐 epoch train/val macro-F1（训练内有信号、验证集不改善）。}
 \label{tab:traincurve}
-\input{generated/training_curve_table}
+\resizebox{\linewidth}{!}{\input{generated/training_curve_table}}
 \end{table}
 
-\subsection{有效 GSD 与分类质量}
+\subsection{旧观测模型：有效 GSD 与分类质量}
 \label{sec:x1}
-\tabref{tab:gsd} 给出重训后（类别加权、差分注意力）checkpoint 在巡航档到原生档的精度、macro-F1 与 ECE（$n=400$，事件不相交测试集）。
+\tabref{tab:gsd} 给出重训后（类别加权、差分注意力）checkpoint 在旧合成模糊阶梯上、巡航档到原生档的精度、macro-F1 与 ECE（$n=400$，事件不相交测试集）。
 原生档预测为``完好''$381$、``损毁''$19$，巡航--原生预测翻转 $7$ 次（\tabref{tab:gsdcls}）。
 配对 bootstrap 下原生档相对巡航档的精度差均值为 $-0.0025$，95\% 置信区间 $[-0.0125,\,0.0075]$ \textbf{含 0}，验收仍为 \texttt{accept\_native\_better=false}。
 macro-F1 在五档间为 $0.273$--$0.286$，较未加权版本的 $0.184$ 平坦值有提升但仍以完好类为主。
@@ -62,10 +72,11 @@ macro-F1 在五档间为 $0.273$--$0.286$，较未加权版本的 $0.184$ 平坦
 为排除``$4\times$ 降质过弱''，另将尺度加到 $8\times$ 与 $16\times$（有效 GSD $4\,\mathrm{m}$ 与 $8\,\mathrm{m}$）：
 预测分布与翻转次数无实质变化（单元测试确认降质本身会改变高频像素，因此不是空操作）。
 当前损伤头对纹理的敏感度不足以支撑跨 GSD 的信息增益估计，但方向已不再反常——见图 \ref{fig:gsd}。
+这些测量描述的是合成模糊阶梯，不是视场收缩阶梯。
 
 \begin{table}[htbp]
 \centering
-\caption{事件不相交测试裁块上的高度--GSD 阶梯（$n=400$，类别加权 checkpoint）。}
+\caption{旧观测模型（合成模糊阶梯）上的高度--GSD 测量（$n=400$，类别加权 checkpoint）。该表不描述视场收缩模型。}
 \label{tab:gsd}
 \input{generated/gsd_ladder_table}
 \end{table}
@@ -80,13 +91,13 @@ macro-F1 在五档间为 $0.273$--$0.286$，较未加权版本的 $0.184$ 平坦
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.72\linewidth]{generated/gsd_ladder.pdf}
-\caption{有效 GSD 与 macro-F1 / ECE。macro-F1 大致平坦；平均熵随 GSD 变粗\textbf{单调上升}——
+\caption{旧合成阶梯上有效 GSD 与 macro-F1 / ECE。macro-F1 大致平坦；平均熵随 GSD 变粗\textbf{单调上升}——
 方向与``下降应降低不确定性''的假设一致（未加权版本曾观察到方向相反，见附录变更记录），
 但幅度很小，仍不足以支撑稳健的跨 GSD 触发决策。}
 \label{fig:gsd}
 \end{figure}
 
-\subsection{预算受限观测分配}
+\subsection{旧观测模型：预算受限观测分配}
 \label{sec:x2}
 设定：每样本平均允许 $B\in\{0,0.1,0.25,0.5,1.0\}$ 次原生档观测。
 策略为不下降、随机、未校准熵、校准熵、条件期望熵、共形集合以及已知标签是否翻转的 oracle。
@@ -95,11 +106,12 @@ macro-F1 在五档间为 $0.273$--$0.286$，较未加权版本的 $0.184$ 平坦
 oracle 参照与不下降之间的差距仅 $0.0094$，\texttt{accept\_calibrated\_better=false} 依旧成立。
 可分配信息量随分类器改善而略有增加（$n_{\mathrm{flip}}$ 从 1 到 7），但幅度仍不足以让任何触发策略在宏观 F1 上跑赢随机或不下降。
 表中 ECE 出现约两倍分离（不下降 $0.086$，未校准/校准熵约 $0.038$）：这与温度缩放不改变 $\arg\max$ 相符，说明机制作用在概率而非标签；宏观 F1 平坦不能单独写成``校准无用''。
-这与 \secref{sec:x1train} 的判断一致：分类器改善方向正确，但当前规模不足以让下降--居中动作产生可辨识的\textbf{定类}收益。
+这与 \secref{sec:x1train} 的判断一致：分类器改善方向正确，但在旧构造与当前分类器规模下，下降--居中动作尚未产生可辨识的\textbf{定类}收益。
 
 \begin{table}[htbp]
 \centering
-\caption{平均每样本额外观测 $B=0.25$ 时的损伤判定（$n=400$，类别加权 checkpoint，$n_{\mathrm{flip}}=7$）。}
+\caption{旧观测模型上，平均每样本额外观测 $B=0.25$ 时的损伤判定（$n=400$，类别加权 checkpoint，$n_{\mathrm{flip}}=7$）。
+末行是逐样本翻转参照，不是宏观 F1 上界。}
 \label{tab:budget}
 \input{generated/budget_table}
 \end{table}
@@ -107,19 +119,84 @@ oracle 参照与不下降之间的差距仅 $0.0094$，\texttt{accept\_calibrate
 \begin{figure}[htbp]
 \centering
 \includegraphics[width=0.78\linewidth]{generated/budget_allocation.pdf}
-\caption{额外观测预算与损伤宏观 F1。各策略曲线高度重叠；oracle 曲线是逐样本翻转参照而非宏观 F1 上界。}
+\caption{额外观测预算与损伤宏观 F1（旧合成阶梯）。各策略曲线高度重叠；oracle 曲线是逐样本翻转参照而非宏观 F1 上界。}
 \label{fig:budget}
 \end{figure}
 
 超参 $\tau\in\{0.3,0.4,0.5,0.6,0.7\}$ 只改变下降次数，macro-F1 基本不变，敏感性分析在当前分类器规模下仍缺乏信息量。
 
+\subsection{视场收缩观测的几何落地与 leaky 感知诊断}
+\label{sec:mosaic}
+本节只报告已经完成、可复核的落地结果，不把它们写成新系统的任务增益。
+
+\paragraph{几何不变量。}
+单元测试锁定：下限高度 $443.405\,\mathrm{m}$ 渲染出恰好 $1.000$ 张瓦片、有效 GSD 恰好 $0.500000\,\mathrm{m/px}$；
+巡航 $1330.215\,\mathrm{m}$ 对应 $3.0$ 张瓦片、$1.50\,\mathrm{m/px}$。
+pre/post 使用严格相同的地理窗口；ROI 覆盖不足时显式失败；nodata 不计入 xBD 覆盖率。
+当前 ROI 索引覆盖 $4312$ 个有地理配准的灾后瓦片，其中巡航覆盖率 $\ge 0.80$ 的为 $495$ 个（\tabref{tab:roipool}）。
+
+\paragraph{三档端到端样例。}
+在 \texttt{hurricane-michael\_00000034} 上，默认马赛克路径生成三档观测（\tabref{tab:mosaicobs}）。
+检测数可由对应 \texttt{p2b\_*\_det.json} 复核。
+建筑密度跨三档大致一致（约 $209$--$278/\mathrm{km}^2$），与``降高收缩视场、提高 ROI 单位像素数''的几何行为相符。
+暖缓存下巡航一次约 $8.3\,\mathrm{s}$，未达到预先设定的 $2\,\mathrm{s}$/次闭环门槛；
+延迟主要来自原生 pre 渲染与逐框双时相分类。ROI 内筛选已落地（检测框只保留中心落在 ROI 内的部分，密集瓦片从 $3500$ 框降到约 $70$ 框），但 pre 原生渲染与批处理仍未优化。
+
+\begin{table}[htbp]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\caption{视场收缩模型的三档端到端样例（\texttt{hurricane-michael\_00000034}，在线 legacy 检测器）。
+检测数来自产物 JSON；覆盖率、$\mathrm{pre\_scale}$ 与耗时来自执行记录。GSD 单位为 m/px，耗时为暖缓存秒。}
+\label{tab:mosaicobs}
+\input{generated/mosaic_obs_table}
+\end{table}
+
+\paragraph{三方检测器对照：损伤分级坍缩的根源是跨事件泛化。}
+在事件不相交测试事件（hurricane-michael + palu-tsunami，$30$ 张瓦片）上对照三个感知底座（\tabref{tab:detbe}）：
+自训练轻量头、事件不相交重训的 xView2 冠军架构、以及加载见过评测事件的现成冠军权重。
+定位能力三者接近（loc F1 $0.807$ / $0.832$ / $0.853$），差距几乎全部在损伤分级：
+前两者对轻微/严重损伤召回接近 $0$（损伤 F1 $0.000$ / $0.017$），现成权重为 $0.630$。
+同一架构、同一评测，只有数据协议不同——差距约 $97\%$ 来自事件曝光、约 $3\%$ 来自架构。
+这直接回答了``剩余差距是否来自架构''：跨事件泛化是瓶颈，架构与裁块尺寸不是充分解释。
+现成权重因此只作公开披露的感知底座（leaky），不进入正式对照主表；单模型 overall $0.697$ 略低于 $0.7$ 门槛，与文献 $0.803$ 的官方混合划分口径不同，不作对标。
+
+\begin{table}[htbp]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\caption{检测器离线对照（测试事件 $30$ 张瓦片）。
+标记 $^\dagger$ 的两列必须读作 \texttt{leaky} 诊断上界，不得进入正式对照主表，也不得与 legacy 的差值单独归因于架构。
+damage F1 为四类调和平均。}
+\label{tab:detbe}
+\resizebox{\linewidth}{!}{\input{generated/detector_backend_table}}
+\end{table}
+
+\paragraph{可识别性前置检查与 Agent-VQA pilot。}
+新观测模型与 leaky 底座上的前置检查（$48$ 个 ROI、$7695$ 栋建筑）测得逐建筑 $n_{\mathrm{flip}}=733$、$n_{\mathrm{correctable}}=375$，但题目层面 $n_{\mathrm{correctable}}=13$、$n_{\mathrm{harmful}}=10$——降高确实改变证据，但翻转有得有失，判定为 MARGINAL。
+Agent-VQA pilot（test split，$40$ 题）确认动作通道接通：固定下降每问触发 2 次（共 $78$ 次），熵触发 $11$ 次、跳过 $33$ 次。
+最终准确率上重观测策略（$0.30$）较不重观测的搜索基线（$0.25$）高 $5$ 个百分点，但只是 $2$ 道题，$n=40$ 下不显著，且固定下降纠正 $4$ 题、破坏 $2$ 题。
+结论落在预注册的分支 C：机制可识别、效应小且不单调，不足以排序候选策略。
+
+\paragraph{留出事件复现。}
+留出事件（moore-tornado + nepal-flooding，$40$ 题，与 pilot 事件互斥）上重复同一套配置：
+不重观测的搜索基线准确率 $0.425$，固定下降 $0.45$（每问触发 2 次、共 $79$ 次，纠正 $4$ 题、破坏 $2$ 题），熵触发 $0.40$（仅触发 $3$ 次、跳过 $38$ 次，无纠正）。
+与 pilot 一致：效应约 $1$ 题、不单调，且事件间方差（moore-tornado $0.60$ vs.\ nepal-flooding $0.25$）远大于任何策略差。
+两条互斥事件上的证据共同锁定分支 C：机制可识别、效应小、不可排序候选策略。
+
+\paragraph{仍未完成的检查。}
+(i) 只看合成图能否预测 ROI 或影像来源的泄漏体检尚未运行，不能声称 Esri 与 xBD 的源差异已被实验排除；
+(ii) 熵表尚未按新阶梯重拟合，条件期望熵策略当前回退到高度比启发式。
+这两项不影响本文结论，但限制对触发策略内部机制的强声明。
+
 \subsection{功效分析与事件隔离基准}
 \label{sec:x4x5}
-旧设计 40 题 $\times$ 3 种子、6 策略 Holm 校正下，最小可检测严格 SR 约为 9.6 个百分点（基线 SR$=0.05$、功效 $0.8$），远大于 plausible 的 2--5 个百分点效应，故``本次不显著''在设计上接近``永不显著''。
+旧设计 40 题 $\times$ 3 种子、6 策略 Holm 校正下，最小可检测严格 SR 差值约为 9.6 个百分点（基线 SR$=0.05$、功效 $0.8$），远大于 plausible 的 2--5 个百分点效应，故``本次不显著''在设计上接近``永不显著''。
 功效 0.8 检测 5 个百分点增益约需每策略 444 题。
 新基准为 200 题，仍欠功效约 $2.2$ 倍，故后文端到端各策略 \SR 同质应读作\textbf{欠功效下的非结果}，而不是已经证伪了 2--5 个百分点的效应。
 新 evidence-rich 草稿仅含 test+holdout 事件（hurricane-michael、palu-tsunami、moore-tornado、nepal-flooding、pinery-bushfire），200 题中 easy/medium/hard 为 75/70/55，含 33 条多地标；审核字段为``模型辅助审核 + 作者抽查''，生成脚本对 train/val 事件断言失败。
-在损伤头召回未恢复前，扩大题库不能单独挽救 X2。
+该题库仍为 schema \texttt{agent-vqa/1.1}，起始位姿与空间真值仍相对旧巡航半径，不能代替计划中的 ROI-scoped v2.0 题库。
+在新几何上的可识别性前置检查通过之前，扩大题库不能单独挽救观测分配实验。
 
 \begin{table}[htbp]
 \centering
@@ -154,7 +231,7 @@ FloodNet 因只有淹没/未淹没二值标签且与四级损伤不对齐，不�
 \item E1 与 E11 使用同一 evidence-rich 题库；在复检从未触发时，B1--B3 与六策略轨迹级聚合相同是预期现象，不是串台。
 \item LLM/VLM 不可达时，分层规划对无方向先验题每步默认向北，$12\times 90\,\mathrm{m}$ 量级位移与平均 NE $587.6\,\mathrm{m}$ 相符。已改为螺旋搜索，单测验证连续四步不再恒为北。
 \item \textbf{零提议根因（第二处独立缺陷）}：U-Net 定位器推理时把任意输入 resize 到训练尺寸，$256\,\mathrm{px}$ 机载视场被上采样后建筑尺度偏离训练分布，提议塌缩为 0——同一权重在完整 $1024\,\mathrm{px}$ 瓦片上产生 95 个提议，在 256 视场上为 0。
-修复为：对灾前底图整瓦片做一次原生分辨率定位（进程内缓存），再把落进当前视场的框平移到视场坐标；且灾前底图是离线卫星产品，其分辨率与无人机当前高度无关，不再随 GSD 阶梯降质，只有灾后实时观测降质。
+修复为：对灾前底图整瓦片做一次原生分辨率定位（进程内缓存），再把落进当前视场的框平移到视场坐标；且灾前底图是离线卫星产品，其分辨率与无人机当前高度无关，不再随观测阶梯降质，只有灾后实时观测随视场重采样。
 修复后单题 trace 每步产生 2--10 个建筑提议、损伤分类器全部被调用（此前全程为 0），证据链路首次完整执行。
 \item 修复后损伤证据以``完好''为主：分类器对少数``损毁''案例已有一定命中（\secref{sec:x1train}），但``轻微/严重损伤''证据仍几乎不出现，与 \secref{sec:x1} 的离线结论闭环——瓶颈不在导航或定位，在损伤头对中间损伤等级的召回。
 \item \textbf{VLM 恢复与混合指认验证}：视觉语言模型改为进程内 Transformers 直接加载 Qwen2.5-VL-7B（本地权重、离线可复现，不依赖外部推理服务），混合指认路径（检测器优先、VLM 兜底）真实生效。
@@ -165,7 +242,7 @@ FloodNet 因只有淹没/未淹没二值标签且与四级损伤不对齐，不�
 \subsection{Oracle 阶梯与端到端现实检验}
 \label{sec:x3x6}
 在全部修复后的栈上，于事件隔离基准（200 题）重跑：(i) oracle 阶梯 L0--L3（\tabref{tab:oracle}），交叉解耦导航与指认；(ii) 主消融 B0--B3 与复检策略族、GPS 定位扰动（$\sigma\in\{2,5,10\}\,\mathrm{m}$）及强制退化几何套件（\tabref{tab:e2e}）。
-解释时须注意：在损伤头塌缩的前提下，任何配置的损伤证据与复检触发都受同一上游约束。
+解释时须注意：这些数字属于旧观测模型与旧题库；在损伤头塌缩的前提下，任何配置的损伤证据与复检触发都受同一上游约束。
 
 \paragraph{L2 是 oracle 初始定位，不是 oracle 导航。}
 L2 的实现是回合开始即把无人机放到目标正上方，指认模块此后仍照常运行、仍可将其重新拉离目标——
@@ -184,6 +261,7 @@ oracle 阶梯给出层间归因：仅替换指认（L1）即把严格 SR 从 $0.
 五种复检策略（随机、固定、校准熵、条件期望熵、conformal）SR 完全相同（$0.08$），200 题中触发 0--3 次：
 损伤证据几乎不存在时，任何触发准则都退化为``从不触发''。
 这与 \secref{sec:x2} 的离线结论在端到端层面闭环——不是复核机制失败，而是它从未获得可复核的输入。
+新观测模型与 leaky 底座上，前置检查测得逐建筑翻转 $733$，但题目层面效应小且不单调（\secref{sec:mosaic}）：局面从``不可测''部分推进为``可测但不可排序''，机制层面的结论不变。
 
 \paragraph{几何扰动不是当前瓶颈；强制退化几何下 SR 显著更低，但样本量不足以单独立因果论证。}
 GPS 起点扰动 $\sigma$ 从 0 增至 $10\,\mathrm{m}$，SR 在 $0.065$--$0.095$ 间非单调波动，量级远小于指认噪声，几何鲁棒性尚未成为可观测约束。
@@ -195,15 +273,19 @@ Fisher 精确检验显示该组（$k=\DegradedFisherDegK{}/n=\DegradedFisherDegN
 
 \begin{table}[htbp]
 \centering
-\caption{Oracle 阶梯：导航与指认逐层替换为 oracle 后的到达能力（事件隔离基准，$n=200$）。}
+\small
+\setlength{\tabcolsep}{3pt}
+\caption{Oracle 阶梯：导航与指认逐层替换为 oracle 后的到达能力（旧观测模型，事件隔离基准，$n=200$）。}
 \label{tab:oracle}
-\input{generated/oracle_table}
+\resizebox{\linewidth}{!}{\input{generated/oracle_table}}
 \end{table}
 
 \begin{table}[htbp]
 \centering
-\caption{端到端主消融与扰动套件（事件隔离基准）。\SR 附 Wilson 95\% 置信区间。
+\small
+\setlength{\tabcolsep}{3pt}
+\caption{端到端主消融与扰动套件（旧观测模型，事件隔离基准）。\SR 附 Wilson 95\% 置信区间。
 固定下降策略触发次数远小于回合数，因为触发仍受上游``存在损伤证据''门控。}
 \label{tab:e2e}
-\input{generated/e2e_table}
+\resizebox{\linewidth}{!}{\input{generated/e2e_table}}
 \end{table}

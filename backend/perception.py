@@ -27,6 +27,7 @@ from typing import Any, Optional
 
 from PIL import Image
 
+import fov_ladder
 import xbd_store
 from xbd_map import geo_to_pixel
 
@@ -76,6 +77,20 @@ if not _raw_output_dir.is_absolute():
 PERCEPTION_OUTPUT_DIR = _raw_output_dir
 PERCEPTION_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+# 是否落盘原始图片（patch / pre / seg mask / seg overlay / det 可视化）。
+# 评测/批量跑设为 0：图片用固定名覆盖，磁盘占用有界，只保留文字结果（det.json /
+# seg_stats.json / scene_text）。前端交互设为 1 保留每次观测的图。
+PERCEPTION_SAVE_IMAGES = os.getenv("PERCEPTION_SAVE_IMAGES", "1").strip().lower() in {
+    "1", "true", "yes", "on",
+}
+
+
+def _art_path(stem: str, suffix: str = "", ext: str = "png") -> Path:
+    """图片产物路径。save_images=0 时用固定名覆盖（磁盘有界），否则按 stem 唯一。"""
+    if PERCEPTION_SAVE_IMAGES:
+        return PERCEPTION_OUTPUT_DIR / f"{stem}{suffix}.{ext}"
+    return PERCEPTION_OUTPUT_DIR / f"_latest{suffix}.{ext}"
+
 PERCEPTION_DEVICE = os.getenv("PERCEPTION_DEVICE", "cuda")
 PERCEPTION_VIEW_ALT_FACTOR = float(os.getenv("PERCEPTION_VIEW_ALT_FACTOR", "2.0"))
 PERCEPTION_MIN_RADIUS_M = float(os.getenv("PERCEPTION_MIN_RADIUS_M", "20"))
@@ -101,6 +116,52 @@ _ZH_TO_CHANGE_CLASS = {
 _CHANGE_CLASS_TO_ZH = {v: k for k, v in _ZH_TO_CHANGE_CLASS.items()}
 
 GSD_LADDER = os.getenv("GSD_LADDER", "1").strip().lower() in {"1", "true", "yes", "on"}
+
+# 观测模型：mosaic_fov（改动一，默认）= 视场随高度收缩、无人工模糊；
+# legacy_crop = 旧的单瓦片裁块 + 合成高斯模糊阶梯，仅用于复现旧产物。
+MOSAIC_VIEW = os.getenv("MOSAIC_VIEW", "1").strip().lower() in {"1", "true", "yes", "on"}
+
+_MOSAIC = None
+_MOSAIC_LOCK = threading.Lock()
+
+
+def _get_mosaic():
+    """进程级 TileMosaic 单例，从 xbd_store 已缓存的 manifest 构造。"""
+    global _MOSAIC
+    if _MOSAIC is not None:
+        return _MOSAIC
+    with _MOSAIC_LOCK:
+        if _MOSAIC is None:
+            manifest, _ = xbd_store.load_cached()
+            if not manifest:
+                return None
+            import mosaic as _mosaic_mod
+
+            _MOSAIC = _mosaic_mod.from_manifest(manifest)
+    return _MOSAIC
+
+# 检测后端。legacy = 现有 BUILDING_PROPOSER 路径（unet/yolo + change_perception）；
+# xview2_first / xview2_eventdisjoint = detectors 包（双时相损伤分类，
+# 一次性给出定位 + 四类损伤概率，leaky 状态见 detectors 各模块 docstring）。
+DETECTOR_BACKEND = os.getenv("DETECTOR_BACKEND", "legacy").strip().lower()
+_BACKEND_ACTIVE = DETECTOR_BACKEND not in {"legacy", "legacy_unet", "unet", ""}
+
+_DETECTOR = None
+_DETECTOR_LOCK = threading.Lock()
+
+
+def _get_detector():
+    """进程级检测后端单例（仅 DETECTOR_BACKEND 非 legacy 时使用）。"""
+    global _DETECTOR
+    if _DETECTOR is not None:
+        return _DETECTOR
+    with _DETECTOR_LOCK:
+        if _DETECTOR is None:
+            from detectors import get_detector
+
+            _DETECTOR = get_detector(DETECTOR_BACKEND, device=PERCEPTION_DEVICE)
+    return _DETECTOR
+
 _EVIDENCE_ZH = {"轻微损伤建筑", "严重损伤建筑", "完全损毁建筑", "水池/积水区域"}
 
 # 检测器 raw class_name → 中文标签。兼容两套权重：
@@ -254,6 +315,35 @@ def _lazy_change_perception():
 _RISK_LEVEL_ORDER = {"none": 0, "low": 1, "moderate": 2, "high": 3}
 
 
+def _nms_boxes(dets: list[dict], iou_thr: float = 0.55) -> list[dict]:
+    """按置信度贪心 NMS。马赛克里相邻 xBD 瓦片有重叠，同一栋建筑会被
+    多张 pre 瓦片各提议一次，必须去重否则 count 类问题会系统性高估。"""
+    if len(dets) <= 1:
+        return list(dets)
+    order = sorted(dets, key=lambda d: -float(d.get("conf", 0.0)))
+    keep: list[dict] = []
+    for d in order:
+        x1, y1, x2, y2 = [float(v) for v in d["bbox_xyxy"]]
+        area = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+        dup = False
+        for k in keep:
+            kx1, ky1, kx2, ky2 = [float(v) for v in k["bbox_xyxy"]]
+            ix1, iy1 = max(x1, kx1), max(y1, ky1)
+            ix2, iy2 = min(x2, kx2), min(y2, ky2)
+            iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+            inter = iw * ih
+            if inter <= 0:
+                continue
+            karea = max(0.0, kx2 - kx1) * max(0.0, ky2 - ky1)
+            union = area + karea - inter
+            if union > 0 and inter / union >= iou_thr:
+                dup = True
+                break
+        if not dup:
+            keep.append(d)
+    return keep
+
+
 @dataclass
 class PerceptionResult:
     patch_id: str
@@ -311,6 +401,9 @@ class DisasterPerception:
     def is_available(self) -> bool:
         if self._segformer is None:
             return False
+        if _BACKEND_ACTIVE:
+            det = _get_detector()
+            return det is not None and det.is_available()
         if BUILDING_PROPOSER == "unet":
             return self._localizer is not None
         return self._yolo is not None
@@ -364,7 +457,12 @@ class DisasterPerception:
             if PERCEPTION_DEVICE.startswith("cuda:"):
                 device_arg = PERCEPTION_DEVICE.split(":", 1)[1]
 
-            if BUILDING_PROPOSER == "unet":
+            if _BACKEND_ACTIVE:
+                # 检测由 detectors 后端负责（懒加载，见 _detect_with_backend）。
+                self._localizer = None
+                self._yolo = None
+                logger.info("[Perception] detector backend: %s", DETECTOR_BACKEND)
+            elif BUILDING_PROPOSER == "unet":
                 loc_mod = _lazy_building_localization()
                 if loc_mod is None:
                     raise RuntimeError(
@@ -434,6 +532,103 @@ class DisasterPerception:
         if not paired_id:
             return None
         return self._resolve_tile_image_path({"tile_id": paired_id})
+
+    def _render_uav_view(
+        self,
+        lat: float,
+        lon: float,
+        alt: float,
+        active_tile: dict,
+        patch_id: str,
+    ) -> tuple[Path, int, int, float, bool, str, Optional[Path], dict]:
+        """按 (lat, lon, alt) 从 [Esri 背景 + xBD 瓦片] 合成底图上渲染观测视场。
+
+        返回 (patch_path, w, h, radius_m, degraded, degraded_reason, pre_patch_path, meta)
+
+        与旧 `_crop_uav_view` 的本质区别（计划 §2，闭环 review2 B2）：
+          - 视场足迹由 `fov_ladder` 的传感器几何决定，随高度**严格收缩**；
+            旧实现受 PERCEPTION_MIN_PATCH_PX 下限钳制，20 m→10 m 视场完全不变。
+          - 分辨率损失来自真实下采样比（宽足迹重采样到固定 1024 px），
+            **不再有任何人工高斯模糊**。
+          - 下限高度视场 = 恰好一整张瓦片 = 原生 0.5 m/px，信息天花板是推导出来的。
+        """
+        mo = _get_mosaic()
+        if mo is None:
+            raise RuntimeError(
+                "mosaic 不可用：manifest 未加载或 xbd_store 无缓存。"
+                "设 MOSAIC_VIEW=0 可回退旧裁块路径（仅用于复现旧产物）。"
+            )
+
+        alt_c = fov_ladder.clamp_alt(alt)
+        degraded = False
+        degraded_reason = ""
+        if abs(alt_c - float(alt)) > 1e-6:
+            degraded = True
+            degraded_reason = (
+                f"altitude {alt:.1f} m clamped to ladder range "
+                f"[{fov_ladder.alt_min_m():.1f}, {fov_ladder.alt_cruise_m():.1f}] m"
+            )
+
+        roi_tile_id = (active_tile or {}).get("tile_id") or ""
+        # 飞行途中 ROI 可能不在视场中心甚至部分出框，因此这里不强制 ROI 覆盖；
+        # ROI 必须 100% 真实 xBD 这条硬约束在题库生成阶段校验（计划 §2.5-3）。
+        patch, meta = mo.render_for_alt(
+            center_lat=lat, center_lon=lon, alt_m=alt_c,
+            stage="post", out_px=fov_ladder.SENSOR_PX,
+            roi_tile_id=roi_tile_id, enforce_roi=False,
+        )
+
+        if meta.xbd_fraction <= 0.0:
+            degraded = True
+            degraded_reason = (
+                f"UAV position (lat={lat:.6f}, lon={lon:.6f}) has no xBD post coverage; "
+                "view is basemap-only context."
+            )
+
+        patch_path = _art_path(patch_id)
+        patch.save(patch_path, "PNG")
+
+        # pre 时相：同一地理窗口，但**保持原生 GSD**，不随高度降质。
+        #
+        # 这一点是有意的科学选择：灾前影像是地面站已归档的卫星产品，其分辨率与
+        # UAV 当前高度无关。若让 pre 也随高度降质，则「降高」会同时恢复 pre 通道的
+        # 分辨率 —— 那正是 review2 B2 批评的「撤销你自己刚加的降质」的翻版，
+        # 只是换到了参考通道上。所以 post 随高度降质、pre 恒为原生。
+        pre_patch_path: Optional[Path] = None
+        pre_scale = 1.0
+        need_pre = _BACKEND_ACTIVE or BUILDING_PROPOSER == "unet" or VLN_CHANGE_PERCEPTION
+        if need_pre:
+            try:
+                pre_px = int(min(4096, max(
+                    fov_ladder.SENSOR_PX,
+                    round(meta.span_m / fov_ladder.NATIVE_GSD_M),
+                )))
+                pre_img, pre_meta = mo.render_for_alt(
+                    center_lat=lat, center_lon=lon, alt_m=alt_c,
+                    stage="pre", out_px=pre_px, enforce_roi=False,
+                )
+                if pre_meta.window != meta.window:
+                    raise RuntimeError("pre/post 窗口不一致，双时相配准被破坏")
+                pre_patch_path = _art_path(patch_id, "_pre")
+                pre_img.save(pre_patch_path, "PNG")
+                pre_scale = float(pre_px) / float(fov_ladder.SENSOR_PX)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[Perception] pre 视场渲染失败: %s", exc)
+
+        radius_m = float(meta.span_m) * 0.5
+        out_meta = {
+            **meta.to_dict(),
+            "native_gsd_m": fov_ladder.NATIVE_GSD_M,
+            "effective_gsd_m": meta.eff_gsd_m,
+            "observation_model": "mosaic_fov",
+            "gsd_ladder": False,
+            "pre_scale": pre_scale,
+            "pre_gsd_m": fov_ladder.NATIVE_GSD_M,
+        }
+        return (
+            patch_path, patch.width, patch.height, radius_m,
+            degraded, degraded_reason, pre_patch_path, out_meta,
+        )
 
     def _crop_uav_view(
         self,
@@ -549,13 +744,16 @@ class DisasterPerception:
         gsd_scale = 1.0
         effective_gsd = native_gsd
         if GSD_LADDER:
+            # 仅 legacy_crop 观测模型使用。合成高斯模糊阶梯是 review2 B2 的
+            # 批评对象（「下降等于撤销你自己刚加的模糊」），已被 mosaic_fov
+            # 取代；此分支只为复现旧产物保留，不得用于新实验。
             from gsd_ladder import degrade_to_scale, effective_gsd_m, effective_scale
 
             gsd_scale = effective_scale(alt)
             effective_gsd = effective_gsd_m(alt, native_gsd_m=native_gsd)
             patch = degrade_to_scale(patch, gsd_scale)
 
-        patch_path = PERCEPTION_OUTPUT_DIR / f"{patch_id}.png"
+        patch_path = _art_path(patch_id)
         patch.save(patch_path, "PNG")
 
         # 双时相 / U-Net 定位都需要配准 pre patch：U-Net 在 pre 上定位，
@@ -574,7 +772,7 @@ class DisasterPerception:
                         pre_img = pre_im.convert("RGB")
                     if pre_img.size == (W, H):
                         pre_patch = pre_img.crop(crop_box)
-                        pre_patch_path = PERCEPTION_OUTPUT_DIR / f"{patch_id}_pre.png"
+                        pre_patch_path = _art_path(patch_id, "_pre")
                         pre_patch.save(pre_patch_path, "PNG")
                     else:
                         logger.debug(
@@ -608,21 +806,37 @@ class DisasterPerception:
         patch_path: Path,
         pre_patch_path: Optional[Path] = None,
         crop_box: Optional[tuple[int, int, int, int]] = None,
+        pre_scale: float = 1.0,
+        window: Optional[dict] = None,
+        out_px: int = 0,
+        contributing_tile_ids: Optional[list[str]] = None,
         pre_tile_path: Optional[str] = None,
     ) -> dict:
         out_dir = PERCEPTION_OUTPUT_DIR
         base = patch_path.stem
-        vis_path = str(out_dir / f"{base}_det.png")
+        vis_path = str(_art_path(base, "_det"))
         json_path = str(out_dir / f"{base}_det.json")
 
+        if _BACKEND_ACTIVE:
+            return self._detect_with_backend(
+                patch_path, pre_patch_path, pre_scale, vis_path, json_path
+            )
+
         if BUILDING_PROPOSER == "unet":
-            if pre_tile_path and crop_box is not None:
+            if window is not None and contributing_tile_ids:
+                # mosaic_fov：整 pre 瓦片定位（缓存）→ 经纬 → 视场像素
+                detections = self._unet_proposals_for_window(
+                    window, out_px, contributing_tile_ids, json_path
+                )
+            elif pre_tile_path and crop_box is not None:
                 # 整瓦片原生分辨率定位一次（缓存），再把落进视场的框平移到 patch 坐标。
                 # 直接对 256px 视场推理会被 resize 到训练尺寸，建筑尺度偏离训练分布，
                 # 提议塌缩为 0（X0 根因之一）。
                 detections = self._unet_proposals_for_view(pre_tile_path, crop_box, json_path)
             else:
-                detections = self._detect_with_unet(patch_path, pre_patch_path, vis_path, json_path)
+                detections = self._detect_with_unet(
+                    patch_path, pre_patch_path, vis_path, json_path, pre_scale=pre_scale
+                )
         else:
             detections = self._detect_with_yolo(patch_path, vis_path, json_path)
 
@@ -632,7 +846,9 @@ class DisasterPerception:
             or VLN_CHANGE_PERCEPTION
         )
         if need_cp and pre_patch_path is not None and detections:
-            self._attach_change_class_probs(detections, patch_path, pre_patch_path)
+            self._attach_change_class_probs(
+                detections, patch_path, pre_patch_path, pre_scale=pre_scale
+            )
             if BUILDING_PROPOSER == "unet":
                 self._apply_change_class_labels(detections)
 
@@ -654,6 +870,98 @@ class DisasterPerception:
             "pipeline": {
                 "n_proposals": n_proposals,
                 "n_crops": n_proposals,
+                "n_classifier": n_classifier,
+                "n_evidence": n_evidence,
+            },
+        }
+
+    def _detect_with_backend(
+        self,
+        patch_path: Path,
+        pre_patch_path: Optional[Path],
+        pre_scale: float,
+        vis_path: str,
+        json_path: str,
+    ) -> dict:
+        """DETECTOR_BACKEND != legacy 时的双时相损伤检测。
+
+        pre 保持原生 GSD、post 随高度降质（见 _render_uav_view 的说明），
+        因此把 post 上采样到 pre 尺寸喂给 siamese，再把返回框从 pre 坐标
+        缩放回 post 视场（1024）坐标。detections 字段与 legacy 路径对齐，
+        供 agent_vqa.build_evidence_from_perception 直接消费。
+        """
+        det = _get_detector()
+        if det is None or not det.is_available():
+            raise RuntimeError(
+                f"detector backend {DETECTOR_BACKEND} 不可用，权重缺失: {getattr(det, 'describe', lambda: {})()}"
+            )
+        if pre_patch_path is None:
+            raise RuntimeError(
+                f"detector backend {DETECTOR_BACKEND} 需要 pre/post 双时相输入，但 pre_patch 缺失"
+            )
+
+        with Image.open(pre_patch_path) as im:
+            im.load()
+            pre_img = im.convert("RGB")
+        with Image.open(patch_path) as im:
+            im.load()
+            post_img = im.convert("RGB")
+        if post_img.size != pre_img.size:
+            post_img = post_img.resize(pre_img.size, Image.BILINEAR)
+
+        detections = det.detect(pre_img, post_img)
+
+        s = float(pre_scale) if pre_scale and pre_scale > 0 else 1.0
+        out: list[dict] = []
+        for d in detections:
+            dd = d.to_dict()
+            b = [round(float(v) / s, 2) for v in d.bbox_xyxy]
+            dd["bbox"] = b
+            dd["bbox_xyxy"] = b
+            out.append(dd)
+
+        # 可视化：在 post 视场（1024）上画缩放后的框
+        vis_ok = False
+        try:
+            from PIL import ImageDraw
+
+            with Image.open(patch_path) as im:
+                im.load()
+                vis_img = im.convert("RGB")
+            dr = ImageDraw.Draw(vis_img)
+            for d in out:
+                dr.rectangle(d["bbox_xyxy"], outline=(255, 60, 60), width=2)
+            vis_img.save(vis_path)
+            vis_ok = True
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[Perception] detector 可视化失败: %s", exc)
+
+        try:
+            Path(json_path).write_text(
+                json.dumps({"detections": out, "proposer": DETECTOR_BACKEND},
+                           ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[Perception] detector JSON 写入失败: %s", exc)
+
+        class_counts: dict[str, int] = {}
+        for d in out:
+            cls = d["class_name"]
+            class_counts[cls] = class_counts.get(cls, 0) + 1
+        n_classifier = sum(1 for d in out if d.get("class_probs"))
+        n_evidence = sum(1 for d in out if d.get("class_name") in _EVIDENCE_ZH)
+
+        return {
+            "detections": out,
+            "num_objects": len(out),
+            "class_counts": class_counts,
+            "visualization": vis_path if vis_ok else None,
+            "json_file": json_path if Path(json_path).exists() else None,
+            "proposer": DETECTOR_BACKEND,
+            "pipeline": {
+                "n_proposals": len(out),
+                "n_crops": len(out),
                 "n_classifier": n_classifier,
                 "n_evidence": n_evidence,
             },
@@ -682,6 +990,93 @@ class DisasterPerception:
                     "bbox_xyxy": [float(v) for v in bbox_xyxy],
                 }
             )
+        return detections
+
+    def _unet_proposals_for_window(
+        self,
+        window: dict,
+        out_px: int,
+        contributing_tile_ids: list[str],
+        json_path: str,
+    ) -> list[dict]:
+        """在**整张 pre 瓦片**上跑定位（按 tile_id 缓存），再把框映射进当前视场。
+
+        为什么不直接在渲染好的 pre 视场图上跑：pre 保持原生 GSD，巡航时是 3072²，
+        每次观测重跑一遍定位要 ~15 s（实测 17.3 s/次，远超闭环可行的 2 s）。
+        整瓦片定位只跑一次并跨观测复用，且分辨率恒为原生 —— 与旧实现
+        `_unet_proposals_for_view` 的缓存动机相同，只是把「像素平移」换成了
+        「瓦片像素 → 经纬 → 视场像素」的仿射映射，以支持多瓦片马赛克。
+        """
+        if self._localizer is None:
+            raise RuntimeError("building localizer 未加载")
+        if not hasattr(self, "_tile_proposal_cache"):
+            self._tile_proposal_cache: dict[str, list[dict]] = {}
+
+        west, north = float(window["west"]), float(window["north"])
+        sw = (float(window["east"]) - west) / out_px
+        sh = (north - float(window["south"])) / out_px
+
+        raw: list[dict] = []
+        for post_id in contributing_tile_ids:
+            entry = xbd_store.get_entry(post_id)
+            if not entry:
+                continue
+            pre_id = entry.get("paired_tile_id")
+            pre_entry = xbd_store.get_entry(pre_id) if pre_id else None
+            if not pre_entry or not pre_entry.get("pixel_to_geo"):
+                continue
+            pre_path = self._resolve_tile_image_path({"tile_id": pre_id})
+            if pre_path is None:
+                continue
+
+            cached = self._tile_proposal_cache.get(pre_id)
+            if cached is None:
+                cached = self._localizer.propose(pre_path)
+                self._tile_proposal_cache[pre_id] = cached
+                if len(self._tile_proposal_cache) > 64:
+                    self._tile_proposal_cache.pop(next(iter(self._tile_proposal_cache)))
+
+            lon_c = pre_entry["pixel_to_geo"]["lon"]
+            lat_c = pre_entry["pixel_to_geo"]["lat"]
+            for det in cached:
+                bbox = det.get("bbox_xyxy") or det.get("bbox") or [0.0, 0.0, 0.0, 0.0]
+                x1, y1, x2, y2 = [float(v) for v in bbox]
+                us, vs = [], []
+                for (px, py) in ((x1, y1), (x2, y1), (x2, y2), (x1, y2)):
+                    lon = lon_c[0] * px + lon_c[1] * py + lon_c[2]
+                    lat = lat_c[0] * px + lat_c[1] * py + lat_c[2]
+                    us.append((lon - west) / sw)
+                    vs.append((north - lat) / sh)
+                bx1, bx2 = min(us), max(us)
+                by1, by2 = min(vs), max(vs)
+                cx, cy = (bx1 + bx2) / 2.0, (by1 + by2) / 2.0
+                if not (0 <= cx < out_px and 0 <= cy < out_px):
+                    continue
+                cx1 = max(0.0, bx1)
+                cy1 = max(0.0, by1)
+                cx2 = min(float(out_px), bx2)
+                cy2 = min(float(out_px), by2)
+                if cx2 - cx1 < 2 or cy2 - cy1 < 2:
+                    continue
+                raw.append({
+                    "class_id": 0,
+                    "class_name": "建筑",
+                    "raw_class_name": "building",
+                    "conf": float(det.get("conf", 0.0)),
+                    "bbox": [cx1, cy1, cx2, cy2],
+                    "bbox_xyxy": [cx1, cy1, cx2, cy2],
+                    "proposer": "unet-tile",
+                })
+
+        detections = _nms_boxes(raw, iou_thr=0.55)
+        try:
+            Path(json_path).write_text(
+                json.dumps({"detections": detections, "proposer": "unet-tile"},
+                           ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("[Perception] U-Net window 提议 JSON 写入失败: %s", exc)
         return detections
 
     def _unet_proposals_for_view(
@@ -741,8 +1136,14 @@ class DisasterPerception:
         pre_patch_path: Optional[Path],
         vis_path: str,
         json_path: str,
+        pre_scale: float = 1.0,
     ) -> list[dict]:
-        """用 pre 图跑定位 U-Net；无 pre 时降级到 post（并打日志）。"""
+        """用 pre 图跑定位 U-Net；无 pre 时降级到 post（并打日志）。
+
+        pre 在 mosaic_fov 观测模型下保持原生 GSD，可能比 post 视场大 `pre_scale` 倍，
+        因此提议框要除以 `pre_scale` 才落回 post 视场坐标系。全系统的框坐标一律
+        以 post 视场像素为准。
+        """
         if self._localizer is None:
             raise RuntimeError("building localizer 未加载")
         loc_image = pre_patch_path if pre_patch_path is not None else patch_path
@@ -751,9 +1152,14 @@ class DisasterPerception:
                 "[Perception] U-Net 定位缺少 pre patch，降级用 post: %s", patch_path.name
             )
         raw = self._localizer.propose(loc_image)
+        # 无 pre 时用 post 定位，此时不存在尺度差
+        s = float(pre_scale) if pre_patch_path is not None else 1.0
+        if s <= 0:
+            s = 1.0
         detections: list[dict] = []
         for det in raw:
             bbox_xyxy = det.get("bbox_xyxy") or det.get("bbox") or [0.0, 0.0, 0.0, 0.0]
+            bbox_xyxy = [float(v) / s for v in bbox_xyxy]
             detections.append(
                 {
                     "class_id": 0,
@@ -791,6 +1197,7 @@ class DisasterPerception:
 
     def _attach_change_class_probs(
         self, detections: list[dict], post_patch_path: Path, pre_patch_path: Path,
+        pre_scale: float = 1.0,
     ) -> None:
         """P5：给每个建筑类检测框补一份校准过的 4 类概率分布 `class_probs`。
 
@@ -826,7 +1233,10 @@ class DisasterPerception:
             try:
                 bbox = tuple(float(v) for v in det["bbox_xyxy"])
                 post_crop = self._crop_from_image(post_img, bbox)
-                pre_crop = self._crop_from_image(pre_img, bbox)
+                # pre 可能是原生 GSD 的更大图，bbox 需按 pre_scale 放大
+                s = float(pre_scale) if pre_scale and pre_scale > 0 else 1.0
+                pre_bbox = tuple(v * s for v in bbox)
+                pre_crop = self._crop_from_image(pre_img, pre_bbox)
                 pred = model.predict(pre_crop, post_crop)
                 det["class_probs"] = dict(pred.class_probs)
                 det["change_prob"] = float(pred.change_prob)
@@ -856,7 +1266,7 @@ class DisasterPerception:
     def _segment(self, patch_path: Path) -> dict:
         out_dir = PERCEPTION_OUTPUT_DIR
         base = patch_path.stem
-        out_prefix = str(out_dir / f"{base}_seg")
+        out_prefix = str(_art_path(base, "_seg").with_suffix(""))
         result = self._segformer.segment(
             image=str(patch_path),
             return_mask=True,
@@ -891,6 +1301,25 @@ class DisasterPerception:
     # ------------------------------------------------------------------ #
     #  风险汇总
     # ------------------------------------------------------------------ #
+
+    def _filter_detections_to_roi(self, detection: dict, roi_norm, pw: int, ph: int) -> dict:
+        """只保留中心落在 ROI（归一化 bbox）内的检测框，并重算 class_counts。"""
+        u0, v0, u1, v1 = [float(v) for v in roi_norm]
+        kept = []
+        for d in detection.get("detections", []):
+            bbox = d.get("bbox_xyxy") or d.get("bbox")
+            if not bbox or len(bbox) < 4:
+                continue
+            cx = (float(bbox[0]) + float(bbox[2])) * 0.5 / max(pw, 1)
+            cy = (float(bbox[1]) + float(bbox[3])) * 0.5 / max(ph, 1)
+            if u0 <= cx <= u1 and v0 <= cy <= v1:
+                kept.append(d)
+        class_counts: dict[str, int] = {}
+        for d in kept:
+            cls = d["class_name"]
+            class_counts[cls] = class_counts.get(cls, 0) + 1
+        return {**detection, "detections": kept, "num_objects": len(kept),
+                "class_counts": class_counts}
 
     @staticmethod
     def _summarise_risk(
@@ -964,7 +1393,8 @@ class DisasterPerception:
     ) -> PerceptionResult:
         self.load()  # 幂等
         crop_t0 = time.perf_counter_ns()
-        patch_path, pw, ph, radius_m, degraded, degraded_reason, pre_patch_path, gsd_meta = self._crop_uav_view(
+        render = self._render_uav_view if MOSAIC_VIEW else self._crop_uav_view
+        patch_path, pw, ph, radius_m, degraded, degraded_reason, pre_patch_path, gsd_meta = render(
             lat=lat,
             lon=lon,
             alt=alt,
@@ -980,8 +1410,20 @@ class DisasterPerception:
             pre_patch_path=pre_patch_path,
             crop_box=tuple(crop_box_meta) if crop_box_meta else None,
             pre_tile_path=gsd_meta.get("pre_tile_path"),
+            pre_scale=float(gsd_meta.get("pre_scale") or 1.0),
+            window=gsd_meta.get("window"),
+            out_px=int(gsd_meta.get("out_px") or 0),
+            contributing_tile_ids=gsd_meta.get("contributing_tile_ids") or [],
         )
         det_ms = (time.perf_counter_ns() - det_t0) // 1_000_000
+
+        # ROI-scoped：题目作用域锚定 ROI（一张瓦片），只保留中心落在 ROI 内的框。
+        # palu-tsunami 等密集瓦片在巡航 3×3 视场下可出 3500+ 框，场景描述器
+        # （CPU 文本生成）与 VLM prompt 都被撑爆（实测单题 905s）。ROI 只占巡航
+        # 视场 1/9，过滤后降到 ~390 框；不改变答案语义（答案本就只由 ROI 决定）。
+        roi_norm = gsd_meta.get("roi_norm_bbox")
+        if roi_norm is not None and detection.get("detections"):
+            detection = self._filter_detections_to_roi(detection, roi_norm, pw, ph)
 
         seg_t0 = time.perf_counter_ns()
         segmentation = self._segment(patch_path)
