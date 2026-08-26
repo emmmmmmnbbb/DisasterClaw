@@ -10,17 +10,22 @@
 - `external_upload`: 无
 - `verification_status`: D5 100 题 test GPU 评测已完成且可分析；D6 配置集合已冻结
   （V0/V1/A0/A2/A3，不含 A1/A4/A5）；spatial `decision_reason_mismatch` prompt
-  修复已落地但未经 GPU 重跑验证；holdout 未启动
-- `git_commit_at_audit`: `626f54745287bc7ec4fa76db271a674bc6d8d31b`，工作区仍有未提交修改
-  （新增 prompt 修复与回归测试）
+  修复已落地并经 GPU 复核；**正式 n=100 holdout 已于 2026-08-21 完成，一次性消费，
+  不再重跑、不再因其结果调参**
+- `git_commit_at_audit`: `eb8459b6dca64aff4499b7c2fb466bdf7808bc11`，工作区干净
+  （holdout 四片均在此 commit 下产出，`env_snapshot` 校验一致）
 
 ## 当前判定
 
 1. D3 后端和 D4 前端的主要功能已实现；D1/D2 仍不能整体标为完成（LOEO/多 seed/作者抽查未做）。
 2. 2026-08-21 已完成 100 题 test、五配置、本地 Qwen2.5-VL-7B + GPU 感知评测；四片 `valid_for_analysis=true`，执行错误 0，`fallback_rate=0`。
 3. 重观测通道可识别：A2 191 次下降，A3 60 次重观测 / 65 次 skip。搜索通道未激活：A0 全部 1 步，题面均为当前视场。
-4. 不得把本轮数字写入论文正式表。D6 配置集合与 spatial schema 修复已按下方“冻结决定”落定；
-   holdout、题库、动作预算仍不得因为本轮或未来 holdout 结果反过来调整。
+4. **正式 holdout（moore-tornado / nepal-flooding / pinery-bushfire，n=100）已完成
+   （见下方“D6 holdout 冻结结果”）。pilot100 观察到的 A2 vs A0 +4pp 显著差异
+   在 holdout 上未复现（+1pp，CI 含 0）。按计划分支 C（不可识别）报告，不得
+   写成“主动重观测改善答案”。**
+5. holdout 数据已消费完毕，不得因这批结果反过来调 prompt、阈值、动作预算或题库；
+   D6 E4 的写作口径已锁定为“可识别但不可排序 / 效应未复现”。
 
 ## 题库冻结信息
 
@@ -194,19 +199,79 @@ accuracy 在 17 题内于 0.12–0.18 波动，属小样本噪声，未见系统
 判断（见上文“答案坍缩”）不受影响。
 
 **下一步（未执行，待确认）：**
-1. 提交当前 dirty 工作区（`backend/agent_vqa.py` 未改，只有
-   `backend/vlm_analyzer.py`、两个测试文件、以及此前已完成的重观测审计相关改动）。
-2. 提交后启动正式 n=100 holdout（一次性）。
+1. ~~提交当前 dirty 工作区~~ ——作者已提交，commit `eb8459b`。
+2. ~~提交后启动正式 n=100 holdout~~ ——已完成，见下节。
+
+## D6 正式 holdout（n=100，2026-08-21，一次性、已消费）
+
+目录：`runs/benchmarks/cja_agent_vqa/d6_holdout100_shard{0-3}of4/`，合并报告
+`d6_holdout100_reports/`。事件：moore-tornado (38)、nepal-flooding (41)、
+pinery-bushfire (21)。commit `eb8459b6dca64aff4499b7c2fb466bdf7808bc11`，
+git 干净。四片 `valid_for_analysis=true`，执行错误 0。
+
+| config | n | acc | abstain | n_reobservations | n_reobserve_skips | n_steps |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| V0_RAW | 100 | 0.53 | 0.00 | 0 | 0 | 1.00 |
+| V1_STRUCT | 100 | 0.54 | 0.00 | 0 | 0 | 1.00 |
+| A0_HOLD | 100 | 0.55 | 0.00 | 0 | 0 | 1.00 |
+| A2_ALWAYS | 100 | 0.56 | 0.00 | 200 | 0 | 3.00 |
+| A3_ENTROPY | 100 | 0.55 | 0.00 | 57 | 72 | 1.57 |
+| O_REF（离线） | 100 | 0.57 | 0.00 | 24 | 0 | 1.24 |
+
+配对 bootstrap 95% CI（2000 次重采样）：
+
+- **A2 vs A0：+0.01，CI [-0.02, 0.05]，不显著。pilot100 观察到的 +4pp 显著差异
+  未复现。**
+- A3 vs A0：0.00，CI [-0.03, 0.03]，不显著（pilot100 为 +3pp 不显著，方向一致地
+  更弱）。
+- V1 vs V0：+0.01，CI [-0.03, 0.05]，不显著。
+- O_REF vs A0：+0.02，CI [0.00, 0.05]；`n_correctable=2`、`n_harmful=1`、
+  `n_both_correct=54`、`n_neither_correct=43`——比 pilot100 的 `n_correctable=4`
+  更小，headroom 进一步收窄。
+
+**非法输出：0。** 全部 6 个配置 `abstain_rate=0.00`，`failure_taxonomy` 只有
+`wrong_answer`，spatial `decision_reason_mismatch` 和 `abstain_decision_mismatch`
+均未出现。prompt 修复在 holdout（不同事件、不同图像）上继续有效。
+
+**事件间方差 >> 策略差异，是本次 holdout 的关键发现：**
+
+| config | moore-tornado (n=38) | nepal-flooding (n=41) | pinery-bushfire (n=21) |
+| --- | ---: | ---: | ---: |
+| V0_RAW | 0.474 | 0.415 | 0.857 |
+| A0_HOLD | 0.526 | 0.415 | 0.857 |
+| A2_ALWAYS | 0.553 | 0.415 | 0.857 |
+
+同一配置跨事件的准确率跨度约 0.44（0.41→0.86），而任一 config pair 的准确率
+差全部在 0.00–0.03 内。这正是计划 11.6 预先写入的第 5 条可识别性判据
+（“事件间方差是否大于策略差”）触发的情形：pinery-bushfire 本身就远比另外
+两个事件容易，三个事件全部混在一起的 +1pp 差异不足以支撑任何策略结论。
+
+**答案坍缩在完全不同的三个 holdout 事件上原样复现**（V0_RAW）：presence
+38/38 预测“否”；damage 21/23“无损伤”；count 29/29“0”；spatial 全部落在
+西/西南两个方向。这与 pilot100（hurricane-michael、palu-tsunami）的坍缩模式
+逐项一致，是跨事件复现的证据，说明这不是两个 test 事件的偶然特征，而是当前
+VLM 感知底座一个更稳固的系统性限制。
+
+**结论（按计划 3.4 分支 C 写法，不得写成分支 A）：**
+
+> 当前感知底座下，巡航与近距观测产生的答案翻转或风险差异过少
+> （`n_correctable=2`），主动重观测在该评测构造中不可识别；pilot100 观察到的
+> A2 显著收益未能在独立、预先冻结的 holdout 上复现，且三个 holdout 事件间的
+> 准确率方差远超任何策略间差异。这不是对真实重观测无效性的证明，而是当前
+> 样本规模与感知瓶颈下的不可识别状态。
+
+**数据完整性：** holdout 现已消费完毕。按冻结规则，不得因这批结果反过来修改
+prompt、置信度阈值、动作预算或题库，也不得重跑本 holdout 寻求更有利的数字。
 
 ## 下一道强制门槛
 
 1. ~~D6 配置集合~~ ——已冻结为 V0/V1/A0/A2/A3，不含 A1/A4/A5（见上）。
-2. ~~是否先修 `decision_reason_mismatch`~~ ——已修复 prompt，并在 test split 17
-   道 spatial 题上完成 GPU 复核（见上）：`decision_reason_mismatch` 基本消失，
-   accuracy 无系统性变化。
-3. ~~在 test split 上重跑验证~~ ——已完成，结论见上。
-4. 提交当前 dirty 工作区（含本次 prompt 修复与回归测试），再启动正式 n=100
-   holdout（一次性，只用于确认 A2 vs A0 的 +4pp，不因 holdout 结果反过来调参、
-   改 prompt 或改题库）。**本状态文档写作时尚未提交、尚未启动 holdout，等待作者/
-   协作者最终拍板。**
-5. D1 的 LOEO / 多 seed 仍是投稿阻断，与 Agent-VQA holdout 并行，不互相替代。
+2. ~~是否先修 `decision_reason_mismatch`~~ ——已修复 prompt，test split 与
+   holdout 均验证有效（0 非法输出）。
+3. ~~提交工作区~~ ——已完成，commit `eb8459b`。
+4. ~~启动正式 n=100 holdout~~ ——已完成，结论见上；**不再重跑**。
+5. D6 剩余实验块（E1 静态 VQA、E2 结构化证据消融、E3 grounded VQA、E5 端到端、
+   E6 规划合法性、E8 退化恢复）尚未跑；E4（主动 VQA）已出结果，写作口径固定
+   为分支 C 不可识别，不需要再补充策略配置。
+6. D1 的 LOEO / 多 seed 仍是投稿阻断，与 Agent-VQA holdout 并行，不互相替代，
+   尚未开始。

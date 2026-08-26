@@ -1427,8 +1427,13 @@ runs/benchmarks/cja_agent_vqa/
 - [ ] E1 静态 VQA。
 - [ ] E2 结构化证据。
 - [ ] E3 grounded VQA。
-- [ ] E4 主动 VQA（配置冻结为 V0/V1/A0/A2/A3；`n_correctable=4` 下 A1/A4/A5
-      大概率不可识别，不纳入本轮，预写“可识别但样本不足以排序”作为候选结论分支）。
+- [x] E4 主动 VQA（配置冻结为 V0/V1/A0/A2/A3；holdout n=100 已完成，
+      2026-08-21，commit `eb8459b`。结论：**不可识别**（分支 C）——
+      `n_correctable=2`，A2 vs A0 pilot100 的 +4pp 显著差异未复现（holdout
+      +1pp，CI 含 0），且事件间方差（moore-tornado/nepal-flooding/
+      pinery-bushfire 准确率 0.41–0.86）远超任何策略差异。详见
+      `AGENT_VQA_EXPERIMENT_STATUS.md` “D6 正式 holdout”。不再补充
+      A1/A4/A5，不再重跑本 holdout）。
 - [ ] E5 端到端 Agent-VQA。
 - [ ] E6 规划合法性。
 - [ ] E8 退化恢复。
