@@ -36,6 +36,7 @@ BACKEND = REPO_ROOT / "backend"
 sys.path.insert(0, str(BACKEND))
 
 import xbd_map  # noqa: E402
+import fov_ladder as FL  # noqa: E402
 from event_split import EVAL_EVENTS, LEAK_EVENTS, event_partition  # noqa: E402
 from geo import latlon_to_meters  # noqa: E402
 
@@ -48,8 +49,8 @@ DAMAGE_CHOICES = ["无损伤", "轻微损伤", "严重损伤", "完全损毁"]
 COUNT_CHOICES = ["0", "1", "2", "3+"]
 BEARING_NAMES = ["北", "东北", "东", "东南", "南", "西南", "西", "西北"]
 
-CRUISE_ALT_M = 30.0
-CRUISE_RADIUS_M = max(20.0, min(300.0, CRUISE_ALT_M * 2.0))
+CRUISE_ALT_M = FL.alt_cruise_m()
+CRUISE_RADIUS_M = FL.span_m_for_alt(CRUISE_ALT_M) / 2.0
 NEG_BUFFER_M = 25.0
 
 VALID_QTYPES = ("presence", "damage", "count", "spatial")
@@ -95,10 +96,13 @@ def load_buildings(entry, dataset_root):
 def check_schema(it):
     errs = []
     for k in ("id", "scene_id", "tile_id", "disaster", "split", "question_type",
-              "question", "choices", "answer", "start", "observation_profile",
-              "difficulty", "review"):
+              "question", "choices", "answer", "start", "difficulty", "review"):
         if k not in it:
             errs.append(f"missing_field:{k}")
+    if "observation_profile" not in it and "observation_model" not in it:
+        errs.append("missing_field:observation_model")
+    if it.get("observation_model") == "mosaic_fov_roi_scoped" and "roi" not in it:
+        errs.append("missing_field:roi")
     if it.get("question_type") not in VALID_QTYPES:
         errs.append(f"invalid_question_type:{it.get('question_type')}")
     if it.get("answer") not in it.get("choices", []):
@@ -116,20 +120,34 @@ def check_geometry(it, buildings):
     start = (it["start"]["lat"], it["start"]["lon"])
     ans = it.get("answer")
     target = it.get("target")
+    roi = it.get("roi") or {}
+    bounds = roi.get("bounds")
+    roi_scoped = it.get("observation_model") == "mosaic_fov_roi_scoped" and bounds
+
+    def in_scope(building):
+        if roi_scoped:
+            return (
+                bounds["south"] <= building["lat"] <= bounds["north"]
+                and bounds["west"] <= building["lon"] <= bounds["east"]
+            )
+        return geodesic_m(start, (building["lat"], building["lon"])) <= CRUISE_RADIUS_M
+
+    scope_center = start
+    if roi_scoped:
+        center = roi.get("center") or {}
+        scope_center = (float(center["lat"]), float(center["lon"]))
 
     if qt == "presence":
         if ans == "是":
             if not target:
                 errs.append("positive_without_target")
             else:
-                d = geodesic_m(start, (target["lat"], target["lon"]))
-                if d > CRUISE_RADIUS_M:
-                    errs.append(f"target_outside_fov:{d:.1f}m")
+                if not in_scope(target):
+                    errs.append("target_outside_roi" if roi_scoped else "target_outside_fov")
                 if target.get("subtype") not in SEVERE_SUBTYPES:
                     errs.append("positive_target_not_severe")
         else:  # 否
-            in_zone = [b for b in buildings if b["subtype"] in SEVERE_SUBTYPES
-                       and geodesic_m(start, (b["lat"], b["lon"])) <= CRUISE_RADIUS_M + NEG_BUFFER_M]
+            in_zone = [b for b in buildings if b["subtype"] in SEVERE_SUBTYPES and in_scope(b)]
             if in_zone:
                 errs.append(f"negative_has_severe_in_buffer:{len(in_zone)}")
 
@@ -138,21 +156,21 @@ def check_geometry(it, buildings):
             errs.append("damage_without_target")
         else:
             d = geodesic_m(start, (target["lat"], target["lon"]))
-            if d > CRUISE_RADIUS_M:
-                errs.append(f"target_outside_fov:{d:.1f}m")
-            if d > 1.0:
+            if not in_scope(target):
+                errs.append("target_outside_roi" if roi_scoped else f"target_outside_fov:{d:.1f}m")
+            if not roi_scoped and d > 1.0:
                 errs.append(f"damage_target_not_centered:{d:.1f}m")
-            if target.get("marker") != "center_crosshair":
+            expected_marker = "roi_crosshair" if roi_scoped else "center_crosshair"
+            if target.get("marker") != expected_marker:
                 errs.append("damage_marker_missing")
-            if "十字标记建筑" not in it.get("question", ""):
+            if not roi_scoped and "十字标记建筑" not in it.get("question", ""):
                 errs.append("damage_question_marker_not_visible")
             expected = SUBTYPE_TO_CN_LEVEL.get(target.get("subtype", ""))
             if ans != expected:
                 errs.append(f"answer_subtype_mismatch:ans={ans} expected={expected}")
 
     elif qt == "count":
-        in_fov = [b for b in buildings if b["subtype"] in SEVERE_SUBTYPES
-                  and geodesic_m(start, (b["lat"], b["lon"])) <= CRUISE_RADIUS_M]
+        in_fov = [b for b in buildings if b["subtype"] in SEVERE_SUBTYPES and in_scope(b)]
         n = len(in_fov)
         expected = "3+" if n >= 3 else str(n)
         if ans != expected:
@@ -162,10 +180,12 @@ def check_geometry(it, buildings):
         if not target:
             errs.append("spatial_without_target")
         else:
-            d = geodesic_m(start, (target["lat"], target["lon"]))
-            if d > CRUISE_RADIUS_M:
-                errs.append(f"target_outside_fov:{d:.1f}m")
-            n, e = latlon_to_meters(start[0], start[1], target["lat"], target["lon"])
+            d = geodesic_m(scope_center, (target["lat"], target["lon"]))
+            if not in_scope(target):
+                errs.append("target_outside_roi" if roi_scoped else f"target_outside_fov:{d:.1f}m")
+            n, e = latlon_to_meters(
+                scope_center[0], scope_center[1], target["lat"], target["lon"],
+            )
             expected = bearing_name(n, e)
             if ans != expected:
                 errs.append(f"direction_mismatch:ans={ans} expected={expected}")

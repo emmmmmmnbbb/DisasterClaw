@@ -53,7 +53,7 @@ import fov_ladder as FL  # noqa: E402
 import mosaic as mosaic_mod  # noqa: E402
 import xbd_map  # noqa: E402
 from detectors.base import DAMAGE_SUBTYPES  # noqa: E402
-from event_split import HOLDOUT_EVENTS, TEST_EVENTS  # noqa: E402
+from event_split import EVAL_EVENTS, HOLDOUT_EVENTS, TEST_EVENTS  # noqa: E402
 
 _POLY_RE = re.compile(r"POLYGON\s*\(\((.*?)\)\)", re.DOTALL)
 
@@ -177,7 +177,7 @@ def _answers(items: list[dict], roi_center: tuple[float, float]) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--split", default="test", choices=["test", "holdout"])
+    ap.add_argument("--split", default="test", choices=["test", "holdout", "eval"])
     ap.add_argument("--limit", type=int, default=40)
     ap.add_argument("--device", default=os.getenv("PERCEPTION_DEVICE", "cuda"))
     ap.add_argument("--backend", default="xview2_first")
@@ -186,13 +186,22 @@ def main() -> int:
     ap.add_argument("--min-coverage", type=float, default=0.80)
     ap.add_argument("--manifest", default=str(ROOT / "backend/data/xbd/manifest.json"))
     ap.add_argument("--roi-index", default=str(ROOT / "backend/data/xbd/roi_index.json"))
+    ap.add_argument("--tiles-from", default="",
+                    help="只评测该 Agent-VQA JSON 中出现的 tile_id")
     ap.add_argument("--out", default="")
     args = ap.parse_args()
 
-    events = set(TEST_EVENTS if args.split == "test" else HOLDOUT_EVENTS)
+    events = set(
+        TEST_EVENTS if args.split == "test"
+        else (HOLDOUT_EVENTS if args.split == "holdout" else EVAL_EVENTS)
+    )
     manifest = xbd_map.load_manifest(args.manifest)
     root = Path(manifest["dataset_root"])
     cov = json.loads(Path(args.roi_index).read_text(encoding="utf-8"))["coverage"]
+    allowed_tiles = None
+    if args.tiles_from:
+        source = json.loads(Path(args.tiles_from).read_text(encoding="utf-8"))
+        allowed_tiles = {str(row["tile_id"]) for row in source.get("items", [])}
     mo = mosaic_mod.from_manifest(manifest)
 
     cands = [
@@ -200,6 +209,7 @@ def main() -> int:
         if e.get("stage") == "post" and e.get("disaster") in events
         and e.get("label_relpath") and e.get("paired_tile_id")
         and float(cov.get(e["tile_id"], 0.0)) >= args.min_coverage
+        and (allowed_tiles is None or e["tile_id"] in allowed_tiles)
     ]
     # 按事件分层采样。首版用全局等距步长，而候选按 tile_id 排序时同一事件是连续的，
     # 结果 40 个样本全落在 hurricane-michael（89 个候选），palu-tsunami（8 个）一个没取到。

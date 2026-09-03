@@ -476,6 +476,11 @@ INPUT ./generated/detector_backend_table.tex
 INPUT ./generated/detector_backend_table.tex
 INPUT ./generated/detector_backend_table.tex
 INPUT generated/detector_backend_table.tex
+INPUT ./generated/confidence_calibration_table.tex
+INPUT ./generated/confidence_calibration_table.tex
+INPUT ./generated/confidence_calibration_table.tex
+INPUT ./generated/confidence_calibration_table.tex
+INPUT generated/confidence_calibration_table.tex
 INPUT ./generated/power_table.tex
 INPUT ./generated/power_table.tex
 INPUT ./generated/power_table.tex

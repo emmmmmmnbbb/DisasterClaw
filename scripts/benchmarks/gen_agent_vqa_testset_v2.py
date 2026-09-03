@@ -40,6 +40,13 @@ import fov_ladder as FL  # noqa: E402
 import xbd_map  # noqa: E402
 from event_split import EVAL_EVENTS, LEAK_EVENTS, assert_eval_only, event_partition  # noqa: E402
 from geo import latlon_to_meters, meters_to_latlon  # noqa: E402
+from tile_consumption import (  # noqa: E402
+    load_registry,
+    register_tiles,
+    sha256_file as registry_sha256_file,
+    tile_ids as registry_tile_ids,
+    write_registry,
+)
 
 SUBTYPE_TO_CLASS = {
     "no-damage": "无损伤建筑", "minor-damage": "轻微损伤建筑",
@@ -412,6 +419,12 @@ def main() -> int:
     ap.add_argument("--min-coverage", type=float, default=0.80)
     ap.add_argument("--centered-start", action="store_true",
                     help="起点=ROI 中心（E4 重观测机制）；默认偏移以激活搜索通道（E5）")
+    ap.add_argument("--exclude-registry", default="",
+                    help="排除登记表中所有已消费/已分配 ROI")
+    ap.add_argument("--eval-role", choices=["selection", "final", "boundary"], default="",
+                    help="写入题库 manifest 的冻结角色")
+    ap.add_argument("--update-registry", action="store_true",
+                    help="生成成功后将所用 ROI 原子登记到 --exclude-registry")
     ap.add_argument("--n", type=int, default=200, help="目标题数")
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--out", default=str(BACKEND / "data" / "benchmarks" / "agent_vqa_testset_v2.json"))
@@ -424,6 +437,12 @@ def main() -> int:
     manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
     cov = json.loads(Path(args.roi_index).read_text(encoding="utf-8"))["coverage"]
     wanted = {d.strip() for d in args.disasters.split(",") if d.strip()} or set(EVAL_EVENTS)
+    registry_path = Path(args.exclude_registry) if args.exclude_registry else None
+    registry = load_registry(registry_path) if registry_path else None
+    excluded_tiles = registry_tile_ids(registry) if registry else set()
+    if args.update_registry and (registry_path is None or not args.eval_role):
+        print("[ERROR] --update-registry 需要 --exclude-registry 与 --eval-role", file=sys.stderr)
+        return 2
     leak = wanted & set(LEAK_EVENTS)
     if leak:
         print(f"[ERROR] 禁止 train/val 事件: {sorted(leak)}", file=sys.stderr)
@@ -441,6 +460,8 @@ def main() -> int:
         if d not in wanted:
             continue
         if float(cov.get(e["tile_id"], 0.0)) < args.min_coverage:
+            continue
+        if e["tile_id"] in excluded_tiles:
             continue
         by_disaster.setdefault(d, []).append(e)
     for d in by_disaster:
@@ -497,6 +518,17 @@ def main() -> int:
         "dataset_manifest_path": str(Path(args.manifest).relative_to(REPO_ROOT)) if Path(args.manifest).exists() else "",
         "dataset_root": str(dataset_root),
         "split_policy": "event-disjoint",
+        "eval_role": args.eval_role or None,
+        "consumption_registry": {
+            "path": (
+                str(registry_path.resolve().relative_to(REPO_ROOT))
+                if registry_path and registry_path.exists()
+                and registry_path.resolve().is_relative_to(REPO_ROOT)
+                else (str(registry_path) if registry_path else "")
+            ),
+            "sha256": registry_sha256_file(registry_path) if registry_path else "",
+            "n_excluded_tiles": len(excluded_tiles),
+        },
         "split_audit": {
             "eval_events": list(EVAL_EVENTS), "leak_events": list(LEAK_EVENTS),
             "disasters_used": disasters_used,
@@ -534,6 +566,16 @@ def main() -> int:
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+    if args.update_registry and registry_path is not None and registry is not None:
+        registered = register_tiles(
+            registry,
+            {it["tile_id"] for it in items},
+            eval_role=args.eval_role,
+            source_run=str(out_path),
+        )
+        digest = write_registry(registry_path, registered)
+        out["consumption_registry"]["sha256_after_registration"] = digest
+        out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
 
     print(f"[OK] v2.0 生成 {len(items)} 条题 -> {out_path}")
     print(f"     分层: {json.dumps(strat, ensure_ascii=False)}")

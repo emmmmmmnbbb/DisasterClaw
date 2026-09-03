@@ -34,13 +34,16 @@ import subprocess
 import sys
 import time
 import traceback
+import random
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 BACKEND = REPO_ROOT / "backend"
 sys.path.insert(0, str(BACKEND))  # 必须在 import app 之前
 
-DEFAULT_TESTSET = BACKEND / "data" / "benchmarks" / "agent_vqa_testset.json"
+from recheck import reobserve_flight_time_s  # noqa: E402
+
+DEFAULT_TESTSET = BACKEND / "data" / "benchmarks" / "agent_vqa_testset_v2.json"
 RUNS_DIR = REPO_ROOT / "runs" / "benchmarks" / "cja_agent_vqa"
 
 # 配置 → (evidence_level, max_search, max_reobs, recheck_trigger[, recheck_extra][, oracle])
@@ -65,6 +68,10 @@ CONFIGS = {
                    "recheck_trigger": "threshold",
                    "recheck_extra": {"uncertainty_mode": "entropy"},
                    "desc": "校准熵驱动主动策略"},
+    "A3U_RAW_ENTROPY": {"evidence_level": "state", "max_search": 6, "max_reobs": 2,
+                        "recheck_trigger": "threshold",
+                        "recheck_extra": {"uncertainty_mode": "entropy_raw"},
+                        "desc": "未校准熵驱动主动策略"},
     "A4_CONFORMAL": {"evidence_level": "state", "max_search": 6, "max_reobs": 2,
                      "recheck_trigger": "conformal",
                      "recheck_extra": {"uncertainty_mode": "entropy"},
@@ -73,6 +80,43 @@ CONFIGS = {
                     "recheck_trigger": "info_gain",
                     "recheck_extra": {"uncertainty_mode": "entropy"},
                     "desc": "验证集期望收益 (泄漏安全条件策略)"},
+    "A1_RANDOM_MATCHED": {
+        "evidence_level": "state", "max_search": 6, "max_reobs": 2,
+        "recheck_trigger": "fixed", "matched_baseline": "random",
+        "desc": "随机分配、动作总数与参考策略严格相等",
+    },
+    "A2_FIXED_MATCHED": {
+        "evidence_level": "state", "max_search": 6, "max_reobs": 2,
+        "recheck_trigger": "fixed", "matched_baseline": "same_items",
+        "desc": "固定下降、逐题预算与参考策略相等",
+    },
+    "A2_ALL_REOBSERVE": {
+        "evidence_level": "state", "max_search": 6, "max_reobs": 2,
+        "recheck_trigger": "fixed", "desc": "所有题复观测（无预算上限参考）",
+    },
+    "AB_HOLD": {
+        "evidence_level": "state", "max_search": 6, "max_reobs": 0,
+        "recheck_trigger": "fixed", "recheck_extra": {"motion_mode": "hold"},
+        "desc": "动作消融：保持",
+    },
+    "AB_CENTER": {
+        "evidence_level": "state", "max_search": 6, "max_reobs": 2,
+        "recheck_trigger": "fixed", "matched_baseline": "same_items",
+        "recheck_extra": {"motion_mode": "center_only"},
+        "desc": "动作消融：仅居中",
+    },
+    "AB_DESCEND": {
+        "evidence_level": "state", "max_search": 6, "max_reobs": 2,
+        "recheck_trigger": "fixed", "matched_baseline": "same_items",
+        "recheck_extra": {"motion_mode": "descend_only"},
+        "desc": "动作消融：仅下降",
+    },
+    "AB_FULL": {
+        "evidence_level": "state", "max_search": 6, "max_reobs": 2,
+        "recheck_trigger": "fixed", "matched_baseline": "same_items",
+        "recheck_extra": {"motion_mode": "descend_center"},
+        "desc": "动作消融：下降并居中",
+    },
     "O_REF": {"evidence_level": "state", "max_search": 6, "max_reobs": 2,
               "recheck_trigger": "threshold", "offline_only": True,
               "desc": "离线 hindsight oracle 参照 (由 A0/A2 配对结果合成, 禁止部署)"},
@@ -92,8 +136,11 @@ def apply_config(app, cfg: dict) -> None:
     extra = cfg.get("recheck_extra") or {}
     app.VLN_UNCERTAINTY_MODE = extra.get("uncertainty_mode", "heuristic")
     app.VLN_RECHECK_MIN_INFO_GAIN = float(extra.get("min_info_gain", 0.05))
+    app.VLN_RECHECK_THRESHOLD = float(extra.get("trigger", 0.5))
     app.VLN_RECHECK_RANDOM_PROB = float(extra.get("random_prob", 0.5))
     app.VLN_RECHECK_RANDOM_SEED = int(extra.get("random_seed", 0))
+    app.VLN_RECHECK_MOTION_MODE = extra.get("motion_mode", "descend_center")
+    app.VLN_RECHECK_TEMPERATURE = float(extra.get("temperature", 1.0))
     app.VLN_ENTROPY_TABLE = str(extra.get("entropy_table_path", app.VLN_ENTROPY_TABLE))
     app.VLN_CONFORMAL_QHAT = float(extra.get("conformal_qhat", 0.9))
     app.VLN_CONFORMAL_ALPHA = float(extra.get("conformal_alpha", 0.1))
@@ -110,8 +157,11 @@ def effective_config(app) -> dict:
         "trigger_mode": app.VLN_RECHECK_TRIGGER,
         "uncertainty_mode": app.VLN_UNCERTAINTY_MODE,
         "min_info_gain": app.VLN_RECHECK_MIN_INFO_GAIN,
+        "trigger": app.VLN_RECHECK_THRESHOLD,
         "random_prob": app.VLN_RECHECK_RANDOM_PROB,
         "random_seed": app.VLN_RECHECK_RANDOM_SEED,
+        "motion_mode": app.VLN_RECHECK_MOTION_MODE,
+        "temperature": app.VLN_RECHECK_TEMPERATURE,
         "entropy_table_path": app.VLN_ENTROPY_TABLE,
         "conformal_qhat": app.VLN_CONFORMAL_QHAT,
         "conformal_alpha": app.VLN_CONFORMAL_ALPHA,
@@ -148,7 +198,7 @@ def file_hash(path: Path) -> str:
     with path.open("rb") as fp:
         for chunk in iter(lambda: fp.read(1 << 20), b""):
             h.update(chunk)
-    return h.hexdigest()[:16]
+    return h.hexdigest()
 
 
 def load_completed_rows(path: Path) -> dict[tuple[str, str], dict]:
@@ -227,6 +277,15 @@ def score_episode(report: dict, item: dict) -> dict:
         1 for p in reobserve_pairs if p["before_correct"] and not p["after_correct"]
     )
     n_reobserve_skips = sum(1 for t in traj if t.get("reobserve_kind") == "skip")
+    reobserve_params = [
+        dict(t.get("reobserve_params") or {}) for t in traj
+        if t.get("decision") == "reobserve"
+    ]
+    horizontal_m = sum(
+        (float(p.get("north_m", 0.0)) ** 2 + float(p.get("east_m", 0.0)) ** 2) ** 0.5
+        for p in reobserve_params
+    )
+    vertical_m = sum(abs(float(p.get("up_m", 0.0))) for p in reobserve_params)
     difficulty = item.get("difficulty", "")
     difficulty_band = difficulty.get("distance", "") if isinstance(difficulty, dict) else difficulty
     ans_evidence = ans.get("evidence") or {}
@@ -254,6 +313,13 @@ def score_episode(report: dict, item: dict) -> dict:
         "reobserve_pairs": reobserve_pairs,
         "n_reobservations": len(reobserve_pairs),
         "n_reobserve_skips": n_reobserve_skips,
+        "reobserve_horizontal_m": round(horizontal_m, 3),
+        "reobserve_vertical_m": round(vertical_m, 3),
+        "reobserve_flight_time_s": round(
+            reobserve_flight_time_s(horizontal_m, vertical_m), 3,
+        ),
+        "entropy_table_loaded": any(bool(t.get("entropy_table_loaded")) for t in traj),
+        "entropy_fallback_used": any(bool(t.get("entropy_fallback_used")) for t in traj),
         "answer_corrected": answer_corrected,
         "answer_harmed": answer_harmed,
         "n_correcting_reobservations": n_correcting_reobservations,
@@ -291,6 +357,11 @@ def aggregate(rows: list[dict]) -> dict:
         "n_reobservations": sum(int(r.get("n_reobservations", 0) or 0) for r in rows),
         "n_reobserve_skips": sum(int(r.get("n_reobserve_skips", 0) or 0) for r in rows),
         "n_triggered": sum(1 for r in rows if int(r.get("n_reobservations", 0) or 0) > 0),
+        "reobserve_horizontal_m": round(sum(float(r.get("reobserve_horizontal_m", 0.0)) for r in rows), 3),
+        "reobserve_vertical_m": round(sum(float(r.get("reobserve_vertical_m", 0.0)) for r in rows), 3),
+        "reobserve_flight_time_s": round(sum(float(r.get("reobserve_flight_time_s", 0.0)) for r in rows), 3),
+        "entropy_table_loaded": any(bool(r.get("entropy_table_loaded")) for r in rows),
+        "entropy_fallback_used": any(bool(r.get("entropy_fallback_used")) for r in rows),
     }
     by_type = {}
     for qt in ("presence", "damage", "count", "spatial"):
@@ -358,10 +429,18 @@ def main() -> int:
     ap.add_argument("--split", default="", help="只跑某 split train/val/test (空=全部)")
     ap.add_argument("--qtype", default="", help="只跑某题型 presence/damage/count/spatial (空=全部)")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--frozen-manifest", default="",
+                    help="冻结配置 JSON；校验题库 hash 并注入 T/qhat/阈值/熵表")
+    ap.add_argument("--matched-reference", default="A5_EXPECTED",
+                    help="同预算基线的参考配置（必须在 matched 配置前运行）")
+    ap.add_argument("--matched-budget-frac", type=float, default=-1.0,
+                    help="无参考结果时用于 smoke 的固定预算比例；正式评测保持 -1")
     ap.add_argument("--out-dir", default="")
     ap.add_argument("--tag", default="")
     ap.add_argument("--resume", action="store_true",
                     help="续跑: 跳过 episodes.jsonl 已有的 (config,qid)")
+    ap.add_argument("--allow-crash-resume", action="store_true",
+                    help="允许 final 题库在进程崩溃后续跑；只跳过已完成 (config,qid)，不重跑")
     ap.add_argument("--shard", default="",
                     help="分片并行: 'i/N' 只跑 items[i::N] (用于多 GPU 按题分片, "
                          "保持每片内 (config,qid) 配对完整)")
@@ -395,6 +474,34 @@ def main() -> int:
         print(f"[ERROR] 题库不存在: {testset_path}", file=sys.stderr)
         return 2
     testset = json.loads(testset_path.read_text(encoding="utf-8"))
+    if testset.get("eval_role") == "final":
+        if args.resume and not args.allow_crash_resume:
+            print(
+                "[ERROR] final 题库默认禁止 --resume；崩溃续跑请同时传 --allow-crash-resume",
+                file=sys.stderr,
+            )
+            return 3
+        if args.resume and args.allow_crash_resume:
+            print(
+                "[WARN] crash-resume on final testset: skip completed (config,qid) only",
+                file=sys.stderr,
+            )
+        if not args.frozen_manifest:
+            print("[ERROR] final 题库必须提供 --frozen-manifest", file=sys.stderr)
+            return 3
+    frozen = {}
+    if args.frozen_manifest:
+        frozen_path = Path(args.frozen_manifest)
+        frozen = json.loads(frozen_path.read_text(encoding="utf-8"))
+        if testset.get("eval_role") == "final":
+            expected_hash = str(frozen.get("testset_sha256") or frozen.get("testset_sha256_16") or "")
+            actual_hash = file_hash(testset_path)
+            if expected_hash and not actual_hash.startswith(expected_hash) and not expected_hash.startswith(actual_hash):
+                print(
+                    f"[ERROR] 冻结 manifest 与题库 hash 不一致: {expected_hash} != {actual_hash}",
+                    file=sys.stderr,
+                )
+                return 3
     items = testset.get("items", [])
     if args.split:
         items = [it for it in items if it.get("split") == args.split]
@@ -431,14 +538,75 @@ def main() -> int:
     print("[bench] 正在导入 app (首次会加载/预热感知 + 本地 VLM, 可能耗时数分钟)...")
     t_import = time.time()
     import app  # noqa: E402
+    if frozen:
+        app.VLN_ENTROPY_TABLE = str(frozen.get("entropy_table_path", app.VLN_ENTROPY_TABLE))
+        app.VLN_CONFORMAL_QHAT = float(frozen.get("qhat", app.VLN_CONFORMAL_QHAT))
+        app.VLN_CONFORMAL_ALPHA = float(frozen.get("conformal_alpha", app.VLN_CONFORMAL_ALPHA))
+        app.VLN_RECHECK_TEMPERATURE = float(frozen.get("temperature", app.VLN_RECHECK_TEMPERATURE))
+        app.VLN_RECHECK_MIN_INFO_GAIN = float(
+            frozen.get("min_info_gain", app.VLN_RECHECK_MIN_INFO_GAIN)
+        )
     print(f"[bench] app ready in {time.time() - t_import:.1f}s")
 
     raw_fp = open(raw_path, "a" if args.resume else "w", encoding="utf-8")
     per_config: dict = {}
+    reference_budget_by_qid: dict[str, int] = {}
 
     for cfg_name in configs:
         cfg = CONFIGS[cfg_name]
         apply_config(app, cfg)
+        if frozen:
+            # apply_config resets defaults; frozen values are the only allowed
+            # source of final-evaluation policy hyperparameters.
+            app.VLN_ENTROPY_TABLE = str(frozen.get("entropy_table_path", app.VLN_ENTROPY_TABLE))
+            app.VLN_CONFORMAL_QHAT = float(frozen.get("qhat", app.VLN_CONFORMAL_QHAT))
+            app.VLN_CONFORMAL_ALPHA = float(
+                frozen.get("conformal_alpha", app.VLN_CONFORMAL_ALPHA)
+            )
+            app.VLN_RECHECK_TEMPERATURE = float(
+                frozen.get("temperature", app.VLN_RECHECK_TEMPERATURE)
+            )
+            app.VLN_RECHECK_MIN_INFO_GAIN = float(
+                frozen.get("min_info_gain", app.VLN_RECHECK_MIN_INFO_GAIN)
+            )
+            if cfg_name in {"A3_ENTROPY", "A3U_RAW_ENTROPY"}:
+                app_module_trigger = frozen.get("entropy_trigger")
+                if app_module_trigger is not None:
+                    # RecheckConfig reads VLN_RECHECK_TRIGGER_THRESHOLD through
+                    # the existing trigger field below.
+                    app.VLN_RECHECK_THRESHOLD = float(app_module_trigger)
+        matched_budget: dict[str, int] | None = None
+        if cfg.get("matched_baseline"):
+            if reference_budget_by_qid:
+                if cfg["matched_baseline"] == "same_items":
+                    matched_budget = dict(reference_budget_by_qid)
+                else:
+                    total_actions = sum(reference_budget_by_qid.values())
+                    qids = [
+                        it.get("id") or f"{it.get('tile_id','')}_{it.get('question_type','')}_{i}"
+                        for i, it in enumerate(items)
+                    ]
+                    rng = random.Random(args.seed)
+                    rng.shuffle(qids)
+                    matched_budget = {qid: 0 for qid in qids}
+                    for action_index in range(total_actions):
+                        matched_budget[qids[action_index % len(qids)]] += 1
+            elif args.matched_budget_frac >= 0:
+                qids = [
+                    it.get("id") or f"{it.get('tile_id','')}_{it.get('question_type','')}_{i}"
+                    for i, it in enumerate(items)
+                ]
+                k = int(round(len(qids) * args.matched_budget_frac))
+                rng = random.Random(args.seed)
+                rng.shuffle(qids)
+                selected = set(qids[:k])
+                matched_budget = {qid: int(qid in selected) for qid in qids}
+            else:
+                raise RuntimeError(
+                    f"{cfg_name} 需要先运行参考配置 {args.matched_reference}，"
+                    "或仅在 smoke 中显式传 --matched-budget-frac"
+                )
+        base_effective = effective_config(app)
         print(f"\n[bench] ===== {cfg_name} ({cfg['desc']}) "
               f"evidence={cfg['evidence_level']} search={cfg['max_search']} reobs={cfg['max_reobs']} =====")
         cfg_rows: list = []
@@ -450,6 +618,10 @@ def main() -> int:
                 continue
             t0 = time.time()
             try:
+                if matched_budget is not None:
+                    app.AGENT_VQA_MAX_REOBSERVATIONS = int(matched_budget.get(qid, 0))
+                else:
+                    app.AGENT_VQA_MAX_REOBSERVATIONS = int(cfg["max_reobs"])
                 start = item["start"]
                 report = app.run_agent_vqa_episode_headless(
                     item["question"], start, item=item, source="bench",
@@ -471,8 +643,13 @@ def main() -> int:
                   f"steps={row['n_steps']} {row['wall_s']}s :: {item['question'][:24]}")
         per_config[cfg_name] = {
             "agg": aggregate(cfg_rows), "switches": cfg,
-            "effective_switches": effective_config(app),
+            "effective_switches": base_effective,
         }
+        if cfg_name == args.matched_reference:
+            reference_budget_by_qid = {
+                str(row.get("qid")): int(row.get("n_reobservations", 0) or 0)
+                for row in cfg_rows
+            }
 
     raw_fp.close()
 
@@ -504,6 +681,8 @@ def main() -> int:
         "testset": results["testset"],
         "testset_sha256_16": results["testset_sha256_16"],
         "configs": {c: CONFIGS[c] for c in configs},
+        "frozen_manifest": str(args.frozen_manifest or ""),
+        "frozen_manifest_sha256_16": file_hash(Path(args.frozen_manifest)) if args.frozen_manifest else "",
         "valid_for_analysis": valid_for_analysis,
         "n_execution_errors": execution_errors,
         "agent_vqa_confidence_threshold": os.environ.get("AGENT_VQA_CONFIDENCE_THRESHOLD", "0.5"),

@@ -16,10 +16,25 @@ N_GPU="${3:?}"
 TAG="${4:-parallel}"
 shift 4 || true
 EXTRA_ARGS=("$@")
+SPLIT_ARGS=()
+if [[ "$SPLIT" != "all" && "$SPLIT" != "-" ]]; then
+  SPLIT_ARGS=(--split "$SPLIT")
+fi
+RESUME_ARGS=()
+APPEND_LOGS=0
+if [[ "${NO_RESUME:-0}" != "1" ]]; then
+  RESUME_ARGS=(--resume)
+  APPEND_LOGS=1
+fi
 
 REPO=/home/lc/disasterclaw
+PYTHON_BIN="${DISASTERCLAW_PYTHON_BIN:-/home/lc/miniconda3/envs/disasterclaw/bin/python}"
 cd "$REPO/backend"
+REQUESTED_DETECTOR_BACKEND="${DETECTOR_BACKEND:-}"
 set -a; source ../.env; set +a
+if [[ -n "$REQUESTED_DETECTOR_BACKEND" ]]; then
+  export DETECTOR_BACKEND="$REQUESTED_DETECTOR_BACKEND"
+fi
 
 PIDS=()
 # GPU_IDS: 逗号分隔的物理 GPU 编号，默认 0..N_GPU-1。
@@ -36,12 +51,22 @@ for i in $(seq 0 $((N_GPU - 1))); do
   echo "[launch] shard $i/$N_GPU physical GPU $phys -> $outdir  configs=$CONFIGS split=$SPLIT"
   # 错开加载，避免 4 份 Qwen2.5-VL-7B 同时进 CPU 内存。
   if [[ "$i" -gt 0 ]]; then sleep 25; fi
-  PERCEPTION_DEVICE="cuda:$phys" VLM_LOCAL_DEVICE="cuda:$phys" \
+  shard_log="${outdir}.log"
+  if [[ "$APPEND_LOGS" -eq 1 ]]; then
+    {
+      echo
+      echo "===== RESUME $(date -Iseconds) shard=$i/$N_GPU gpu=$phys ====="
+    } >> "$shard_log"
+  else
+    : > "$shard_log"
+  fi
+  PYTHONUNBUFFERED=1 PERCEPTION_DEVICE="cuda:$phys" VLM_LOCAL_DEVICE="cuda:$phys" \
+    PERCEPTION_OUTPUT_DIR="$REPO/backend/outputs/uav_view_shard${i}" \
     HF_HUB_OFFLINE=1 MPLCONFIGDIR=/tmp/disasterclaw-mpl \
-    python ../scripts/benchmarks/bench_agent_vqa.py \
-      --configs "$CONFIGS" --split "$SPLIT" --shard "$i/$N_GPU" \
-      --out-dir "$outdir" --tag "${TAG}_s${i}" --resume "${EXTRA_ARGS[@]}" \
-      > "${outdir}.log" 2>&1 &
+    "$PYTHON_BIN" ../scripts/benchmarks/bench_agent_vqa.py \
+      --configs "$CONFIGS" "${SPLIT_ARGS[@]}" --shard "$i/$N_GPU" \
+      --out-dir "$outdir" --tag "${TAG}_s${i}" "${RESUME_ARGS[@]}" "${EXTRA_ARGS[@]}" \
+      >> "$shard_log" 2>&1 &
   PIDS+=($!)
 done
 
@@ -61,7 +86,7 @@ for i in $(seq 0 $((N_GPU - 1))); do
   RUNS+=("../runs/benchmarks/cja_agent_vqa/${TAG}_shard${i}of${N_GPU}")
 done
 if [[ $FAIL -eq 0 ]]; then
-  if ! python ../scripts/benchmarks/report_agent_vqa.py \
+  if ! "$PYTHON_BIN" ../scripts/benchmarks/report_agent_vqa.py \
     --runs "${RUNS[@]}" --out "../runs/benchmarks/cja_agent_vqa/${TAG}_reports"; then
     echo "[ERROR] shard report merge failed" >&2
     FAIL=1

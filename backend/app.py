@@ -931,9 +931,14 @@ VLN_RECHECK_MAX_TOTAL = int(os.getenv("VLN_RECHECK_MAX_TOTAL", "8"))  # 单 epis
 #   VLN_UNCERTAINTY_MODE：U_t 用 heuristic 查表（默认，向后兼容）还是校准熵（entropy）。
 #   VLN_RECHECK_TRIGGER：复核触发用固定阈值（默认）还是信息增益 argmax（info_gain）。
 VLN_UNCERTAINTY_MODE = (os.getenv("VLN_UNCERTAINTY_MODE", "heuristic") or "heuristic").strip().lower()
+VLN_RECHECK_TEMPERATURE = float(os.getenv("VLN_RECHECK_TEMPERATURE", "1.0"))
 VLN_RECHECK_TRIGGER = (os.getenv("VLN_RECHECK_TRIGGER", "threshold") or "threshold").strip().lower()
+VLN_RECHECK_THRESHOLD = float(os.getenv("VLN_RECHECK_THRESHOLD", "0.5"))
 VLN_RECHECK_MIN_INFO_GAIN = float(os.getenv("VLN_RECHECK_MIN_INFO_GAIN", "0.05"))
-VLN_ENTROPY_TABLE = os.getenv("VLN_ENTROPY_TABLE", str(BASE_DIR / "data" / "gsd_entropy_table.json"))
+VLN_ENTROPY_TABLE = os.getenv("VLN_ENTROPY_TABLE", str(BASE_DIR / "data" / "fov_entropy_table.json"))
+VLN_RECHECK_MOTION_MODE = (
+    os.getenv("VLN_RECHECK_MOTION_MODE", "descend_center") or "descend_center"
+).strip().lower()
 VLN_CONFORMAL_QHAT = float(os.getenv("VLN_CONFORMAL_QHAT", "0.9"))
 VLN_CONFORMAL_ALPHA = float(os.getenv("VLN_CONFORMAL_ALPHA", "0.1"))
 VLN_ORACLE_NAV = os.getenv("VLN_ORACLE_NAV", "0").lower() in {"1", "true", "yes", "on"}
@@ -1456,6 +1461,8 @@ def run_vln_episode(instruction: str, source: str = "ai") -> dict | None:
                 alt_min_m=VLN_RECHECK_ALT_MIN_M,
                 max_rechecks=VLN_RECHECK_MAX,
                 uncertainty_mode=VLN_UNCERTAINTY_MODE,
+                entropy_temperature=VLN_RECHECK_TEMPERATURE,
+                trigger=VLN_RECHECK_THRESHOLD,
                 trigger_mode=VLN_RECHECK_TRIGGER,
                 min_info_gain=VLN_RECHECK_MIN_INFO_GAIN,
                 entropy_table_path=VLN_ENTROPY_TABLE,
@@ -1463,10 +1470,12 @@ def run_vln_episode(instruction: str, source: str = "ai") -> dict | None:
                 conformal_alpha=VLN_CONFORMAL_ALPHA,
                 random_prob=VLN_RECHECK_RANDOM_PROB,
                 random_seed=VLN_RECHECK_RANDOM_SEED,
+                motion_mode=VLN_RECHECK_MOTION_MODE,
             )
         )
     recheck_total = 0  # 本 episode 已执行的复核机动数（全局上限防失控）
     recheck_horizontal_m = 0.0  # 复核机动带来的额外水平距离（按实际下发参数）
+    recheck_vertical_m = 0.0  # 复核机动带来的累计垂直距离
     recheck_motion_m = 0.0  # 复核机动三维距离（水平居中 + 降高）
     evidence_observation_count = 0  # 独立于策略触发，供 NONE 等配置公平分层
 
@@ -1662,6 +1671,7 @@ def run_vln_episode(instruction: str, source: str = "ai") -> dict | None:
                     _re_u = float(p.get("up_m", 0.0))
                     _re_horizontal = (_re_n * _re_n + _re_e * _re_e) ** 0.5
                     recheck_horizontal_m += _re_horizontal
+                    recheck_vertical_m += abs(_re_u)
                     recheck_motion_m += (_re_horizontal * _re_horizontal + _re_u * _re_u) ** 0.5
                     state.push_log("warn", f"[VLN 复核 {recheck_total}] {rc.reason}")
                     socketio.emit(
@@ -1828,6 +1838,7 @@ def run_vln_episode(instruction: str, source: str = "ai") -> dict | None:
             rstats.update({
                 "extra_actions": recheck_total,
                 "extra_horizontal_m": round(recheck_horizontal_m, 2),
+                "extra_vertical_m": round(recheck_vertical_m, 2),
                 "extra_motion_m": round(recheck_motion_m, 2),
                 "has_evidence": evidence_observation_count > 0,
             })
@@ -2056,6 +2067,8 @@ def _make_agent_vqa_controller(source: str) -> AgentVqaController:
         alt_min_m=VLN_RECHECK_ALT_MIN_M,
         max_rechecks=AGENT_VQA_MAX_REOBSERVATIONS,
         uncertainty_mode=VLN_UNCERTAINTY_MODE,
+        entropy_temperature=VLN_RECHECK_TEMPERATURE,
+        trigger=VLN_RECHECK_THRESHOLD,
         trigger_mode=VLN_RECHECK_TRIGGER,
         min_info_gain=VLN_RECHECK_MIN_INFO_GAIN,
         entropy_table_path=VLN_ENTROPY_TABLE,
@@ -2063,6 +2076,7 @@ def _make_agent_vqa_controller(source: str) -> AgentVqaController:
         conformal_alpha=VLN_CONFORMAL_ALPHA,
         random_prob=VLN_RECHECK_RANDOM_PROB,
         random_seed=VLN_RECHECK_RANDOM_SEED,
+        motion_mode=VLN_RECHECK_MOTION_MODE,
     ))
 
     def reobserve_fn(perception_result, spec):
@@ -2085,12 +2099,19 @@ def _make_agent_vqa_controller(source: str) -> AgentVqaController:
             "reason": out.reason,
             "uncertainty": out.uncertainty,
             "label": out.label,
+            "entropy_table_loaded": bool(getattr(rechecker, "entropy_table_loaded", False)),
+            "entropy_fallback_used": False,
+            "motion_mode": VLN_RECHECK_MOTION_MODE,
         }
         # Agent-VQA A2_ALWAYS 是“额外观测上限”对照：即使当前 detector 没有给出
         # 可疑目标，也应执行一次中心下降重观测，验证动作通道和额外图像本身的价值。
         if out.kind == "skip" and VLN_RECHECK_TRIGGER == "fixed":
             up_m = -min(VLN_RECHECK_DESCEND_M, max(0.0, float(snap["alt"]) - VLN_RECHECK_ALT_MIN_M))
-            if up_m < 0:
+            if VLN_RECHECK_MOTION_MODE not in {"descend_only", "descend_center"}:
+                up_m = 0.0
+            if VLN_RECHECK_MOTION_MODE != "hold" and (
+                up_m < 0 or VLN_RECHECK_MOTION_MODE == "center_only"
+            ):
                 audit.update({
                     "kind": "recheck",
                     "params": {"north_m": 0.0, "east_m": 0.0, "up_m": round(up_m, 1), "speed": 10.0},

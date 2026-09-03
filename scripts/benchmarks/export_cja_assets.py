@@ -45,14 +45,14 @@ def write_budget_table(curves: dict, path: Path, budget: float = 0.25) -> None:
         ("random", "随机"),
         ("entropy_uncal", "未校准熵"),
         ("entropy_cal", "校准熵"),
-        ("cond_ig", "条件期望熵"),
+        ("expected_gain", "条件期望熵"),
         ("conformal", "Conformal"),
         ("oracle", "Oracle 上界"),
     ]
     lines = [
-        r"\begin{tabular}{lrrr}",
+        r"\begin{tabular}{lrrrrrr}",
         r"\hline",
-        r"策略 & macro-F1 & 精度 & ECE \\",
+        r"策略 & macro-F1 & 精度 & ECE & Brier & NLL & 净纠正 \\",
         r"\hline",
     ]
     for key, zh in names:
@@ -61,10 +61,61 @@ def write_budget_table(curves: dict, path: Path, budget: float = 0.25) -> None:
         if not row:
             continue
         lines.append(
-            f"{zh} & {row['macro_f1']:.3f} & {row['accuracy']:.3f} & {row['ece']:.3f} \\\\"
+            f"{zh} & {row['macro_f1']:.3f} & {row['accuracy']:.3f} & {row['ece']:.3f} "
+            f"& {row['brier']:.3f} & {row['nll']:.3f} "
+            f"& {int(row.get('net_corrected', 0))} \\\\"
         )
     lines += [r"\hline", r"\end{tabular}", ""]
     path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def write_fov_table(curve: list[dict], path: Path) -> None:
+    lines = [
+        r"\begin{tabular}{lrrrrrr}",
+        r"\hline",
+        r"视图档 & 高度 (m) & GSD (m/px) & 精度 & macro-F1 & Brier & NLL \\",
+        r"\hline",
+    ]
+    labels = {"cruise": "巡航", "mid": "中间", "floor": "下限"}
+    for row in curve:
+        lines.append(
+            f"{labels.get(row['view'], row['view'])} & {row['alt_m']:.1f} & {row['gsd_m']:.2f} "
+            f"& {row['accuracy']:.3f} & {row['macro_f1']:.3f} "
+            f"& {row['brier']:.3f} & {row['nll']:.3f} \\\\"
+        )
+    lines += [r"\hline", r"\end{tabular}", ""]
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def write_agent_strategy_tables(aggregate: dict, out: Path) -> None:
+    strategy_order = [
+        "A0_HOLD", "A1_RANDOM_MATCHED", "A2_FIXED_MATCHED", "A3U_RAW_ENTROPY",
+        "A3_ENTROPY", "A4_CONFORMAL", "A5_EXPECTED", "O_REF",
+    ]
+    action_order = ["AB_HOLD", "AB_CENTER", "AB_DESCEND", "AB_FULL"]
+
+    def render(names: list[str], path: Path) -> None:
+        lines = [
+            r"\begin{tabular}{lrrrrr}",
+            r"\hline",
+            r"配置 & $n$ & 精度 & 复观测 & 净纠正 & 航时 (s) \\",
+            r"\hline",
+        ]
+        for name in names:
+            row = aggregate.get(name)
+            if not row:
+                continue
+            flip = row.get("flip_matrix") or {}
+            lines.append(
+                f"{_tex_escape(name)} & {int(row.get('n', 0))} & {_fmt(row.get('accuracy'))} "
+                f"& {int(row.get('n_reobservations', 0))} & {int(flip.get('net_corrected', 0))} "
+                f"& {_fmt(row.get('reobserve_flight_time_s'), 1)} \\\\"
+            )
+        lines += [r"\hline", r"\end{tabular}", ""]
+        path.write_text("\n".join(lines), encoding="utf-8")
+
+    render(strategy_order, out / "recheck_strategy_table.tex")
+    render(action_order, out / "recheck_motion_ablation_table.tex")
 
 
 def write_class_table(gsd: dict, path: Path) -> None:
@@ -119,6 +170,29 @@ def write_rescuenet_table(data: dict, path: Path) -> None:
         rec_s = f"{rec:.3f}" if rec is not None else "--"
         lines.append(f"{ZH_CLASS.get(name, _tex_escape(name))}召回 & {int(blk.get('n', 0))} & {rec_s} \\\\")
     lines += [r"\hline", r"\end{tabular}", ""]
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def write_identifiability_table(data: dict, path: Path) -> None:
+    bl = data.get("building_level") or {}
+    ql = data.get("question_level") or {}
+    lines = [
+        r"\begin{tabular}{lrr}",
+        r"\hline",
+        r"量 & 建筑级 & 问题级 \\",
+        r"\hline",
+        f"$n$ & {bl.get('n_buildings', '--')} & {ql.get('n_questions', '--')} \\\\",
+        f"巡航精度 & {_fmt(bl.get('acc_cruise'))} & -- \\\\",
+        f"下限精度 & {_fmt(bl.get('acc_floor'))} & -- \\\\",
+        f"$n_{{\\mathrm{{flip}}}}$ & {bl.get('n_flip', '--')} & {ql.get('n_flip', '--')} \\\\",
+        f"可纠正 & {bl.get('n_correctable', '--')} & {ql.get('n_correctable', '--')} \\\\",
+        f"有害 & {bl.get('n_harmful', '--')} & {ql.get('n_harmful', '--')} \\\\",
+        f"净收益 & {bl.get('net_gain', '--')} & -- \\\\",
+        f"判定 & \\multicolumn{{2}}{{r}}{{{_tex_escape(str(data.get('verdict') or '--'))}}} \\\\",
+        r"\hline",
+        r"\end{tabular}",
+        "",
+    ]
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -340,7 +414,13 @@ def write_power_table(data: dict, path: Path) -> None:
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def plot_curves(gsd: dict | None, budget: dict | None, fig_dir: Path) -> None:
+def plot_curves(
+    gsd: dict | None,
+    budget: dict | None,
+    fig_dir: Path,
+    fov: dict | None = None,
+    aggregate: dict | None = None,
+) -> None:
     try:
         import matplotlib
         matplotlib.use("Agg")
@@ -367,7 +447,7 @@ def plot_curves(gsd: dict | None, budget: dict | None, fig_dir: Path) -> None:
         fig, ax = plt.subplots(figsize=(5.2, 3.4))
         labels = {
             "none": "None", "random": "Random", "entropy_uncal": "Uncal. entropy",
-            "entropy_cal": "Cal. entropy", "cond_ig": "Cond. E[U]",
+            "entropy_cal": "Cal. entropy", "expected_gain": "Cond. E[U]",
             "conformal": "Conformal", "oracle": "Oracle",
         }
         for key, rows in budget["curves"].items():
@@ -381,15 +461,54 @@ def plot_curves(gsd: dict | None, budget: dict | None, fig_dir: Path) -> None:
         fig.tight_layout()
         fig.savefig(fig_dir / "budget_allocation.pdf")
         plt.close(fig)
+    if fov and fov.get("curve"):
+        fig, ax = plt.subplots(figsize=(4.8, 3.2))
+        xs = [r["gsd_m"] for r in fov["curve"]]
+        f1 = [r["macro_f1"] for r in fov["curve"]]
+        nll = [r.get("nll") for r in fov["curve"]]
+        ax.plot(xs, f1, "o-", label="macro-F1")
+        if all(v is not None for v in nll):
+            ax.plot(xs, nll, "s--", label="NLL")
+        ax.set_xlabel("Effective GSD (m/px)")
+        ax.set_ylabel("Score")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        fig.tight_layout()
+        fig.savefig(fig_dir / "fov_ladder.pdf")
+        plt.close(fig)
+    if aggregate:
+        fig, ax = plt.subplots(figsize=(5.2, 3.4))
+        plotted = 0
+        for name, row in aggregate.items():
+            acc = row.get("accuracy")
+            t = row.get("reobserve_flight_time_s")
+            if acc is None or t is None:
+                continue
+            ax.scatter([t], [acc], label=name)
+            plotted += 1
+        if plotted:
+            ax.set_xlabel("Extra reobservation flight time (s)")
+            ax.set_ylabel("Accuracy")
+            ax.legend(fontsize=7, ncol=2)
+            ax.grid(True, alpha=0.3)
+            fig.tight_layout()
+            fig.savefig(fig_dir / "accuracy_flight_time.pdf")
+        plt.close(fig)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--run-root", default=str(REPO / "runs/benchmarks/paper_cja_v1"))
+    ap.add_argument("--run-root", default=str(REPO / "runs/benchmarks/paper_cja_mech_v1"))
     ap.add_argument("--out-dir", default=str(REPO / "paper_cja/generated"))
     args = ap.parse_args()
     root, out = Path(args.run_root), Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
+    fov_path = root / "fov_ladder_test.json"
+    if not fov_path.is_file():
+        fov_path = root / "fov_ladder_val.json"
+    fov = json.loads(fov_path.read_text(encoding="utf-8")) if fov_path.is_file() else None
+    if fov:
+        write_fov_table(fov.get("curve") or [], out / "fov_ladder_table.tex")
     gsd = json.loads((root / "gsd_ladder_test.json").read_text()) if (root / "gsd_ladder_test.json").is_file() else None
     items_path = root / "gsd_ladder_test_items.jsonl"
     if gsd and items_path.is_file() and not gsd.get("gt_counts"):
@@ -419,9 +538,22 @@ def main() -> int:
     if gsd:
         write_gsd_table(gsd.get("curve") or [], out / "gsd_ladder_table.tex")
         write_class_table(gsd, out / "gsd_class_table.tex")
-    budget = json.loads((root / "budget_allocation.json").read_text()) if (root / "budget_allocation.json").is_file() else None
+    budget_path = root / "budget_allocation.json"
+    if not budget_path.is_file():
+        budget_path = root / "selection" / "budget_allocation.json"
+    budget = json.loads(budget_path.read_text()) if budget_path.is_file() else None
     if budget:
         write_budget_table(budget.get("curves") or {}, out / "budget_table.tex")
+    aggregate_candidates = [
+        root / "final_reports/aggregate.json",
+        root / "agent_vqa_reports/aggregate.json",
+        root / "aggregate.json",
+    ]
+    aggregate_path = next((p for p in aggregate_candidates if p.is_file()), None)
+    aggregate = None
+    if aggregate_path:
+        aggregate = json.loads(aggregate_path.read_text(encoding="utf-8"))
+        write_agent_strategy_tables(aggregate, out)
     power = json.loads((root / "power_analysis.json").read_text()) if (root / "power_analysis.json").is_file() else None
     if power:
         write_power_table(power, out / "power_table.tex")
@@ -450,7 +582,13 @@ def main() -> int:
         report = json.loads(cpv2_path.read_text(encoding="utf-8"))
         write_change_perception_v2_table(report, out / "change_perception_v2_table.tex")
         write_training_curve_table(report.get("training_curves") or {}, out / "training_curve_table.tex")
-    plot_curves(gsd, budget, out)
+    ident_path = root / "boundary_identifiability_eventdisjoint.json"
+    if ident_path.is_file():
+        write_identifiability_table(
+            json.loads(ident_path.read_text(encoding="utf-8")),
+            out / "identifiability_eventdisjoint_table.tex",
+        )
+    plot_curves(gsd, budget, out, fov=fov, aggregate=aggregate)
     print(f"[ok] wrote CJA assets → {out}")
     return 0
 

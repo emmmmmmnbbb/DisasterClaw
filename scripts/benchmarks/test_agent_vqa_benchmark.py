@@ -179,3 +179,62 @@ def test_hindsight_oracle_is_gt_bounded_and_offline() -> None:
     assert diag["n_both_correct"] == 1
     assert diag["n_neither_correct"] == 1
     assert diag["online_deployable"] is False
+
+
+def test_motion_ablation_configs_are_distinct() -> None:
+    modes = {}
+    for name in ("AB_HOLD", "AB_CENTER", "AB_DESCEND", "AB_FULL"):
+        app = _fake_app()
+        bench.apply_config(app, bench.CONFIGS[name])
+        modes[name] = app.VLN_RECHECK_MOTION_MODE
+    assert modes == {
+        "AB_HOLD": "hold",
+        "AB_CENTER": "center_only",
+        "AB_DESCEND": "descend_only",
+        "AB_FULL": "descend_center",
+    }
+
+
+def test_report_includes_mcnemar_and_event_cluster_bootstrap() -> None:
+    rows_a = [
+        {"qid": f"a{i}", "disaster": "event-a", "correct": False}
+        for i in range(20)
+    ] + [{"qid": "b1", "disaster": "event-b", "correct": True}]
+    rows_b = [
+        {"qid": f"a{i}", "disaster": "event-a", "correct": True}
+        for i in range(20)
+    ] + [{"qid": "b1", "disaster": "event-b", "correct": False}]
+    mc = reporter.mcnemar_exact(rows_a, rows_b)
+    clustered = reporter.event_cluster_bootstrap_correctness(
+        rows_a, rows_b, n_boot=100, seed=1,
+    )
+    item = reporter.paired_bootstrap_correctness(rows_a, rows_b, n_boot=100, seed=1)
+    assert mc["b_correct_a_wrong"] == 20 and mc["a_correct_b_wrong"] == 1
+    assert clustered["n_events"] == 2
+    assert clustered["ci95"] != item["ci95"]
+
+
+def test_hindsight_oracle_accepts_matched_reobserve_arm() -> None:
+    hold = [{"qid": "q1", "correct": False, "abstain": False, "confidence": 0.8, "n_steps": 1}]
+    matched = [{"qid": "q1", "correct": True, "abstain": False, "confidence": 0.7, "n_steps": 2}]
+    rows, diag = reporter.hindsight_oracle_rows(hold, matched, always_name="A2_FIXED_MATCHED")
+    assert rows[0]["oracle_source"] == "A2_FIXED_MATCHED"
+    assert diag["always_config"] == "A2_FIXED_MATCHED"
+
+
+def test_score_episode_flight_time_uses_method_speeds() -> None:
+    item = {"id": "q_time", "answer": "是", "question_type": "presence"}
+    run = {
+        "ok": True, "n_steps": 2,
+        "answer": {"answer": "是", "abstain": False, "decision": "answer", "confidence": 0.8},
+        "trajectory": [
+            {
+                "candidate_answer": "否", "decision": "reobserve",
+                "reobserve_params": {"north_m": 40.0, "east_m": 0.0, "up_m": -443.4},
+            },
+            {"candidate_answer": "是", "decision": "answer"},
+        ],
+    }
+    row = bench.score_episode(run, item)
+    from recheck import reobserve_flight_time_s
+    assert row["reobserve_flight_time_s"] == round(reobserve_flight_time_s(40.0, 443.4), 3)

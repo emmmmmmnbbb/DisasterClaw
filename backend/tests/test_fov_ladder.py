@@ -140,3 +140,32 @@ def test_entropy_table_rejects_stale_synthetic_schema(tmp_path):
     p.write_text(json.dumps({"schema": "gsd-ladder/1.0", "bins": []}), encoding="utf-8")
     with pytest.raises(ValueError, match="schema mismatch"):
         FL.ExpectedEntropyTable.load(p)
+
+
+def test_entropy_table_fails_closed_when_missing_or_empty(tmp_path):
+    with pytest.raises(FileNotFoundError):
+        FL.ExpectedEntropyTable.load(tmp_path / "missing.json")
+    empty = tmp_path / "empty.json"
+    empty.write_text(
+        '{"schema":"fov-ladder-entropy/1.0","bins":[]}', encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="no fitted bins"):
+        FL.ExpectedEntropyTable.load(empty)
+
+
+def test_fov_entropy_table_schema_uses_cruise_floor_not_legacy_scales():
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "benchmarks"))
+    from eval_fov_ladder import build_entropy_table
+
+    items = [{
+        "views": {
+            "cruise": {"entropy": 0.9, "pred": "no-damage"},
+            "mid": {"entropy": 0.6, "pred": "minor-damage"},
+            "floor": {"entropy": 0.2, "pred": "destroyed"},
+        }
+    }]
+    table = build_entropy_table(items, ["hurricane-harvey"])
+    assert table["schema"] == "fov-ladder-entropy/1.0"
+    views = {row["view"] for row in table["bins"]}
+    assert views == {"cruise", "mid", "floor"}
+    assert "1.0" not in views and "4.0" not in views

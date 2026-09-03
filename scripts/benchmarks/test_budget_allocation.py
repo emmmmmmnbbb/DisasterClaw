@@ -19,7 +19,9 @@
 from __future__ import annotations
 
 import inspect
+import json
 import sys
+import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -55,8 +57,8 @@ def _item(disaster: str, y: int, cruise: tuple[float, float, float, float],
         "disaster": disaster,
         "y": y,
         "views": {
-            "4.0": {"probs": _probs(cruise)},
-            "1.0": {"probs": _probs(native)},
+            "cruise": {"probs": _probs(cruise)},
+            "floor": {"probs": _probs(native)},
         },
     }
 
@@ -187,6 +189,63 @@ def test_allocate_respects_budget() -> None:
     print("[OK] allocate 预算约束正确")
 
 
+def test_all_strategies_use_identical_k_per_budget() -> None:
+    fit = [_item("hurricane-harvey", 0, (0.5, 0.2, 0.2, 0.1), (0.8, 0.1, 0.05, 0.05))
+           for _ in range(8)]
+    test = [_item("palu-tsunami", i % 4, (0.4, 0.3, 0.2, 0.1), (0.1, 0.2, 0.3, 0.4))
+            for i in range(20)]
+    result = evaluate(test, fit, qhat=0.9, temperature=1.0, seed=0, n_boot=20)
+    for budget in (0.1, 0.25, 0.5, 1.0):
+        counts = {
+            name: next(r["n_descend"] for r in rows if r["budget"] == budget)
+            for name, rows in result["curves"].items() if name != "none"
+        }
+        assert len(set(counts.values())) == 1, (budget, counts)
+    assert all("net_corrected" in row for rows in result["curves"].values() for row in rows)
+    print("[OK] 所有可比较策略每个预算档使用完全相同的 K")
+
+
+def test_load_items_rejects_legacy_synthetic_blur_keys() -> None:
+    from eval_budget_allocation import _load_items
+
+    with tempfile.TemporaryDirectory() as raw:
+        path = Path(raw) / "legacy.jsonl"
+        path.write_text(
+            json.dumps({
+                "y": 0,
+                "views": {
+                    "1.0": {"probs": _probs((0.7, 0.1, 0.1, 0.1))},
+                    "4.0": {"probs": _probs((0.4, 0.2, 0.2, 0.2))},
+                },
+            }) + "\n",
+            encoding="utf-8",
+        )
+        try:
+            _load_items(path, 0)
+        except ValueError as exc:
+            assert "legacy" in str(exc) or "cruise" in str(exc)
+            print("[OK] 旧 1.0/4.0 键被拒绝")
+            return
+        raise AssertionError("legacy synthetic-blur items must not load as FOV paired rows")
+
+
+def test_export_budget_table_has_brier_nll_net() -> None:
+    from export_cja_assets import write_budget_table
+
+    curves = {
+        "none": [{"budget": 0.25, "macro_f1": 0.1, "accuracy": 0.2, "ece": 0.3,
+                  "brier": 0.4, "nll": 0.5, "net_corrected": 0}],
+        "entropy_cal": [{"budget": 0.25, "macro_f1": 0.2, "accuracy": 0.3, "ece": 0.2,
+                         "brier": 0.3, "nll": 0.4, "net_corrected": 4}],
+    }
+    with tempfile.TemporaryDirectory() as raw:
+        path = Path(raw) / "budget_table.tex"
+        write_budget_table(curves, path)
+        text = path.read_text(encoding="utf-8")
+    assert "Brier" in text and "NLL" in text and "净纠正" in text
+    print("[OK] 导出预算表含 Brier/NLL/净纠正")
+
+
 def test_event_split_partitions_are_disjoint() -> None:
     """D1 事件切分断言：EVAL_EVENTS 与 LEAK_EVENTS 交集为空。"""
     overlap = set(EVAL_EVENTS) & set(LEAK_EVENTS)
@@ -207,6 +266,9 @@ def _run_all() -> int:
         test_brier_nll_aurc_direction,
         test_cost_risk_penalises_missed_damage,
         test_allocate_respects_budget,
+        test_all_strategies_use_identical_k_per_budget,
+        test_load_items_rejects_legacy_synthetic_blur_keys,
+        test_export_budget_table_has_brier_nll_net,
         test_event_split_partitions_are_disjoint,
     ]
     failed = 0

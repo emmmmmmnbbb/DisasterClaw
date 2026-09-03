@@ -100,6 +100,11 @@ Dhruv Shah, Blazej Osinski, and Sergey Levine.
   205 of {\em Proceedings of Machine Learning Research}, pages 492--504. PMLR,
   2023.
 
+\bibitem{zhang2026esarbench}
+Daoxuan Zhang, Ping Chen, Jianyi Zhou, and Shuo Yang.
+\newblock {ESARBench}: A benchmark for agentic {UAV} embodied search and
+  rescue, 2026.
+
 \bibitem{zhang2025citynavagent}
 Weichen Zhang, Chen Gao, Shiquan Yu, Ruiying Peng, Baining Zhao, Qian Zhang,
   Jinqiang Cui, Xinlei Chen, and Yong Li.

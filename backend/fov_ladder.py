@@ -175,14 +175,16 @@ class ExpectedEntropyTable:
     def load(cls, path: str | Path) -> "ExpectedEntropyTable":
         p = Path(path)
         if not p.is_file():
-            return cls({})
+            raise FileNotFoundError(f"FOV entropy table not found: {p}")
         payload = json.loads(p.read_text(encoding="utf-8"))
         schema = payload.get("schema")
-        if schema and schema != cls.SCHEMA:
+        if schema != cls.SCHEMA:
             raise ValueError(
                 f"entropy table schema mismatch: got {schema!r}, expected {cls.SCHEMA!r}. "
                 "旧的 gsd_ladder 熵表是在合成模糊上拟合的，不能用于视场收缩阶梯。"
             )
+        if not payload.get("bins"):
+            raise ValueError("FOV entropy table has no fitted bins")
         return cls(payload)
 
     def expected_entropy(self, gsd_m: float, pred_class: str) -> Optional[float]:

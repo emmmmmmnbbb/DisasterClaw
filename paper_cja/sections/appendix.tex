@@ -13,8 +13,7 @@ midwest-flooding 与 guatemala-volcano 因此完全退出可用 ROI 池；这一
 \paragraph{视场阶梯常量。}
 传感器边长 $1024\,\mathrm{px}$，水平视场角 $60^\circ$，瓦片跨度 $512\,\mathrm{m}$。
 下限 $h_{\min}=443.405\,\mathrm{m}$（$1.0$ 瓦片，$0.50\,\mathrm{m/px}$），巡航 $h_{\mathrm{cruise}}=1330.215\,\mathrm{m}$（$3.0$ 瓦片，$1.50\,\mathrm{m/px}$），单步下降 $443.405\,\mathrm{m}$。
-实现见 \texttt{backend/fov\_ladder.py}；马赛克合成见 \texttt{backend/mosaic.py}、\texttt{backend/basemap.py}。
-默认 \texttt{MOSAIC\_VIEW=1}；\texttt{MOSAIC\_VIEW=0} 仅用于复现旧合成模糊产物，新实验不得走该路径。
+实现细节见仓库可复现性文档。默认使用视场收缩马赛克视图；旧合成模糊路径仅用于复现历史产物，新实验不得使用。
 
 \paragraph{底图来源。}
 Esri World Imagery，attribution：Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics, and the GIS User Community。
@@ -22,13 +21,9 @@ Esri World Imagery，attribution：Tiles © Esri — Source: Esri, Maxar, Earths
 Esri 影像不参与 ROI 内真值或评分。
 
 \paragraph{感知底座双轨。}
-轨 A 封装见 \texttt{backend/detectors/}，现成冠军权重的产物必须写 \texttt{leaky=true}。
-评测脚本位于 \texttt{scripts/benchmarks/}，
-结果目录为 \texttt{runs/benchmarks/detector\_backends/}
-（legacy、res34 单模型、全集成各一份 JSON）。
-轨 A 权重在官方 train+tier3 上训练，见过测试/留出事件，不得进入正式主表。
+轨 A 的封装与产物必须标记为 \texttt{leaky}（现成冠军权重，见过评测事件），不得进入正式主表；轨 A 权重在官方 train+tier3 上训练，见过测试/留出事件。
 轨 B（事件不相交重训）已完成：损伤 F1 $0.017$，与轨 A 的 $0.630$ 差距约 $97\%$ 来自事件曝光。
-在线感知默认已切换到轨 A（xView2 冠军检测后端），legacy 路径保留为可回退对照。
+在线感知默认已切换到轨 A（冠军检测后端），自训练路径保留为可回退对照。
 
 \paragraph{预注册假设（保持）。}
 H1：温度缩放降低事件不相交测试 ECE 且不改变精度。
@@ -45,59 +40,26 @@ H3--H4：信息增益或共形触发相对无/随机/固定下降的判断增益
 
 \paragraph{损伤分类器训练修复。}
 复核发现早期版本训练日志汇报的验证集 accuracy（$\approx 0.80$）具有误导性：
-在完好类占比 66\%--79\% 的数据上，未加权交叉熵 + 按 accuracy 选 checkpoint 会系统性收敛到常数预测器，
+在完好类占比 66\%--79\% 的数据上，未加权交叉熵 + 按 accuracy 选 模型快照 会系统性收敛到常数预测器，
 训练集自身 macro-F1 当时也只有 $\approx 0.22$--$0.25$（三类损伤召回接近 0），说明问题出在训练配方而非某次评测脚本的 bug。
 修复：(i) 类别加权交叉熵（训练集逐类频率倒数）；(ii) 模型选择改为验证集宏观 F1；
-(iii) 训练收尾对 reload 后的 checkpoint 现场核验，数值与训练期间记录不一致则拒绝保存
-（见 \texttt{backend/change\_perception.py} 的 \texttt{macro\_f1\_from\_logits} / \texttt{class\_weights\_from\_records}）。
+(iii) 训练收尾对重载后的模型快照现场核验，数值与训练期间记录不一致则拒绝保存。
 另需记录一次排查过程中的假警报：复核者最初误用一份早期废弃的、非事件不相交的小规模数据目录
 （\texttt{xbd\_change/}）复算验证集表现，得到与训练日志严重不符的数字，
-一度怀疑存在 checkpoint 保存/加载 bug；改用训练时真正使用的事件不相交目录
+一度怀疑存在 模型快照 保存/加载 bug；改用训练时真正使用的事件不相交目录
 （\texttt{xbd\_change\_strict\_v1/}，与本节``事件切分''一致）后，
-reload 数值与训练日志完全吻合，排除了保存/加载环节的 bug，问题精确定位到训练配方本身。
+重载数值与训练日志完全吻合，排除了保存/加载环节的 bug，问题精确定位到训练配方本身。
 如实记录该假警报是为了让复现者不必重复同一轮排查。
 
 \paragraph{标准（非事件不相交）切分基线。}
-使用 \texttt{gen\_xbd\_change\_dataset.py} 的 \texttt{legacy\_tile\_random} 模式（\texttt{--strict-event-split} 关闭）
-生成 \texttt{xbd\_change\_standard\_v1/}：train/tier3 内按图块 95/5 随机切分为 train/val，官方 test 目录作为 test，
-holdout 灾害事件仍整体排除。该协议与公开 xBD/xView2 基线一致（同一灾害事件的图像可同时出现在 train 与 test，只是不同图块）。
+采用与公开 xBD/xView2 基线一致的协议：train/tier3 内按图块 $95/5$ 随机切分为 train/val，官方 test 目录作为 test，holdout 灾害事件仍整体排除。该协议下同一灾害事件的图像可同时出现在 train 与 test，只是不同图块。
 
 \paragraph{权重溯源（SHA-256 前 16 位）。}
-U-Net 定位器 \texttt{resnet34\_strict\_v1.pt}：\texttt{4802e3886249deee}；
-双时相损伤分类器（当前部署，事件不相交+类别加权+差分注意力）\texttt{strict\_diff\_attention\_seed0\_v2.pt}：\texttt{54df321fad18f054}；
-H2 对照（事件不相交+类别加权+拼接）\texttt{strict\_baseline\_seed0\_v2.pt}：\texttt{a4f38095e4cf6141}；
-协议对照（标准切分+类别加权+拼接）\texttt{standard\_baseline\_seed0.pt}：\texttt{3355700071b30f37}；
-YOLO 对照 \texttt{best.pt}：\texttt{dcd11c194c5bf44b}。
-早期未加权版本 \texttt{strict\_diff\_attention\_seed0.pt}（\texttt{724c30fadd480b43}）保留在仓库中作为对照，不再用于正文结果。
-xView2 冠军权重体积约 $5.3\,\mathrm{GB}$（四架构 $\times$ loc/cls $\times$ 3 seed），路径相对于仓库 \texttt{backend/outputs/xview2\_first/weights/}；凡使用这些权重的评测必须写 \texttt{leaky=true}。
-每次评测的 \texttt{results.json} 内嵌完整哈希、字节数与环境快照。
+权重以 SHA-256 前 16 位哈希溯源，全部文件哈希、字节数与环境快照内嵌于每次评测的产物中。早期未加权的对照版本保留在仓库中，不再用于正文结果。
+xView2 冠军权重为四架构 $\times$ 定位/分类 $\times$ 3 种子的集成；凡使用这些权重的评测必须标记为 \texttt{leaky}。
 
 \paragraph{复现入口。}
-数据根目录由环境变量 \texttt{XBD\_CHANGE\_ROOT}（事件不相交切分）与 \texttt{XBD\_CHANGE\_STANDARD\_ROOT}（官方标准切分）给出，不在正文写绝对路径。
-项目环境为 conda \texttt{disasterclaw}。
-\begin{verbatim}
-# 视场几何与马赛克不变量
-python -m pytest backend/tests/test_fov_ladder.py \
-  backend/tests/test_mosaic.py backend/tests/test_detectors.py
-
-# 重训损伤分类器（类别加权 + 宏观 F1 选择 + 事件不相交断言）
-python backend/change_perception.py train \
-  --data-dir "$XBD_CHANGE_ROOT" --require-event-disjoint \
-  --epochs 8 --class-weighted --diff-attention \
-  --out backend/outputs/change_perception/strict_diff_attention_seed0_v2.pt
-
-# 训练/验证/测试三切分宏观 F1、逐类召回、训练曲线
-python scripts/benchmarks/eval_change_perception_v2.py \
-  --out runs/benchmarks/paper_cja_v2/change_perception_v2_report.json
-
-# 检测器离线对照（轨 A 产物必须带 leaky）
-python scripts/benchmarks/eval_detector_backends.py
-
-# 全量实验（旧观测模型账本）
-bash scripts/benchmarks/run_cja_experiments.sh
-\end{verbatim}
-权重路径相对于仓库 \texttt{backend/outputs/}。
-本地视觉语言模型由 Transformers 进程内加载，约 16\,GB 权重、bfloat16 推理约 20\,GB 显存，无需外部服务。
-环境变量为 \texttt{VLM\_PROVIDER} 与 \texttt{BASE\_MODEL}，默认 Qwen2.5-VL-7B。
-投稿前将本中文 LaTeX 按《航空学报》Word 模板转写；表图由 \texttt{paper\_cja/generated} 导出。
-截图步骤见 \texttt{paper\_cja/SCREENSHOTS.md}。
+数据根目录由环境变量给出（事件不相交切分与官方标准切分分别对应不同根目录），不在正文写绝对路径；项目环境为统一声明的依赖环境。
+复现入口（视场几何与马赛克不变量单元测试、损伤分类器重训、逐类指标导出、检测器离线对照、全量实验）以脚本形式随仓库发布，正文不逐一罗列命令。
+本地视觉语言模型以本地离线推理加载（权重体积与常驻内存占用显著），无需外部服务，以保证离线可复现。
+投稿前将本中文 LaTeX 按《航空学报》Word 模板转写；表图由 \texttt{paper\_cja/generated} 导出。截图步骤见仓库文档。

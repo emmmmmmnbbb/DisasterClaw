@@ -432,6 +432,10 @@ class StepRecord:
     evidence: dict = field(default_factory=dict)
     reobserve_kind: str = ""
     reobserve_reason: str = ""
+    reobserve_params: dict = field(default_factory=dict)
+    entropy_table_loaded: bool = False
+    entropy_fallback_used: bool = False
+    motion_mode: str = ""
     uncertainty: Optional[float] = None
 
     def to_dict(self) -> dict:
@@ -446,6 +450,10 @@ class StepRecord:
             "evidence": self.evidence,
             "reobserve_kind": self.reobserve_kind,
             "reobserve_reason": self.reobserve_reason,
+            "reobserve_params": self.reobserve_params,
+            "entropy_table_loaded": self.entropy_table_loaded,
+            "entropy_fallback_used": self.entropy_fallback_used,
+            "motion_mode": self.motion_mode,
             "uncertainty": self.uncertainty,
         }
 
@@ -708,6 +716,10 @@ class AgentVqaController:
             evidence=ev.to_dict() if ev else {},
             reobserve_kind=str(outcome.get("kind") or ""),
             reobserve_reason=str(outcome.get("reason") or ""),
+            reobserve_params=dict(outcome.get("params") or {}),
+            entropy_table_loaded=bool(outcome.get("entropy_table_loaded")),
+            entropy_fallback_used=bool(outcome.get("entropy_fallback_used")),
+            motion_mode=str(outcome.get("motion_mode") or ""),
             uncertainty=None if unc is None else float(unc),
         ))
 

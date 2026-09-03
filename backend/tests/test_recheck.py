@@ -22,6 +22,8 @@ backend/tests/test_recheck.py — P2 灾情不确定性驱动主动复核 单测
 from __future__ import annotations
 
 import sys
+import json
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -113,6 +115,30 @@ def test_info_gain_descend() -> None:
 LEGACY_ALT = dict(alt_min_m=10.0, descend_step_m=10.0)
 
 
+def _entropy_table_path() -> str:
+    payload = {
+        "schema": "fov-ladder-entropy/1.0",
+        "bins": [
+            {
+                "gsd_m": 0.5,
+                "by_pred_class": {
+                    "all": {"mean_entropy": 0.3, "n": 10},
+                },
+            },
+            {
+                "gsd_m": 1.5,
+                "by_pred_class": {
+                    "all": {"mean_entropy": 0.7, "n": 10},
+                },
+            },
+        ],
+    }
+    fp = tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False)
+    json.dump(payload, fp)
+    fp.close()
+    return fp.name
+
+
 def test_trigger_recheck() -> None:
     ctl = RecheckController(RecheckConfig(**LEGACY_ALT))
     out = ctl.assess(
@@ -197,6 +223,7 @@ def test_assess_entropy_info_gain_modes() -> None:
     cfg = RecheckConfig(
         uncertainty_mode="entropy", trigger_mode="info_gain", min_info_gain=0.02,
         alt_min_m=30.0, descend_step_m=20.0,
+        entropy_table_path=_entropy_table_path(),
     )
     ctl = RecheckController(cfg)
 
@@ -225,6 +252,66 @@ def test_assess_entropy_info_gain_modes() -> None:
     )
     assert out2.kind == "skip", (out2.kind, out2.reason)
     print(f"[OK] entropy+info_gain 组合：不确定→{out.kind}，确定→{out2.kind}")
+
+
+def test_flight_time_matches_method_speeds() -> None:
+    from recheck import reobserve_flight_time_s
+
+    assert abs(reobserve_flight_time_s(40.0, 0.0) - 40.0 / 12.0) < 1e-9
+    assert abs(reobserve_flight_time_s(0.0, 443.4) - 44.34) < 1e-9
+    assert abs(reobserve_flight_time_s(40.0, 443.4) - (40.0 / 12.0 + 44.34)) < 1e-9
+    print("[OK] 航时换算使用 12 m/s 水平与 10 m/s 垂直")
+
+
+def test_info_gain_fails_closed_without_fov_table() -> None:
+    try:
+        RecheckController(RecheckConfig(trigger_mode="info_gain", entropy_table_path=""))
+    except ValueError as exc:
+        assert "requires entropy_table_path" in str(exc)
+    else:
+        raise AssertionError("info_gain must fail closed when the table is absent")
+
+
+def test_info_gain_fails_closed_when_table_bin_missing() -> None:
+    from recheck import info_gain_descend
+    from fov_ladder import ExpectedEntropyTable
+
+    table = ExpectedEntropyTable({
+        "schema": "fov-ladder-entropy/1.0",
+        "bins": [{"gsd_m": 0.5, "by_pred_class": {}}],
+    })
+    try:
+        info_gain_descend(
+            0.8, 1330.0, 443.4, 443.4, pred_class="destroyed", entropy_table=table,
+        )
+    except RuntimeError as exc:
+        assert "no usable bin" in str(exc)
+        print("[OK] 熵表缺分箱时 fail-closed")
+        return
+    raise AssertionError("missing entropy-table bin must not fall back to the height heuristic")
+
+
+def test_motion_modes_decouple_displacements() -> None:
+    det = _det("严重损伤建筑", 0.3, bbox=[70, 10, 90, 30])
+    expected = {
+        "center_only": (True, False),
+        "descend_only": (False, True),
+        "descend_center": (True, True),
+    }
+    for mode, (has_horizontal, has_vertical) in expected.items():
+        ctl = RecheckController(RecheckConfig(motion_mode=mode, **LEGACY_ALT))
+        out = ctl.assess(
+            lat=LAT, lon=LON, alt=120.0, risk_level="low", detections=[det],
+            patch_radius_m=60.0, patch_width=100, patch_height=100,
+        )
+        horizontal = abs(out.params["north_m"]) + abs(out.params["east_m"])
+        assert (horizontal > 0) is has_horizontal, (mode, out.params)
+        assert (out.params["up_m"] < 0) is has_vertical, (mode, out.params)
+    hold = RecheckController(RecheckConfig(motion_mode="hold", **LEGACY_ALT)).assess(
+        lat=LAT, lon=LON, alt=120.0, risk_level="low", detections=[det],
+        patch_radius_m=60.0, patch_width=100, patch_height=100,
+    )
+    assert hold.kind == "skip" and hold.params is None
 
 
 def test_degraded_no_recenter() -> None:
@@ -475,6 +562,10 @@ def _run_all() -> int:
         test_altitude_floor,
         test_improvement_resolves_confirmed,
         test_assess_entropy_info_gain_modes,
+        test_flight_time_matches_method_speeds,
+        test_info_gain_fails_closed_without_fov_table,
+        test_info_gain_fails_closed_when_table_bin_missing,
+        test_motion_modes_decouple_displacements,
         test_degraded_no_recenter,
         test_trigger_mode_fixed_always_rechecks,
         test_trigger_mode_random_reproducible,

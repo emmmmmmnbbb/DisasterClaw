@@ -24,8 +24,10 @@ sys.path.insert(0, str(BACKEND))
 from change_perception import CLASS_NAMES  # noqa: E402
 from recheck import conformal_predict_set, entropy_uncertainty  # noqa: E402
 
-DEFAULT_TEST_ITEMS = REPO / "runs/benchmarks/paper_cja_v2/gsd_ladder_test_items.jsonl"
-DEFAULT_FIT_ITEMS = REPO / "runs/benchmarks/paper_cja_v2/gsd_ladder_val_items.jsonl"
+DEFAULT_TEST_ITEMS = REPO / "runs/benchmarks/paper_cja_mech_v1/fov_ladder_test_items.jsonl"
+DEFAULT_FIT_ITEMS = REPO / "runs/benchmarks/paper_cja_mech_v1/fov_ladder_val_items.jsonl"
+CRUISE_VIEW = "cruise"
+FLOOR_VIEW = "floor"
 
 
 def _macro_f1(y: np.ndarray, pred: np.ndarray) -> float:
@@ -78,16 +80,29 @@ def _aurc(probs: np.ndarray, y: np.ndarray) -> float:
     return float(risks.mean())
 
 
+LEGACY_VIEW_KEYS = {"1.0", "4.0"}
+
+
 def _load_items(path: Path, limit: int) -> list[dict]:
     rows = []
+    n_legacy = 0
     with path.open(encoding="utf-8") as f:
         for line in f:
             rec = json.loads(line)
-            if "1.0" not in rec.get("views", {}) or "4.0" not in rec.get("views", {}):
+            views = rec.get("views") or {}
+            if LEGACY_VIEW_KEYS & set(views) and not ({CRUISE_VIEW, FLOOR_VIEW} <= set(views)):
+                n_legacy += 1
+                continue
+            if CRUISE_VIEW not in views or FLOOR_VIEW not in views:
                 continue
             rows.append(rec)
             if limit and len(rows) >= limit:
                 break
+    if n_legacy and not rows:
+        raise ValueError(
+            f"{path} only contains legacy synthetic-blur keys {sorted(LEGACY_VIEW_KEYS)}; "
+            "run eval_fov_ladder.py and use cruise/mid/floor views"
+        )
     return rows
 
 
@@ -152,8 +167,8 @@ def fit_expected_gain_table(items: list[dict], n_bins: int = 5) -> ExpectedGainT
     """Fit E[U_cruise-U_native | current predicted class, entropy bin]."""
     if not items:
         raise ValueError("expected-gain fit set is empty")
-    cruise = np.stack([_vec(it["views"]["4.0"]["probs"]) for it in items])
-    native = np.stack([_vec(it["views"]["1.0"]["probs"]) for it in items])
+    cruise = np.stack([_vec(it["views"][CRUISE_VIEW]["probs"]) for it in items])
+    native = np.stack([_vec(it["views"][FLOOR_VIEW]["probs"]) for it in items])
     entropy_now = _entropy_rows(cruise)
     gain = entropy_now - _entropy_rows(native)
     pred = cruise.argmax(axis=1)
@@ -235,8 +250,8 @@ def evaluate(
     n_boot: int = 2000,
 ) -> dict:
     y = np.array([int(it["y"]) for it in items], dtype=np.int64)
-    cruise = np.stack([_vec(it["views"]["4.0"]["probs"]) for it in items])
-    native = np.stack([_vec(it["views"]["1.0"]["probs"]) for it in items])
+    cruise = np.stack([_vec(it["views"][CRUISE_VIEW]["probs"]) for it in items])
+    native = np.stack([_vec(it["views"][FLOOR_VIEW]["probs"]) for it in items])
     cruise_pred = cruise.argmax(1)
     native_pred = native.argmax(1)
     flip = cruise_pred != native_pred
@@ -295,6 +310,7 @@ def evaluate(
                 "cost_risk_10": _cost_risk(pred, y, 10.0),
                 "n_corrected": int((use_native & correctable).sum()),
                 "n_harmed": int((use_native & harmful).sum()),
+                "net_corrected": int((use_native & correctable).sum() - (use_native & harmful).sum()),
                 "flip_precision": float((use_native & flip).sum() / use_native.sum()) if use_native.any() else None,
                 "flip_recall": float((use_native & flip).sum() / flip.sum()) if flip.any() else None,
             })
@@ -323,7 +339,8 @@ def evaluate(
     test_events = sorted({str(it.get("disaster") or "unknown") for it in items})
     overlap = sorted(set(test_events) & set(expected_table.fit_events))
     return {
-        "schema_version": "budget-allocation/2.0",
+        "schema_version": "budget-allocation-fov/1.0",
+        "observation_model": "mosaic_fov",
         "n": len(items),
         "test_events": test_events,
         "fit_events": list(expected_table.fit_events),

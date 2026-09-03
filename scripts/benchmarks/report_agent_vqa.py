@@ -23,6 +23,7 @@ import csv
 import json
 import os
 import random
+import math
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -74,6 +75,11 @@ def aggregate(rows):
         "confidence_mean": _mean([r.get("confidence") for r in rows]),
         "n_reobservations": sum(int(r.get("n_reobservations", 0) or 0) for r in rows),
         "n_reobserve_skips": sum(int(r.get("n_reobserve_skips", 0) or 0) for r in rows),
+        "reobserve_horizontal_m": round(sum(float(r.get("reobserve_horizontal_m", 0.0)) for r in rows), 3),
+        "reobserve_vertical_m": round(sum(float(r.get("reobserve_vertical_m", 0.0)) for r in rows), 3),
+        "reobserve_flight_time_s": round(sum(float(r.get("reobserve_flight_time_s", 0.0)) for r in rows), 3),
+        "entropy_table_loaded": any(bool(r.get("entropy_table_loaded")) for r in rows),
+        "entropy_fallback_used": any(bool(r.get("entropy_fallback_used")) for r in rows),
     }
     # 分题型
     by_type = {}
@@ -118,6 +124,7 @@ def aggregate(rows):
         "n_reobservations": n_reobservations,
         "n_corrected": flip_corrected,
         "n_harmed": flip_harmed,
+        "net_corrected": flip_corrected - flip_harmed,
         "n_neutral": n_reobservations - flip_corrected - flip_harmed,
     }
     # 失败分类
@@ -170,6 +177,75 @@ def paired_bootstrap_correctness(rows_a, rows_b, n_boot=2000, seed=42):
     }
 
 
+def mcnemar_exact(rows_a, rows_b) -> dict:
+    """Exact paired McNemar test using the binomial null p=0.5."""
+    a = {r.get("qid"): bool(r.get("correct")) for r in rows_a}
+    b = {r.get("qid"): bool(r.get("correct")) for r in rows_b}
+    keys = sorted(set(a) & set(b))
+    b_only = sum((not a[k]) and b[k] for k in keys)
+    a_only = sum(a[k] and (not b[k]) for k in keys)
+    n = b_only + a_only
+    if n == 0:
+        p = 1.0
+    else:
+        lower = min(a_only, b_only)
+        p = min(1.0, 2.0 * sum(math.comb(n, i) for i in range(lower + 1)) / (2 ** n))
+    return {
+        "n_paired": len(keys),
+        "b_correct_a_wrong": b_only,
+        "a_correct_b_wrong": a_only,
+        "p_value": float(p),
+    }
+
+
+def event_cluster_bootstrap_correctness(rows_a, rows_b, n_boot=2000, seed=42) -> dict:
+    """Resample disaster-event clusters, retaining all paired items per event."""
+    a = {r.get("qid"): r for r in rows_a}
+    pairs = []
+    for rb in rows_b:
+        ra = a.get(rb.get("qid"))
+        if ra is None:
+            continue
+        event = str(rb.get("disaster") or ra.get("disaster") or "unknown")
+        pairs.append((event, (1.0 if rb.get("correct") else 0.0) - (1.0 if ra.get("correct") else 0.0)))
+    if not pairs:
+        return {"n_paired": 0}
+    by_event = defaultdict(list)
+    for event, delta in pairs:
+        by_event[event].append(delta)
+    events = sorted(by_event)
+    rng = random.Random(seed)
+    draws = []
+    for _ in range(n_boot):
+        sampled = [rng.choice(events) for _ in events]
+        values = [delta for event in sampled for delta in by_event[event]]
+        draws.append(sum(values) / len(values))
+    draws.sort()
+    lo = draws[int(0.025 * n_boot)]
+    hi = draws[min(int(0.975 * n_boot), n_boot - 1)]
+    point = sum(delta for _, delta in pairs) / len(pairs)
+    return {
+        "n_paired": len(pairs),
+        "n_events": len(events),
+        "events": events,
+        "mean_difference": round(point, 4),
+        "ci95": [round(lo, 4), round(hi, 4)],
+        "excludes_zero": bool(lo > 0.0 or hi < 0.0),
+        "n_boot": n_boot,
+    }
+
+
+def holm_adjust(values: list[float]) -> list[float]:
+    order = sorted(range(len(values)), key=lambda i: values[i])
+    adjusted = [1.0] * len(values)
+    running = 0.0
+    m = len(values)
+    for rank, idx in enumerate(order):
+        running = max(running, min(1.0, (m - rank) * values[idx]))
+        adjusted[idx] = running
+    return adjusted
+
+
 def budget_utility_curve(rows):
     """预算效用曲线: 按动作步数分桶的累计准确率 (计划 9.2)。"""
     by_steps = defaultdict(list)
@@ -182,6 +258,23 @@ def budget_utility_curve(rows):
         curve.append({"n_steps": s, "n": len(vals),
                       "accuracy": round(sum(vals) / len(vals), 4)})
     return curve
+
+
+def flight_time_summary(rows):
+    total = sum(float(r.get("reobserve_flight_time_s", 0.0)) for r in rows)
+    correct = sum(1 for r in rows if r.get("correct"))
+    corrected = sum(int(r.get("n_correcting_reobservations", 0) or 0) for r in rows)
+    harmed = sum(int(r.get("n_harming_reobservations", 0) or 0) for r in rows)
+    return {
+        "n": len(rows),
+        "accuracy": round(correct / len(rows), 4) if rows else None,
+        "total_flight_time_s": round(total, 3),
+        "mean_flight_time_s": round(total / len(rows), 3) if rows else None,
+        "net_corrected": corrected - harmed,
+        "net_corrected_per_minute": (
+            round((corrected - harmed) / (total / 60.0), 4) if total > 0 else None
+        ),
+    }
 
 
 def risk_coverage_curve(rows):
@@ -206,8 +299,8 @@ def risk_coverage_curve(rows):
     return out
 
 
-def hindsight_oracle_rows(hold_rows, always_rows):
-    """用成对 A0/A2 结果构造离线观测选择 oracle；绝不回送在线控制器。"""
+def hindsight_oracle_rows(hold_rows, always_rows, always_name="A2_ALWAYS"):
+    """用成对 A0 / 复观测配置构造离线观测选择 oracle；绝不回送在线控制器。"""
     hold = {r.get("qid"): r for r in hold_rows}
     always = {r.get("qid"): r for r in always_rows}
     rows = []
@@ -216,18 +309,18 @@ def hindsight_oracle_rows(hold_rows, always_rows):
         h, a = hold[qid], always[qid]
         hc, ac = bool(h.get("correct")), bool(a.get("correct"))
         if not hc and ac:
-            chosen, source = a, "A2_ALWAYS"
+            chosen, source = a, always_name
             correctable += 1
         elif hc and not ac:
             chosen, source = h, "A0_HOLD"
             harmful += 1
         elif hc and ac:
             chosen = min((h, a), key=lambda r: (r.get("n_steps", 0), -(r.get("confidence") or 0)))
-            source = "A0_HOLD" if chosen is h else "A2_ALWAYS"
+            source = "A0_HOLD" if chosen is h else always_name
             both_correct += 1
         else:
             chosen = max((h, a), key=lambda r: (not r.get("abstain"), r.get("confidence") or 0))
-            source = "A0_HOLD" if chosen is h else "A2_ALWAYS"
+            source = "A0_HOLD" if chosen is h else always_name
             neither_correct += 1
         rec = dict(chosen)
         rec["config"] = "O_REF"
@@ -235,13 +328,14 @@ def hindsight_oracle_rows(hold_rows, always_rows):
         rec["oracle_offline_only"] = True
         rows.append(rec)
     diagnostics = {
-        "definition": "GT-informed hindsight selection between paired A0_HOLD and A2_ALWAYS outcomes",
+        "definition": f"GT-informed hindsight selection between paired A0_HOLD and {always_name} outcomes",
         "online_deployable": False,
         "n_paired": len(rows),
         "n_correctable": correctable,
         "n_harmful": harmful,
         "n_both_correct": both_correct,
         "n_neither_correct": neither_correct,
+        "always_config": always_name,
     }
     return rows, diagnostics
 
@@ -290,10 +384,14 @@ def main() -> int:
         for row in load_rows(rd):
             by_config[row.get("config", "")].append(row)
 
-    oracle_diagnostics = {"available": False, "reason": "requires paired A0_HOLD and A2_ALWAYS"}
-    if by_config.get("A0_HOLD") and by_config.get("A2_ALWAYS"):
+    oracle_diagnostics = {"available": False, "reason": "requires paired A0_HOLD and a reobserve arm"}
+    always_name = next(
+        (name for name in ("A2_ALWAYS", "A2_ALL_REOBSERVE", "A2_FIXED_MATCHED") if name in by_config),
+        "",
+    )
+    if by_config.get("A0_HOLD") and always_name:
         oracle_rows, oracle_diagnostics = hindsight_oracle_rows(
-            by_config["A0_HOLD"], by_config["A2_ALWAYS"],
+            by_config["A0_HOLD"], by_config[always_name], always_name=always_name,
         )
         if oracle_rows:
             by_config["O_REF"] = oracle_rows
@@ -310,13 +408,44 @@ def main() -> int:
         json.dumps(aggregate_all, ensure_ascii=False, indent=2), encoding="utf-8")
     (out_dir / "oracle_diagnostics.json").write_text(
         json.dumps(oracle_diagnostics, ensure_ascii=False, indent=2), encoding="utf-8")
+    reference_name = "A5_EXPECTED"
+    matched_names = [
+        "A1_RANDOM_MATCHED", "A2_FIXED_MATCHED", "AB_CENTER", "AB_DESCEND", "AB_FULL",
+    ]
+    budget_audit = {"reference": reference_name, "checked": [], "passed": True}
+    if reference_name in aggregate_all:
+        reference_actions = int(aggregate_all[reference_name].get("n_reobservations", 0))
+        budget_audit["reference_actions"] = reference_actions
+        for name in matched_names:
+            if name not in aggregate_all:
+                continue
+            actions = int(aggregate_all[name].get("n_reobservations", 0))
+            match = actions == reference_actions
+            budget_audit["checked"].append({
+                "config": name, "actions": actions, "matches_reference": match,
+            })
+            budget_audit["passed"] = budget_audit["passed"] and match
+    (out_dir / "budget_audit.json").write_text(
+        json.dumps(budget_audit, ensure_ascii=False, indent=2), encoding="utf-8",
+    )
 
     # paired_tests.json: 所有配置两两配对
     paired = {}
     for i, a in enumerate(configs):
         for b in configs[i + 1:]:
-            paired[f"{b}_vs_{a}"] = paired_bootstrap_correctness(
-                by_config[a], by_config[b], n_boot=args.n_boot, seed=args.seed)
+            paired[f"{b}_vs_{a}"] = {
+                "item_bootstrap": paired_bootstrap_correctness(
+                    by_config[a], by_config[b], n_boot=args.n_boot, seed=args.seed,
+                ),
+                "event_cluster_bootstrap": event_cluster_bootstrap_correctness(
+                    by_config[a], by_config[b], n_boot=args.n_boot, seed=args.seed,
+                ),
+                "mcnemar": mcnemar_exact(by_config[a], by_config[b]),
+            }
+    pair_keys = list(paired)
+    adjusted = holm_adjust([paired[key]["mcnemar"]["p_value"] for key in pair_keys])
+    for key, value in zip(pair_keys, adjusted):
+        paired[key]["mcnemar"]["holm_p_value"] = value
     (out_dir / "paired_tests.json").write_text(
         json.dumps(paired, ensure_ascii=False, indent=2), encoding="utf-8")
 
@@ -339,6 +468,7 @@ def main() -> int:
     # 预算效用 + 风险覆盖曲线 (每个配置)
     curves = {c: {
         "budget_utility": budget_utility_curve(by_config[c]),
+        "flight_time": flight_time_summary(by_config[c]),
         "risk_coverage": risk_coverage_curve(by_config[c]),
     } for c in configs}
     (out_dir / "curves.json").write_text(
@@ -353,12 +483,24 @@ def main() -> int:
               f"flip={a['flip_rate']} steps={a['n_steps_mean']}")
     print(f"\n[report] 配对显著性 (excludes_zero=True 即 95% CI 不含 0):")
     for k, v in paired.items():
-        if v.get("n_paired"):
-            print(f"  {k}: diff={v['mean_difference']} CI={v['ci95']} "
-                  f"sig={v['excludes_zero']} (n={v['n_paired']})")
+        item_test = v["item_bootstrap"]
+        if item_test.get("n_paired"):
+            print(f"  {k}: diff={item_test['mean_difference']} CI={item_test['ci95']} "
+                  f"sig={item_test['excludes_zero']} "
+                  f"McNemar-Holm={v['mcnemar']['holm_p_value']:.4g} "
+                  f"(n={item_test['n_paired']})")
     print(f"\n[report] 完成。报告目录: {out_dir}")
     print(f"[report]   - aggregate.json / paired_tests.json / curves.json")
     print(f"[report]   - event_breakdown.csv / failure_taxonomy.csv")
+    if budget_audit["checked"] and not budget_audit["passed"]:
+        print("[ERROR] 同预算审计失败，结果不得用于公平策略比较。", file=sys.stderr)
+        return 3
+    expected = aggregate_all.get("A5_EXPECTED")
+    if expected and (
+        not expected.get("entropy_table_loaded") or expected.get("entropy_fallback_used")
+    ):
+        print("[ERROR] A5 未加载冻结 FOV 熵表或发生 fallback。", file=sys.stderr)
+        return 3
     return 0
 
 

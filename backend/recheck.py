@@ -127,6 +127,7 @@ def uncertainty_score(
     has_evidence: bool,
     class_probs: Optional[dict[str, float]] = None,
     mode: str = "heuristic",
+    temperature: float = 1.0,
 ) -> float:
     """不确定性评分 ∈ [0,1]。
 
@@ -136,8 +137,16 @@ def uncertainty_score(
     """
     if not has_evidence:
         return 0.0
-    if mode == "entropy" and class_probs:
-        return entropy_uncertainty(class_probs)
+    if mode in {"entropy", "entropy_raw"} and class_probs:
+        probs = class_probs
+        if mode == "entropy_raw" and temperature != 1.0:
+            raw = {
+                name: max(float(value), 1e-12) ** max(float(temperature), 1e-6)
+                for name, value in class_probs.items()
+            }
+            total = sum(raw.values()) or 1.0
+            probs = {name: value / total for name, value in raw.items()}
+        return entropy_uncertainty(probs)
     risk_unc = _RISK_UNCERTAINTY.get(risk_level, 0.5)
     return round(0.5 * risk_unc + 0.5 * (1.0 - _clamp(evidence_conf, 0.0, 1.0)), 3)
 
@@ -150,6 +159,15 @@ def expected_gsd_gain_ratio(alt: float, descend_step_m: float, alt_min_m: float)
     return _clamp(alt_after / max(alt, 1e-6), 0.0, 1.0)
 
 
+HORIZONTAL_SPEED_MPS = 12.0
+VERTICAL_SPEED_MPS = 10.0
+
+
+def reobserve_flight_time_s(horizontal_m: float, vertical_m: float) -> float:
+    """Method-defined extra flight time: distance / speed, never wall-clock."""
+    return float(horizontal_m) / HORIZONTAL_SPEED_MPS + float(vertical_m) / VERTICAL_SPEED_MPS
+
+
 def info_gain_descend(
     entropy_now: float,
     alt: float,
@@ -158,13 +176,16 @@ def info_gain_descend(
     pred_class: str = "",
     entropy_table: Optional["ExpectedEntropyTable"] = None,
 ) -> float:
-    """降高复核的期望熵下降。优先用拟合的 \(\hat E[U|GSD,\hat y]\)，否则回退高度比。"""
+    """降高复核的期望熵下降。正式 info_gain 策略必须用拟合表，禁止静默回退高度比。"""
     if entropy_table is not None:
         fitted = entropy_table.info_gain(
             entropy_now, alt, descend_step_m, alt_min_m, pred_class or "no-damage",
         )
-        if fitted is not None:
-            return max(0.0, round(fitted, 3))
+        if fitted is None:
+            raise RuntimeError(
+                "FOV entropy table has no usable bin for the requested class/GSD"
+            )
+        return max(0.0, round(fitted, 3))
     ratio = expected_gsd_gain_ratio(alt, descend_step_m, alt_min_m)
     expected_after = entropy_now * ratio
     return max(0.0, round(entropy_now - expected_after, 3))
@@ -249,13 +270,15 @@ class RecheckConfig:
     cell_m: float = 20.0             # 复核去重的位置量化格
     # P5：升级接口开关，默认值向后兼容（等价于升级前的行为）。
     uncertainty_mode: str = "heuristic"   # "heuristic" | "entropy"
+    entropy_temperature: float = 1.0       # entropy_raw: 撤销温度标定
     trigger_mode: str = "threshold"       # "threshold" | "info_gain" | "fixed" | "random" | "conformal"
     min_info_gain: float = 0.05           # trigger_mode="info_gain" 时的最小期望熵下降
     random_prob: float = 0.5              # trigger_mode="random" 时的复核概率
     random_seed: int = 0                  # trigger_mode="random" 时的可复现随机种子
-    entropy_table_path: str = ""          # 拟合的 E[U|GSD,yhat] 表；空则回退高度比启发式
+    entropy_table_path: str = ""          # info_gain 正式策略必须提供新 FOV 熵表
     conformal_qhat: float = 0.9           # APS 分位数（由 val 拟合）
     conformal_alpha: float = 0.1          # 目标误覆盖率
+    motion_mode: str = "descend_center"   # hold | center_only | descend_only | descend_center
 
 
 @dataclass
@@ -286,6 +309,12 @@ class RecheckController:
 
     def __init__(self, config: Optional[RecheckConfig] = None):
         self.config = config or RecheckConfig()
+        valid_motion_modes = {"hold", "center_only", "descend_only", "descend_center"}
+        if self.config.motion_mode not in valid_motion_modes:
+            raise ValueError(
+                f"invalid motion_mode {self.config.motion_mode!r}; "
+                f"expected one of {sorted(valid_motion_modes)}"
+            )
         # key=量化位置 → {count, unc0, label}
         self._state: dict[tuple[int, int], dict] = {}
         self.resolved_log: list[dict] = []  # 供报告/评测：每次定论的不确定性下降
@@ -293,16 +322,23 @@ class RecheckController:
         self._rng = random.Random(self.config.random_seed)  # trigger_mode="random" 专用
         self._entropy_table = None
         path = (self.config.entropy_table_path or "").strip()
-        if path and ExpectedEntropyTable is not None:
-            try:
-                self._entropy_table = ExpectedEntropyTable.load(path)
-            except Exception:
-                self._entropy_table = None
+        if self.config.trigger_mode == "info_gain":
+            if ExpectedEntropyTable is None:
+                raise RuntimeError("fov_ladder.ExpectedEntropyTable is unavailable")
+            if not path:
+                raise ValueError("trigger_mode='info_gain' requires entropy_table_path")
+            # Formal experiments are fail-closed: missing/stale/empty tables must
+            # stop the run rather than silently changing A5 into a height heuristic.
+            self._entropy_table = ExpectedEntropyTable.load(path)
 
     def _key(self, lat: float, lon: float) -> tuple[int, int]:
         # 用经纬度的粗量化做去重（episode 内百米级，误差无所谓）。
         scale = self.config.cell_m / 111_000.0  # 约略：1 度纬度 ≈ 111km
         return (int(round(lat / scale)), int(round(lon / scale)))
+
+    @property
+    def entropy_table_loaded(self) -> bool:
+        return self._entropy_table is not None
 
     def _should_recheck(
         self,
@@ -319,6 +355,15 @@ class RecheckController:
                 unc, alt, cfg.descend_step_m, cfg.alt_min_m,
                 pred_class=pred, entropy_table=self._entropy_table,
             )
+            if self._entropy_table is not None:
+                fitted = self._entropy_table.expected_entropy(
+                    effective_gsd_m(max(alt - cfg.descend_step_m, cfg.alt_min_m)),
+                    pred or "no-damage",
+                )
+                if fitted is None:
+                    raise RuntimeError(
+                        "FOV entropy table has no usable bin for the requested class/GSD"
+                    )
             return gain > cfg.min_info_gain
         if cfg.trigger_mode == "conformal":
             if not class_probs:
@@ -352,6 +397,10 @@ class RecheckController:
         inconclusive/confirmed 正式收尾；尚未触发的位置直接跳过。
         """
         cfg = self.config
+        if cfg.motion_mode == "hold":
+            return RecheckOutcome(
+                kind="skip", uncertainty=0.0, reason="motion_mode=hold：不执行复观测机动。",
+            )
         conf, label, bbox, class_probs = best_evidence(detections)
         has_detection_evidence = bool(label)
         has_evidence = has_detection_evidence or (risk_level not in ("none", ""))
@@ -360,6 +409,7 @@ class RecheckController:
         unc = uncertainty_score(
             risk_level, eff_conf, has_evidence,
             class_probs=class_probs, mode=cfg.uncertainty_mode,
+            temperature=cfg.entropy_temperature,
         )
 
         key = self._key(lat, lon)
@@ -428,7 +478,11 @@ class RecheckController:
         up_m = -min(cfg.descend_step_m, max(0.0, alt - cfg.alt_min_m))
         north_m, east_m = 0.0, 0.0
         offset = None
-        if not degraded and bbox and patch_width > 0 and patch_height > 0 and patch_radius_m > 0:
+        allow_center = cfg.motion_mode in {"center_only", "descend_center"}
+        allow_descend = cfg.motion_mode in {"descend_only", "descend_center"}
+        if not allow_descend:
+            up_m = 0.0
+        if allow_center and not degraded and bbox and patch_width > 0 and patch_height > 0 and patch_radius_m > 0:
             cx = (float(bbox[0]) + float(bbox[2])) * 0.5 / patch_width
             cy = (float(bbox[1]) + float(bbox[3])) * 0.5 / patch_height
             north_m, east_m = offset_from_norm((cx, cy), patch_radius_m)
@@ -525,6 +579,9 @@ class RecheckController:
             "uncertainty_reduction_sum": round(sum(red), 3),
             "avg_uncertainty_reduction": round(sum(red) / len(red), 3) if red else 0.0,
             "pending": len(self._state),
+            "motion_mode": self.config.motion_mode,
+            "entropy_table_loaded": self._entropy_table is not None,
+            "entropy_fallback_used": False,
             "n_answer_flip": len(flips),
             "n_corrected": len(corrected),
             "n_harmed": len(harmed),
