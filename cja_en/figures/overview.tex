@@ -1,0 +1,11 @@
+\begin{tikzpicture}[font=\small,>=Latex,
+ box/.style={draw=blue!55!black,rounded corners,align=center,fill=blue!3,inner sep=7pt},
+ arrow/.style={->,thick,draw=blue!55!black}]
+\node[box,text width=11.8cm] (source) {Georeferenced pre-/post-disaster imagery\\Assumed source GSD: 0.5 m/pixel; no detail beyond source resolution};
+\node[box,text width=11.8cm,below=8mm of source] (camera) {Fixed output: $1024\times1024$ pixels; FOV: $60^\circ$\\Cruise: 1.5 m/px $\longrightarrow$ Mid: 1.0 m/px $\longrightarrow$ Floor: 0.5 m/px\\Smaller footprint: more target pixels, less surrounding context};
+\node[box,text width=5.2cm,minimum height=2.7cm,below=10mm of camera.south,xshift=-3cm] (offline) {Offline paired predictions\\3,753 buildings / 44 ROIs\\Select $k$ floor-view predictions\\Classification; correction/harm};
+\node[box,text width=5.2cm,minimum height=2.7cm,right=6mm of offline] (online) {Online inspection episodes\\160 questions / 10 configurations\\Action $\to$ new view $\to$ answer\\Task score; observation count};
+\draw[arrow] (source)--(camera);
+\draw[arrow] (camera.south)-- ++(0,-.4) -| (offline.north);
+\draw[arrow] (camera.south)-- ++(0,-.4) -| (online.north);
+\end{tikzpicture}

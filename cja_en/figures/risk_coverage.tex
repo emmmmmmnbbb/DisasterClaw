@@ -1,0 +1,11 @@
+\begin{tikzpicture}
+\begin{axis}[width=.88\linewidth,height=6cm,xlabel={Fraction of questions answered},ylabel={Error among accepted answers},
+xmin=0,xmax=1,ymin=0,ymax=1,grid=major,legend style={at={(.5,-.24)},anchor=north,draw=none},legend columns=3]
+\addplot+[black,mark=square*,thick] coordinates {(0.38750000,0.56451613) (0.97500000,0.67948718) (0.97500000,0.67948718)};
+\addlegendentry{Hold}
+\addplot+[teal!80!black,mark=diamond*,thick] coordinates {(0.05000000,0.00000000) (0.05000000,0.00000000) (0.38750000,0.53225806) (0.96875000,0.68387097) (0.96875000,0.68387097)};
+\addlegendentry{Expected entropy reduction}
+\addplot+[violet,mark=*,thick] coordinates {(0.06250000,0.00000000) (0.10000000,0.25000000) (0.40625000,0.47692308) (0.96875000,0.67741935) (0.96875000,0.67741935)};
+\addlegendentry{APS trigger}
+\end{axis}
+\end{tikzpicture}

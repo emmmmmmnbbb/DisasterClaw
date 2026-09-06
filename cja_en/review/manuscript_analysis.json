@@ -1,0 +1,692 @@
+{
+  "bootstrap": {
+    "method": "paired ROI bootstrap stratified within the three observed events",
+    "n_resamples": 2000,
+    "seed": 20260905,
+    "n_rois": 44,
+    "event_roi_counts": {
+      "hurricane-michael": 15,
+      "moore-tornado": 15,
+      "nepal-flooding": 14
+    },
+    "fixed_allocation": true,
+    "exploratory": true,
+    "comparisons": {
+      "entropy_cal_minus_random": {
+        "delta_macro_f1": 0.019196099418939405,
+        "percentile_95": [
+          0.009673212747652423,
+          0.041895321131049025
+        ]
+      },
+      "entropy_cal_minus_entropy_uncal": {
+        "delta_macro_f1": -0.001494069992318936,
+        "percentile_95": [
+          -0.00933642804229863,
+          0.006141160499974983
+        ]
+      }
+    }
+  },
+  "unmatched_buildings": {
+    "cruise": 912,
+    "mid": 916,
+    "floor": 907
+  },
+  "detection_effects": {
+    "corrected_both_detected": 156,
+    "harmed_both_detected": 108,
+    "harmed_unmatched_involved": 18,
+    "corrected_unmatched_involved": 35
+  },
+  "common_matched_sensitivity": {
+    "n": 2757,
+    "selection": "detected in all three recorded views",
+    "metrics": {
+      "cruise": {
+        "accuracy": 0.7918026840768951,
+        "macro_f1": 0.7068517350724952,
+        "ece": 0.17898480956601362,
+        "brier": 0.3367439665117807,
+        "nll": 0.6455306284178534
+      },
+      "mid": {
+        "accuracy": 0.8052230685527747,
+        "macro_f1": 0.732146587830493,
+        "ece": 0.1805084063687267,
+        "brier": 0.3176193708741681,
+        "nll": 0.6123012319842569
+      },
+      "floor": {
+        "accuracy": 0.8099383387740298,
+        "macro_f1": 0.7488731722388627,
+        "ece": 0.190894231737935,
+        "brier": 0.3174813421002247,
+        "nll": 0.6102722146674835
+      }
+    }
+  },
+  "online": {
+    "A4_CONFORMAL": {
+      "by_question_type": {
+        "count": {
+          "n": 43,
+          "correct": 17,
+          "actions": 8
+        },
+        "damage": {
+          "n": 43,
+          "correct": 14,
+          "actions": 25
+        },
+        "presence": {
+          "n": 44,
+          "correct": 15,
+          "actions": 8
+        },
+        "spatial": {
+          "n": 30,
+          "correct": 4,
+          "actions": 3
+        }
+      },
+      "posthoc_threshold_risk": [
+        {
+          "threshold": 0.0,
+          "n_accepted": 155,
+          "coverage": 0.96875,
+          "risk": 0.6774193548387096
+        },
+        {
+          "threshold": 0.8,
+          "n_accepted": 155,
+          "coverage": 0.96875,
+          "risk": 0.6774193548387096
+        },
+        {
+          "threshold": 0.9,
+          "n_accepted": 65,
+          "coverage": 0.40625,
+          "risk": 0.47692307692307695
+        },
+        {
+          "threshold": 0.95,
+          "n_accepted": 16,
+          "coverage": 0.1,
+          "risk": 0.25
+        },
+        {
+          "threshold": 0.99,
+          "n_accepted": 10,
+          "coverage": 0.0625,
+          "risk": 0.0
+        },
+        {
+          "threshold": 1.0,
+          "n_accepted": 0,
+          "coverage": 0.0,
+          "risk": null
+        }
+      ]
+    },
+    "AB_CENTER": {
+      "by_question_type": {
+        "count": {
+          "n": 43,
+          "correct": 18,
+          "actions": 0
+        },
+        "damage": {
+          "n": 43,
+          "correct": 14,
+          "actions": 11
+        },
+        "presence": {
+          "n": 44,
+          "correct": 15,
+          "actions": 0
+        },
+        "spatial": {
+          "n": 30,
+          "correct": 4,
+          "actions": 0
+        }
+      },
+      "posthoc_threshold_risk": [
+        {
+          "threshold": 0.0,
+          "n_accepted": 158,
+          "coverage": 0.9875,
+          "risk": 0.6772151898734177
+        },
+        {
+          "threshold": 0.8,
+          "n_accepted": 158,
+          "coverage": 0.9875,
+          "risk": 0.6772151898734177
+        },
+        {
+          "threshold": 0.9,
+          "n_accepted": 59,
+          "coverage": 0.36875,
+          "risk": 0.5423728813559322
+        },
+        {
+          "threshold": 0.95,
+          "n_accepted": 0,
+          "coverage": 0.0,
+          "risk": null
+        },
+        {
+          "threshold": 0.99,
+          "n_accepted": 0,
+          "coverage": 0.0,
+          "risk": null
+        },
+        {
+          "threshold": 1.0,
+          "n_accepted": 0,
+          "coverage": 0.0,
+          "risk": null
+        }
+      ]
+    },
+    "AB_DESCEND": {
+      "by_question_type": {
+        "count": {
+          "n": 43,
+          "correct": 16,
+          "actions": 0
+        },
+        "damage": {
+          "n": 43,
+          "correct": 14,
+          "actions": 11
+        },
+        "presence": {
+          "n": 44,
+          "correct": 15,
+          "actions": 0
+        },
+        "spatial": {
+          "n": 30,
+          "correct": 3,
+          "actions": 0
+        }
+      },
+      "posthoc_threshold_risk": [
+        {
+          "threshold": 0.0,
+          "n_accepted": 155,
+          "coverage": 0.96875,
+          "risk": 0.6903225806451613
+        },
+        {
+          "threshold": 0.8,
+          "n_accepted": 155,
+          "coverage": 0.96875,
+          "risk": 0.6903225806451613
+        },
+        {
+          "threshold": 0.9,
+          "n_accepted": 64,
+          "coverage": 0.4,
+          "risk": 0.546875
+        },
+        {
+          "threshold": 0.95,
+          "n_accepted": 6,
+          "coverage": 0.0375,
+          "risk": 0.0
+        },
+        {
+          "threshold": 0.99,
+          "n_accepted": 6,
+          "coverage": 0.0375,
+          "risk": 0.0
+        },
+        {
+          "threshold": 1.0,
+          "n_accepted": 0,
+          "coverage": 0.0,
+          "risk": null
+        }
+      ]
+    },
+    "AB_FULL": {
+      "by_question_type": {
+        "count": {
+          "n": 43,
+          "correct": 16,
+          "actions": 0
+        },
+        "damage": {
+          "n": 43,
+          "correct": 14,
+          "actions": 11
+        },
+        "presence": {
+          "n": 44,
+          "correct": 15,
+          "actions": 0
+        },
+        "spatial": {
+          "n": 30,
+          "correct": 4,
+          "actions": 0
+        }
+      },
+      "posthoc_threshold_risk": [
+        {
+          "threshold": 0.0,
+          "n_accepted": 156,
+          "coverage": 0.975,
+          "risk": 0.6858974358974359
+        },
+        {
+          "threshold": 0.8,
+          "n_accepted": 156,
+          "coverage": 0.975,
+          "risk": 0.6858974358974359
+        },
+        {
+          "threshold": 0.9,
+          "n_accepted": 64,
+          "coverage": 0.4,
+          "risk": 0.5
+        },
+        {
+          "threshold": 0.95,
+          "n_accepted": 6,
+          "coverage": 0.0375,
+          "risk": 0.0
+        },
+        {
+          "threshold": 0.99,
+          "n_accepted": 6,
+          "coverage": 0.0375,
+          "risk": 0.0
+        },
+        {
+          "threshold": 1.0,
+          "n_accepted": 0,
+          "coverage": 0.0,
+          "risk": null
+        }
+      ]
+    },
+    "A5_EXPECTED": {
+      "by_question_type": {
+        "count": {
+          "n": 43,
+          "correct": 16,
+          "actions": 0
+        },
+        "damage": {
+          "n": 43,
+          "correct": 14,
+          "actions": 15
+        },
+        "presence": {
+          "n": 44,
+          "correct": 15,
+          "actions": 0
+        },
+        "spatial": {
+          "n": 30,
+          "correct": 4,
+          "actions": 0
+        }
+      },
+      "posthoc_threshold_risk": [
+        {
+          "threshold": 0.0,
+          "n_accepted": 155,
+          "coverage": 0.96875,
+          "risk": 0.6838709677419355
+        },
+        {
+          "threshold": 0.8,
+          "n_accepted": 155,
+          "coverage": 0.96875,
+          "risk": 0.6838709677419355
+        },
+        {
+          "threshold": 0.9,
+          "n_accepted": 62,
+          "coverage": 0.3875,
+          "risk": 0.532258064516129
+        },
+        {
+          "threshold": 0.95,
+          "n_accepted": 8,
+          "coverage": 0.05,
+          "risk": 0.0
+        },
+        {
+          "threshold": 0.99,
+          "n_accepted": 8,
+          "coverage": 0.05,
+          "risk": 0.0
+        },
+        {
+          "threshold": 1.0,
+          "n_accepted": 0,
+          "coverage": 0.0,
+          "risk": null
+        }
+      ]
+    },
+    "A1_RANDOM_MATCHED": {
+      "by_question_type": {
+        "count": {
+          "n": 43,
+          "correct": 18,
+          "actions": 4
+        },
+        "damage": {
+          "n": 43,
+          "correct": 14,
+          "actions": 2
+        },
+        "presence": {
+          "n": 44,
+          "correct": 15,
+          "actions": 5
+        },
+        "spatial": {
+          "n": 30,
+          "correct": 4,
+          "actions": 3
+        }
+      },
+      "posthoc_threshold_risk": [
+        {
+          "threshold": 0.0,
+          "n_accepted": 156,
+          "coverage": 0.975,
+          "risk": 0.6730769230769231
+        },
+        {
+          "threshold": 0.8,
+          "n_accepted": 156,
+          "coverage": 0.975,
+          "risk": 0.6730769230769231
+        },
+        {
+          "threshold": 0.9,
+          "n_accepted": 64,
+          "coverage": 0.4,
+          "risk": 0.53125
+        },
+        {
+          "threshold": 0.95,
+          "n_accepted": 8,
+          "coverage": 0.05,
+          "risk": 0.625
+        },
+        {
+          "threshold": 0.99,
+          "n_accepted": 1,
+          "coverage": 0.00625,
+          "risk": 0.0
+        },
+        {
+          "threshold": 1.0,
+          "n_accepted": 0,
+          "coverage": 0.0,
+          "risk": null
+        }
+      ]
+    },
+    "A2_FIXED_MATCHED": {
+      "by_question_type": {
+        "count": {
+          "n": 43,
+          "correct": 16,
+          "actions": 0
+        },
+        "damage": {
+          "n": 43,
+          "correct": 14,
+          "actions": 15
+        },
+        "presence": {
+          "n": 44,
+          "correct": 15,
+          "actions": 0
+        },
+        "spatial": {
+          "n": 30,
+          "correct": 4,
+          "actions": 0
+        }
+      },
+      "posthoc_threshold_risk": [
+        {
+          "threshold": 0.0,
+          "n_accepted": 156,
+          "coverage": 0.975,
+          "risk": 0.6858974358974359
+        },
+        {
+          "threshold": 0.8,
+          "n_accepted": 156,
+          "coverage": 0.975,
+          "risk": 0.6858974358974359
+        },
+        {
+          "threshold": 0.9,
+          "n_accepted": 66,
+          "coverage": 0.4125,
+          "risk": 0.5303030303030303
+        },
+        {
+          "threshold": 0.95,
+          "n_accepted": 8,
+          "coverage": 0.05,
+          "risk": 0.0
+        },
+        {
+          "threshold": 0.99,
+          "n_accepted": 8,
+          "coverage": 0.05,
+          "risk": 0.0
+        },
+        {
+          "threshold": 1.0,
+          "n_accepted": 0,
+          "coverage": 0.0,
+          "risk": null
+        }
+      ]
+    },
+    "A0_HOLD": {
+      "by_question_type": {
+        "count": {
+          "n": 43,
+          "correct": 17,
+          "actions": 0
+        },
+        "damage": {
+          "n": 43,
+          "correct": 14,
+          "actions": 0
+        },
+        "presence": {
+          "n": 44,
+          "correct": 15,
+          "actions": 0
+        },
+        "spatial": {
+          "n": 30,
+          "correct": 4,
+          "actions": 0
+        }
+      },
+      "posthoc_threshold_risk": [
+        {
+          "threshold": 0.0,
+          "n_accepted": 156,
+          "coverage": 0.975,
+          "risk": 0.6794871794871795
+        },
+        {
+          "threshold": 0.8,
+          "n_accepted": 156,
+          "coverage": 0.975,
+          "risk": 0.6794871794871795
+        },
+        {
+          "threshold": 0.9,
+          "n_accepted": 62,
+          "coverage": 0.3875,
+          "risk": 0.5645161290322581
+        },
+        {
+          "threshold": 0.95,
+          "n_accepted": 0,
+          "coverage": 0.0,
+          "risk": null
+        },
+        {
+          "threshold": 0.99,
+          "n_accepted": 0,
+          "coverage": 0.0,
+          "risk": null
+        },
+        {
+          "threshold": 1.0,
+          "n_accepted": 0,
+          "coverage": 0.0,
+          "risk": null
+        }
+      ]
+    },
+    "A3U_RAW_ENTROPY": {
+      "by_question_type": {
+        "count": {
+          "n": 43,
+          "correct": 16,
+          "actions": 0
+        },
+        "damage": {
+          "n": 43,
+          "correct": 14,
+          "actions": 15
+        },
+        "presence": {
+          "n": 44,
+          "correct": 15,
+          "actions": 0
+        },
+        "spatial": {
+          "n": 30,
+          "correct": 4,
+          "actions": 0
+        }
+      },
+      "posthoc_threshold_risk": [
+        {
+          "threshold": 0.0,
+          "n_accepted": 156,
+          "coverage": 0.975,
+          "risk": 0.6858974358974359
+        },
+        {
+          "threshold": 0.8,
+          "n_accepted": 156,
+          "coverage": 0.975,
+          "risk": 0.6858974358974359
+        },
+        {
+          "threshold": 0.9,
+          "n_accepted": 68,
+          "coverage": 0.425,
+          "risk": 0.5735294117647058
+        },
+        {
+          "threshold": 0.95,
+          "n_accepted": 8,
+          "coverage": 0.05,
+          "risk": 0.0
+        },
+        {
+          "threshold": 0.99,
+          "n_accepted": 8,
+          "coverage": 0.05,
+          "risk": 0.0
+        },
+        {
+          "threshold": 1.0,
+          "n_accepted": 0,
+          "coverage": 0.0,
+          "risk": null
+        }
+      ]
+    },
+    "A3_ENTROPY": {
+      "by_question_type": {
+        "count": {
+          "n": 43,
+          "correct": 16,
+          "actions": 0
+        },
+        "damage": {
+          "n": 43,
+          "correct": 14,
+          "actions": 15
+        },
+        "presence": {
+          "n": 44,
+          "correct": 15,
+          "actions": 0
+        },
+        "spatial": {
+          "n": 30,
+          "correct": 4,
+          "actions": 0
+        }
+      },
+      "posthoc_threshold_risk": [
+        {
+          "threshold": 0.0,
+          "n_accepted": 156,
+          "coverage": 0.975,
+          "risk": 0.6858974358974359
+        },
+        {
+          "threshold": 0.8,
+          "n_accepted": 155,
+          "coverage": 0.96875,
+          "risk": 0.6838709677419355
+        },
+        {
+          "threshold": 0.9,
+          "n_accepted": 66,
+          "coverage": 0.4125,
+          "risk": 0.5454545454545454
+        },
+        {
+          "threshold": 0.95,
+          "n_accepted": 8,
+          "coverage": 0.05,
+          "risk": 0.0
+        },
+        {
+          "threshold": 0.99,
+          "n_accepted": 8,
+          "coverage": 0.05,
+          "risk": 0.0
+        },
+        {
+          "threshold": 1.0,
+          "n_accepted": 0,
+          "coverage": 0.0,
+          "risk": null
+        }
+      ]
+    }
+  },
+  "input_audit_sha256": "59b725ef90e32bdbe6b28c22284ad49a4e6893316034d7127d2446026645de98"
+}

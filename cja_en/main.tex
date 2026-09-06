@@ -1,0 +1,45 @@
+\documentclass[preprint,12pt,a4paper]{elsarticle}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,booktabs,graphicx,tabularx}
+\usepackage{xcolor,tikz,pgfplots}
+\usetikzlibrary{arrows.meta,positioning,fit}
+\pgfplotsset{compat=1.18}
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+\usepackage[section]{placeins}
+\setlength{\belowcaptionskip}{6pt}
+\newcommand{\authorquery}[1]{\par\smallskip\noindent\textcolor{red!65!black}{\textbf{Author query:} #1}\par\smallskip}
+\journal{Chinese Journal of Aeronautics -- review draft}
+\begin{document}
+\begin{frontmatter}
+\title{Evaluating the task value of budgeted reobservation for UAV disaster inspection}
+\author{Author names to be confirmed}
+\affiliation{organization={Affiliations and corresponding-author details to be confirmed}}
+\begin{abstract}
+Aerial disaster inspection requires deciding whether another observation is worth its cost. A closer view may improve damage classification without improving an inspection answer. We study this distinction in a single-UAV imagery simulation with a fixed camera model and budgeted reobservation. Paired predictions for 3,753 buildings in 44 regions quantify correction opportunities and harmful changes. At a reobservation fraction of 0.25, calibrated-entropy allocation raises macro-F1 from 0.6118 to 0.6433, compared with 0.6241 for random allocation and 0.6448 for raw entropy. Full reobservation corrects 191 decisions but harms 126. In 160 online inspection questions, configurations answer 48--51 correctly, versus 50 without reobservation. The expected-entropy policy spends all 15 additional observations on eight already-correct, no-damage questions from one event. These records reveal a mismatch between changing local evidence and directing observations to unresolved tasks. The findings are conditional on a perception backbone with prior evaluation-event exposure. Unequal online action counts and incomplete execution provenance further limit causal interpretation. The study separates observation change, uncertainty change, and task value through reproducible analysis of recorded evidence, without establishing unseen-event generalization or a language-model reliability guarantee.
+\end{abstract}
+\begin{keyword}
+UAV disaster inspection \sep Embodied perception \sep Active perception \sep Reobservation budget \sep Uncertainty calibration \sep Vision-language agents
+\end{keyword}
+\end{frontmatter}
+
+\noindent\begin{minipage}{\linewidth}\textbf{Review status.} This manuscript is an author-review draft. Quantitative tables are regenerated from the archived predictions and episode records. Author details, execution-model identity, and the remaining provenance items in \ref{app:provenance} require confirmation before submission.\end{minipage}
+
+\input{sections/01_introduction}
+\input{sections/02_related_work}
+\input{sections/03_problem_formulation}
+\input{sections/04_methodology}
+\input{sections/05_experimental_setup}
+\input{sections/06_results_discussion}
+\input{sections/07_conclusion}
+\input{appendix/declarations}
+\appendix
+\setcounter{table}{0}
+\input{appendix/reproducibility}
+\begingroup\small
+\bibliographystyle{elsarticle-num}
+\bibliography{references}
+\endgroup
+\end{document}

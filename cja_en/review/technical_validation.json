@@ -1,0 +1,24 @@
+{
+  "scope": "technical consistency only; submission readiness remains incomplete",
+  "errors": [],
+  "pdf_pages": 23,
+  "pdf_sha256": "158516818c3e8d9c870df0894a87a9539900b21cb1cdf28342f71315fdd66742",
+  "latex_warnings": [],
+  "bibtex_warnings": [
+    "Warning--empty pages in curtis2024tampura",
+    "Warning--empty pages in ovadia2019can",
+    "Warning--empty pages in romano2020adaptive"
+  ],
+  "citations": 18,
+  "bib_entries": 18,
+  "unused_bib_entries": [],
+  "missing_citations": [],
+  "missing_references": [],
+  "duplicate_labels": [],
+  "missing_inputs": [],
+  "source_files_checked": 166,
+  "changed_original_sources": [],
+  "run_files_checked": 12,
+  "changed_run_inputs": [],
+  "visual_qa_matches_current_pdf": true
+}

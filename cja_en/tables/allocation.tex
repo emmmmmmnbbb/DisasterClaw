@@ -1,0 +1,13 @@
+\begin{tabular}{lrrrrr}
+\toprule
+Policy & Actions & Acc. & Macro-F1 & ECE & Net correct \\
+\midrule
+No reobservation & 0 & 0.7250 & 0.6118 & 0.2423 & 0 \\
+Random & 938 & 0.7301 & 0.6241 & 0.2437 & 19 \\
+Raw entropy & 938 & 0.7397 & 0.6448 & 0.2578 & 55 \\
+Calibrated entropy & 938 & 0.7391 & 0.6433 & 0.2609 & 53 \\
+Expected entropy reduction & 938 & 0.7357 & 0.6308 & 0.2551 & 40 \\
+APS set size & 938 & 0.7343 & 0.6367 & 0.2549 & 35 \\
+Label-informed diagnostic & 938 & 0.7759 & 0.6928 & 0.2853 & 191 \\
+\bottomrule
+\end{tabular}

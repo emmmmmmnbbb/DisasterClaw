@@ -1,0 +1,35 @@
+\section{Inspection implementation and observation policies}
+\label{sec:method}
+\subsection{Perception and task grounding}
+The implementation combines a damage-perception backend, a georeferenced semantic representation, a language-conditioned inspection controller, and movement tools. The evaluated backend is recorded as \texttt{xview2\_first}, with a single ResNet-34 configuration and seed 0. It processes pre-/post-disaster image pairs and supplies detected building locations and four-class damage probabilities. The four classes are no damage, minor damage, major damage, and destroyed. This backend is shared within the principal offline comparisons; its training-exposure limitation is stated in Section~\ref{sec:setup}.
+
+In the offline renderer, the post-disaster footprint is first sampled at the fixed camera output resolution. The corresponding pre-disaster window is rendered at the assumed source scale. The post-disaster image is then resized to the pre-disaster input dimensions for the paired-image detector; this resizing adds no new information. Thus, the ladder primarily degrades the post-disaster observation while preserving a higher-resolution archival reference. It should not be interpreted as simultaneous camera degradation of both images.
+
+Predictions inside the target ROI are matched to annotated buildings by a greedy, one-to-one nearest-centroid rule, using a distance threshold of 12 m. An unmatched building receives a no-damage probability vector before normalization and temperature scaling. This convention is material: the reported building endpoint combines localization, matching, and damage classification, and may reward missed detections of undamaged buildings. We retain it when reproducing the archived experiment, disclose unmatched counts, and avoid presenting the scores as pure classification on perfectly localized buildings.
+
+For online inspection, the controller receives the current rendered image together with structured counts and a semantic-map snapshot. A damage question can include a marked target location and a finite answer vocabulary. Spatial representations and memory support grounding and search; they are engineering components informed by prior aerial planning and representation work~\cite{zhang2025citynavagent,gao2024stmr}. The evaluated episodes do not isolate their contribution. The system's ability to expose these tools must therefore be distinguished from an experimentally established navigation improvement.
+
+\subsection{Offline allocation rules}
+Let $r_{ij}$ denote an uncalibrated class probability. Temperature scaling produces
+\begin{equation}
+ p_{ij}(T)=\frac{r_{ij}^{1/T}}{\sum_{\ell=1}^{4}r_{i\ell}^{1/T}},\qquad
+ H(p_i)=-\frac{1}{\log 4}\sum_{j=1}^{4}p_{ij}\log p_{ij}.
+ \label{eq:entropy}
+\end{equation}
+The implementation normalizes probabilities, clips small values for numerical stability, and rounds normalized entropy to three decimal places for ranking. A positive scalar temperature preserves each vector's highest-probability class, but can change the ordering of uncertainty between buildings. All evaluated allocation outputs use the same calibrated vectors in Eq.~\eqref{eq:allocation}. The raw-entropy rule changes the ranking score, not the probability representation used to score the final predictions.
+
+The no-reobservation rule always retains the cruise prediction. Random allocation samples $k$ buildings without replacement. Raw and calibrated entropy select the $k$ largest corresponding cruise entropies. The expected-entropy-reduction rule fits the mean paired difference $H(p^c)-H(p^f)$ on development buildings, conditioned on the cruise predicted class and one of five equal-width cruise-entropy bins. Empty class/bin cells fall back to the class mean and then the global mean. This is an empirical uncertainty-reduction proxy; it is not trained on task correctness or the cost of an online trajectory.
+
+The prediction-set rule sorts classes by probability and counts how many are needed for their cumulative probability to reach the frozen adaptive prediction set (APS) threshold. This rule draws on adaptive conformal classification~\cite{romano2020adaptive}, but uses the resulting set size only as a sensing priority here. Finally, a label-informed diagnostic assigns score $+1$ to correctable cases, $-1$ to harmful cases, and zero otherwise. It uses evaluation labels and cannot be deployed. Because it ranks accuracy changes rather than optimizing macro-F1, its curve is not a theoretical macro-F1 upper bound. Ties in deterministic scores retain input order. The random curve uses seed 0 and independent draws at each nonzero budget, so its selected sets are not nested across budget fractions.
+
+\subsection{Online triggering and motion feedback}
+The online controller evaluates whether to reobserve after producing a candidate answer and associated perception evidence. A trigger can use raw or calibrated entropy, a prediction set containing more than one class, a fixed allocation, or an expected-entropy lookup. The configured entropy threshold is 0.7. For the expected-entropy trigger, the controller computes
+\begin{equation}
+ \widetilde G_t=\max\{0,H_t-\widehat\mu(g_{t+1},\hat c_t)\},
+ \label{eq:onlinegain}
+\end{equation}
+and requests reobservation when $\widetilde G_t>0.02$, subject to available budget and action checks. Here $\widehat\mu$ is a development-set mean entropy indexed by GSD and predicted damage class. The current implementation requires the compatible FOV entropy-table schema for this mode.
+
+This lookup differs from the paired offline predictor. Its stored mean at a future GSD groups development examples by the class predicted at that GSD, whereas the online query supplies the current predicted class. Consequently, Eq.~\eqref{eq:onlinegain} is a plug-in heuristic with a conditional-variable mismatch when classes change across views. It is not an estimate of expected question utility given the current history. This distinction is especially relevant when a local damage signal controls reobservation for a count or spatial question.
+
+An accepted reobservation invokes the movement interface to center on evidence, descend within the camera ladder, or combine both operations. The next rendered view is passed through perception and answer generation. The controller limits the episode and records the candidate answer, uncertainty, decision, action, and remaining budget. Answer validity and missing-target conditions can lead to abstention or further search. In the inspected implementation, a valid answer is not rejected solely because its confidence lies below a configured answer-confidence threshold. We therefore do not describe the controller as implementing calibrated selective prediction; any confidence-threshold analysis below is a retrospective evaluation of recorded answers.

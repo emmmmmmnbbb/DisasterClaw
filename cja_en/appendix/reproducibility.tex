@@ -1,0 +1,46 @@
+\section{Reproducibility and provenance}
+\label{app:provenance}
+\subsection{Inputs and reproduction boundary}
+The manuscript uses a single principal offline population and two online shards. The offline source directory is \path{runs/benchmarks/paper_cja_mech_v1/}. Paired evaluation predictions are read explicitly from \path{final_fov/fov_ladder_eval_items.jsonl}; development pairs come from \path{fov_ladder_val_items.jsonl}; the reported allocation curves are in \path{budget_allocation.json}. This explicit selection prevents a missing evaluation filename from silently causing a fallback to development results.
+
+The online records are \path{episodes.jsonl} in two shard directories beneath \path{runs/benchmarks/cja_agent_vqa/}. Their shared directory-name prefix is \path{paper_cja_mech_final_shard}, followed by \texttt{0of2} or \texttt{1of2}. Each configuration/question key must occur once, and each configuration must contain the same 160 question IDs. Recorded correctness is recomputed as a count of the archived flags; this operation does not reannotate images or regenerate model answers.
+
+The local scripts \path{cja_en/scripts/audit_downloaded_results.py} and \path{cja_en/scripts/build_assets.py} read these inputs without modifying them or invoking a model. They regenerate the audit, additional analyses, six tables, and two quantitative plots. The audit records input byte counts and full SHA-256 values. The asset generator rejects changed audited inputs and verifies the allocation reconstruction used by the bootstrap. The overview diagram is a schematic of the implemented evaluation, not a synthetic experimental observation.
+
+The paired-building recomputation matches all seven allocation curves at five budgets for accuracy, macro-F1, ECE, Brier score, NLL, executed selections, and net corrections to an absolute tolerance of $10^{-9}$. Final three-view metrics also reproduce to that tolerance. These checks establish numerical consistency of available records. They do not certify that the runtime model, original images, or evaluation history can yet be independently recovered.
+
+\subsection{Remaining execution requirements}
+The frozen manifest was generated on 26 August 2026. Both online shard manifests identify source commit \texttt{cfb5c827} (abbreviated) and mark the working tree as dirty. The audit retains its full hash. The currently inspected source is a later revision. Exact reproduction therefore requires the uncommitted runtime changes or an archived source tree, in addition to the named commit. Empty language- and vision-language-model fields must be resolved from contemporaneous logs or author records, rather than filled from current defaults.
+
+The frozen question set and dataset entities are needed to verify their manifest hashes, target construction, scoring rules, and relationships between selection and final populations. Checkpoint files and training manifests are needed to characterize perception exposure directly. Although an additional archive identifies a different event-disjoint perception backend, those results are not combined with the principal tables here: changing the backbone changes the experiment, and its checkpoint provenance remains to be verified.
+
+The online run history also requires repair or regeneration of reference-dependent controls. A safe rerun should bind each dependent episode to the reference question ID, reference action budget, reference result hash, source snapshot, model configuration, and prompt hash. Resuming a completed episode should require those identifiers to match. All configurations should retain requested, allocated, and executed budgets, rather than relying on a single final action total. This is a proposed evaluation correction, not a claim that the existing records satisfy it.
+
+\subsection{Sensitivity to unmatched detections}
+Table~\ref{tab:matched} holds the population fixed to buildings with a matched detection at every view. Its 2,757 buildings exclude all cases assigned a default vector in any of the three observations. The view response remains positive for accuracy and macro-F1, while Brier score and NLL decrease. This analysis checks one potential source of the overall response; it is not a representative subset selected independently of the evaluated detector. It also does not repair possible centroid-matching errors or perception training exposure.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Sensitivity analysis on 2,757 buildings matched in all three recorded views. This selected subset does not replace the full 3,753-building endpoint.}
+\label{tab:matched}
+\input{tables/common_matched}
+\end{table}
+
+\subsection{Exploratory uncertainty estimates}
+Table~\ref{tab:cluster} reports the added paired ROI bootstrap. It conditions on fixed fitted scores, allocations, and three observed events. ROIs are the sampling units within events; individual buildings are not treated as independent draws. With only three events and prior backbone exposure, these intervals cannot establish robustness to unseen disasters. No multiple-comparison-adjusted confirmatory claim is made.
+
+\begin{table}[htbp]
+\centering\footnotesize
+\caption{Exploratory paired ROI-bootstrap macro-F1 differences at $b=0.25$, with 2,000 resamples and seed 20260905.}
+\label{tab:cluster}
+\input{tables/cluster_intervals}
+\end{table}
+
+\subsection{Required extensions, without assumed outcomes}
+\noindent\textbf{TODO(EXPERIMENT):} Repeat the online reference and dependent controls from a frozen execution snapshot with verified per-question budgets and multiple generation seeds. Include a repeated-inference, unchanged-view control to distinguish movement-conditioned evidence from answer variability.
+
+\smallskip\noindent\textbf{TODO(EXPERIMENT):} Evaluate a backbone whose training and tuning events exclude the final events, with recoverable checkpoints, image/ROI manifests, and an explicit rule for unmatched detections. Report matched-only classification alongside an endpoint that penalizes misses, rather than silently changing the original rule.
+
+\smallskip\noindent\textbf{TODO(EXPERIMENT):} Test task-conditioned evidence selection across damage, count, presence, and spatial questions. Record whether the initial answer was wrong, what evidence was acquired, and whether that evidence addressed the unresolved requirement. Compare at matched executed cost, including movement time and inference cost if measured.
+
+\smallskip\noindent\textbf{TODO(EXPERIMENT):} If operational selective answering is claimed, choose thresholds on separate development data and evaluate risk and coverage on held-out tasks. Retrospective confidence plots in this manuscript do not satisfy that design.

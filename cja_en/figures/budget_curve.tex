@@ -1,0 +1,20 @@
+\begin{tikzpicture}
+\begin{axis}[width=.96\linewidth,height=6.5cm,xlabel={Reobservation fraction $b$},ylabel={Macro-F1},
+xmin=0,xmax=1,ymin=.60,ymax=.71,xtick={0,.1,.25,.5,1},grid=major,
+legend style={at={(.5,-.25)},anchor=north,draw=none,font=\footnotesize},legend columns=2]
+\addplot+[black,dashed,mark=none,thick] coordinates {(0.0,0.61180364) (0.1,0.61180364) (0.25,0.61180364) (0.5,0.61180364) (1.0,0.61180364)};
+\addlegendentry{No reobservation}
+\addplot+[gray,mark=square*,thick] coordinates {(0.0,0.61180364) (0.1,0.61611550) (0.25,0.62406965) (0.5,0.63750089) (1.0,0.65415042)};
+\addlegendentry{Random}
+\addplot+[orange!85!black,mark=triangle*,thick] coordinates {(0.0,0.61180364) (0.1,0.62708707) (0.25,0.64475982) (0.5,0.64776899) (1.0,0.65415042)};
+\addlegendentry{Raw entropy}
+\addplot+[blue!70!black,mark=*,thick] coordinates {(0.0,0.61180364) (0.1,0.62612436) (0.25,0.64326575) (0.5,0.64776853) (1.0,0.65415042)};
+\addlegendentry{Calibrated entropy}
+\addplot+[teal!80!black,mark=diamond*,thick] coordinates {(0.0,0.61180364) (0.1,0.61946892) (0.25,0.63084430) (0.5,0.64719004) (1.0,0.65415042)};
+\addlegendentry{Expected entropy reduction}
+\addplot+[violet,mark=x,thick] coordinates {(0.0,0.61180364) (0.1,0.62346363) (0.25,0.63665018) (0.5,0.64578998) (1.0,0.65415042)};
+\addlegendentry{APS set size}
+\addplot+[red!70!black,dashed,mark=o,thick] coordinates {(0.0,0.61180364) (0.1,0.69360303) (0.25,0.69275057) (0.5,0.69243946) (1.0,0.65415042)};
+\addlegendentry{Label-informed diagnostic}
+\end{axis}
+\end{tikzpicture}

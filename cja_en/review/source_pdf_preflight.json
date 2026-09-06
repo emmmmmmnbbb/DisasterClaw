@@ -1,0 +1,14 @@
+{
+  "schema": "pdf_read_preflight/1",
+  "verdict": "UNAVAILABLE",
+  "file": "paper_cja/main.pdf",
+  "sha256": "f78b9d590f39e2735b5c0fb35ff90641511ebf3f6585a11fcf102f3189592a3c",
+  "declared_page_count": null,
+  "enumerated_page_count": null,
+  "reader_page_count": null,
+  "warnings": [
+    "pypdf-not-installed: preflight cannot parse the document"
+  ],
+  "generated_at": "2026-09-05T03:23:05.295051+00:00",
+  "tool": "pdf_read_preflight/1.0.0"
+}

@@ -1,0 +1,111 @@
+python3 scripts/audit_downloaded_results.py
+{
+  "offline_population": {
+    "n": 3753,
+    "unique_uids": 3753,
+    "unique_rois": 44,
+    "events": {
+      "hurricane-michael": 1303,
+      "moore-tornado": 1448,
+      "nepal-flooding": 1002
+    },
+    "n_flip": 383,
+    "n_correctable": 191,
+    "n_harmful": 126,
+    "frozen_backend": "xview2_first",
+    "frozen_leaky": true,
+    "allocation_fit_test_overlap": []
+  },
+  "offline_numeric_mismatches": [],
+  "vqa_record_count": 1600,
+  "vqa_duplicates": [],
+  "confidence_change_episode_summary": {
+    "n": 93,
+    "up": 74,
+    "down": 1,
+    "same": 18,
+    "initial_mean": 0.8344086021505377,
+    "final_mean": 0.9463430107526882
+  },
+  "vqa_manifest_checks": [
+    {
+      "run_id": "20260827_180540_paper_cja_mech_final_s0_shard0of2",
+      "git_commit": "cfb5c82711d45adf3239040fd22430b4063b36fe",
+      "git_dirty": true,
+      "llm_model": "",
+      "vlm_model": "",
+      "frozen_manifest_hash_matches": true,
+      "testset_sha256": "78c2c8a325c2389bc1e7738b31cff1750531ec50a54d25738117f45d103e3a1b",
+      "n_execution_errors_reported": 0
+    },
+    {
+      "run_id": "20260827_180605_paper_cja_mech_final_s1_shard1of2",
+      "git_commit": "cfb5c82711d45adf3239040fd22430b4063b36fe",
+      "git_dirty": true,
+      "llm_model": "",
+      "vlm_model": "",
+      "frozen_manifest_hash_matches": true,
+      "testset_sha256": "78c2c8a325c2389bc1e7738b31cff1750531ec50a54d25738117f45d103e3a1b",
+      "n_execution_errors_reported": 0
+    }
+  ]
+}
+Written: /Users/liuchang/Desktop/组会/DisasterClaw/cja_en/review/downloaded_results_audit.json
+python3 scripts/build_assets.py
+{
+  "method": "paired ROI bootstrap stratified within the three observed events",
+  "n_resamples": 2000,
+  "seed": 20260905,
+  "n_rois": 44,
+  "event_roi_counts": {
+    "hurricane-michael": 15,
+    "moore-tornado": 15,
+    "nepal-flooding": 14
+  },
+  "fixed_allocation": true,
+  "exploratory": true,
+  "comparisons": {
+    "entropy_cal_minus_random": {
+      "delta_macro_f1": 0.019196099418939405,
+      "percentile_95": [
+        0.009673212747652423,
+        0.041895321131049025
+      ]
+    },
+    "entropy_cal_minus_entropy_uncal": {
+      "delta_macro_f1": -0.001494069992318936,
+      "percentile_95": [
+        -0.00933642804229863,
+        0.006141160499974983
+      ]
+    }
+  }
+}
+{
+  "n": 2757,
+  "selection": "detected in all three recorded views",
+  "metrics": {
+    "cruise": {
+      "accuracy": 0.7918026840768951,
+      "macro_f1": 0.7068517350724952,
+      "ece": 0.17898480956601362,
+      "brier": 0.3367439665117807,
+      "nll": 0.6455306284178534
+    },
+    "mid": {
+      "accuracy": 0.8052230685527747,
+      "macro_f1": 0.732146587830493,
+      "ece": 0.1805084063687267,
+      "brier": 0.3176193708741681,
+      "nll": 0.6123012319842569
+    },
+    "floor": {
+      "accuracy": 0.8099383387740298,
+      "macro_f1": 0.7488731722388627,
+      "ece": 0.190894231737935,
+      "brier": 0.3174813421002247,
+      "nll": 0.6102722146674835
+    }
+  }
+}
+Generated six tables and two PGFPlots figures from audited inputs.
