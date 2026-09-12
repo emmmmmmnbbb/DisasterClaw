@@ -1,6 +1,6 @@
 {
-  "date": "2026-09-06",
-  "pdf_sha256": "158516818c3e8d9c870df0894a87a9539900b21cb1cdf28342f71315fdd66742",
+  "date": "2026-09-11",
+  "pdf_sha256": "e863ab49c8f8170a7136fcab48bc57bfc3818167b3ac051a769daad4e5f13c20",
   "pages_reviewed": [
     1,
     2,
@@ -24,15 +24,23 @@
     20,
     21,
     22,
-    23
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30
   ],
-  "method": "Poppler pdftoppm at 90 dpi; each of all 23 pages visually inspected with view_image",
+  "method": "Poppler pdftoppm at 120 dpi; all 30 pages visually inspected with view_image, with the final Figure 1 page re-rendered after its last connector edit",
   "findings": {
     "clipping_or_overlap": false,
     "missing_figures": false,
     "unreadable_glyphs": false,
     "broken_tables": false,
-    "unresolved_references": false
+    "unresolved_references": false,
+    "intentional_console_placeholders": true
   },
-  "scope": "Layout review of author-review draft; author queries and experiment TODOs intentionally remain. Not submission certification."
+  "scope": "Layout review of author-review draft; two Figure 4 screenshot placeholders, author queries, and future-work TODOs intentionally remain. Not submission certification."
 }

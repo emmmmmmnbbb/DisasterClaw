@@ -1,6 +1,6 @@
 Draft highlights; journal requirement and character limits remain to be verified.
 
-- Paired camera views separate corrections from harmful reobservations.
-- Entropy allocation helps within the observed, exposed-backbone setting.
-- Online sensing concentrates on questions that are already answered correctly.
-- Confidence changes do not establish task gains or selective reliability.
+- DisasterClaw converts georeferenced disaster imagery into closed-loop UAV inspection episodes.
+- The agent links language tasks, damage evidence, finite flight actions, and renewed observations.
+- A fixed-field-of-view camera ladder enables controlled multi-scale reobservation.
+- Paired experiments separate perception changes, task outcomes, and Qwen answer variability.

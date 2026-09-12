@@ -1,37 +1,58 @@
-\section{Problem formulation}
-\label{sec:problem}
-\subsection{Inspection task and observation model}
-A task consists of a question $q$, a region of interest (ROI), and a reference answer $y_q$. A single UAV has an observation state $s_t=(x_t,y_t,h_t)$ describing its map position and height. Its image is $I_t=\mathcal{R}(\mathcal{M},s_t)$, where $\mathcal{M}$ is the available georeferenced imagery and $\mathcal{R}$ crops and resamples a ground footprint. The notation describes the implemented observation state, not a complete aircraft dynamics model. Question types cover building damage, damage counts, presence of severe damage, and spatial relations.
+\section{The DisasterClaw simulation platform}
+\label{sec:platform}
+\subsection{Scope and system organization}
+DisasterClaw is an imagery-based simulation and evaluation framework for single-UAV disaster inspection. Its purpose is to turn georeferenced disaster records into closed-loop episodes in which an agent changes its map position or observation footprint, receives a new image, and is scored on a disaster task. The implementation has four connected layers (Fig.~\ref{fig:overview}): a task interface, a disaster-response agent, a simulated geospatial world, and an instrumentation layer. The operator-facing path uses a React/Vite console connected to a Flask/Socket.IO service. Quantitative experiments use a headless runner that calls the same environment and controller modules without rendering the user interface.
 
-For a nadir-view camera with horizontal field of view $\theta$ and output width $W$, the simulated footprint width $L$ and effective ground sampling distance $g$ are
+\begin{figure}[htbp]
+\centering
+\resizebox{.96\linewidth}{!}{\input{figures/overview}}
+\caption{DisasterClaw system organization. The operator console and headless benchmark connect the disaster-response agent to the same perception/model services and georeferenced environment. The recorder retains intermediate model traces, environment transitions, budgets, and task outcomes.}
+\label{fig:overview}
+\end{figure}
+
+Table~\ref{tab:platform} states what each layer implements and the boundary attached to it. This distinction is central to the intended use of the platform. Its geospatial state and image renderer support controlled observation studies; they do not reproduce the complete physics of an aircraft or camera.
+
+\begin{table}[htbp]
+\centering\footnotesize
+\caption{Implemented DisasterClaw capabilities and their evaluation boundaries.}
+\label{tab:platform}
+\input{tables/platform}
+\end{table}
+
+\subsection{Georeferenced disaster-scene construction}
+The scene layer reads paired pre- and post-disaster tiles, building polygons, damage labels, and geographic metadata derived from xBD. Pixel-to-geographic and geographic-to-pixel affine transforms place each image on its recorded ground footprint. When a tile becomes active, its center defines the local world anchor. Robot, target, and report coordinates remain available as latitude, longitude, and altitude, while local north and east offsets are recomputed relative to that anchor.
+
+The interactive map can place the active disaster image over a satellite or street basemap, display the tile boundary, and color annotated buildings for operator reference. These annotation overlays are not passed to the evaluated agent as visual input. In rendered observations, georeferenced disaster tiles supply task evidence and the surrounding basemap supplies spatial context when a wider footprint extends beyond the available disaster tile. Reference answers and building-level scores remain restricted to the annotated target ROI, so contextual background is not treated as disaster ground truth.
+
+The evaluated scene population contains three disaster events and 44 target ROIs. This is the experimental subset, not a claim that the software can reproduce every disaster represented by the source dataset. Missing tiles, sparse geographic coverage, affine-registration error, and differences in acquisition date all constrain the resulting environment.
+
+\subsection{Observation renderer and camera ladder}
+The simulated sensor is nadir-facing, with horizontal field of view $\theta$ and fixed output width $W$. For vehicle height $h$, the ground-footprint width $L$ and effective ground sampling distance $g$ are
 \begin{equation}
  L(h)=2h\tan(\theta/2),\qquad g(h)=\frac{L(h)}{W}.
  \label{eq:geometry}
 \end{equation}
-We use $\theta=60^\circ$, $W=1024$, and an assumed source scale of $0.5$ m/pixel. A source tile therefore spans 512 m. Footprints of three, two, and one tile widths give cruise, intermediate, and floor views at approximately 1330.2, 886.8, and 443.4 m, with effective GSDs of 1.5, 1.0, and 0.5 m/pixel. The heights follow from the chosen camera parameters and source-scale assumption. They do not validate that scale for every source image or establish aircraft operating limits.
-
-Shrinking the footprint increases the pixels assigned to the target ROI while removing surrounding context. At the floor, the image reaches the assumed source resolution; further physical detail cannot be recovered from this imagery. The renderer does not model three-dimensional occlusion, new viewing angles, atmospheric effects, motion blur, or changes between real acquisition times. Figure~\ref{fig:overview} summarizes the two evaluation paths supported by this observation model.
+We use $\theta=60^\circ$, $W=1024$, and an assumed source scale of $0.5$ m/pixel. A $1024$-pixel source tile therefore spans 512 m. Footprints of three, two, and one tile widths define cruise, intermediate, and floor states at approximately 1330.2, 886.8, and 443.4 m, with effective GSDs of 1.5, 1.0, and 0.5 m/pixel (Fig.~\ref{fig:ladder}). The heights are derived parameters of this camera abstraction; they are not measured flight altitudes from the source imagery.
 
 \begin{figure}[htbp]
 \centering
-\input{figures/overview}
-\caption{Observation model and two evaluation paths. The camera ladder changes the crop and resampling of existing imagery. Offline allocation selects paired building predictions under a common budget; the online controller acquires another rendered view within a question episode. The paths have different units of allocation and distinct final endpoints.}
-\label{fig:overview}
+\resizebox{\linewidth}{!}{\input{figures/observation_ladder}}
+\caption{Observation construction from one georeferenced scene. Each state is rendered to $1024\times1024$ pixels. Descending narrows the ground footprint and assigns more existing source pixels to the target ROI; the floor state reaches, but cannot exceed, the assumed source resolution.}
+\label{fig:ladder}
 \end{figure}
 
-\subsection{Budget and task endpoints}
-In the offline experiment, $N$ buildings each have a cruise probability vector $p_i^c$ and a floor vector $p_i^f$ over four damage classes. For budget fraction $b$, a policy selects a set $S_b$ of $k=\operatorname{round}(bN)$ buildings. The evaluated vector is
-\begin{equation}
- p_i^{(b)}=\begin{cases}p_i^f,&i\in S_b,\\p_i^c,&i\notin S_b.\end{cases}
- \label{eq:allocation}
-\end{equation}
-Each selected building counts as one additional observation in this abstraction. This accounting does not represent a route that physically visits every selected building, nor does it price the distance between them.
+For paired damage perception, the post-disaster channel is sampled at the current footprint and fixed output size. The corresponding pre-disaster window is retained at the assumed source scale before the pair is brought to the detector input geometry. This represents access to an archival reference and a controllable current observation. It also means the two channels undergo different resampling. The platform records this choice because it can contribute to any observed view response.
 
-Let $\hat y_i^v=\arg\max_j p_{ij}^v$. A correctable case has $\hat y_i^c\ne y_i$ and $\hat y_i^f=y_i$; a harmful case has $\hat y_i^c=y_i$ and $\hat y_i^f\ne y_i$. For a fixed selected set, the accuracy difference is exactly
-\begin{equation}
- \Delta\mathrm{Acc}(S_b)=\frac{N_{\mathrm{corrected}}(S_b)-N_{\mathrm{harmed}}(S_b)}{N}.
- \label{eq:net}
-\end{equation}
-This accounting identity applies to the paired hard-label endpoint. It is not a characterization of macro-F1, probability quality, or language-task utility. An unchanged predicted label may still accompany changes in those quantities.
+Changing height only crops and resamples existing orthographic imagery. The renderer does not create sub-source detail, oblique views, three-dimensional parallax, self-occlusion, atmospheric effects, motion blur, or a new acquisition time. At the floor, further descent cannot add information under the adopted source model.
 
-Online, the agent can search, reobserve by centering or descending, answer, or abstain, subject to configured episode limits. We evaluate question correctness over all questions, counting abstentions as unsuccessful answers, and report actual reobservation actions separately. If $a_q$ is the final answer, the task score is $|Q|^{-1}\sum_q\mathbf{1}[a_q=y_q]$. The purpose is to assess whether extra sensing changes this endpoint and where its cost is incurred. No optimization guarantee is assumed for the implemented controller.
+\subsection{Vehicle state and action execution}
+The world model stores a single UAV with geographic position, altitude, heading, speed, flight status, and task state. It also stores targets, reports, the active disaster tile, map bounds, and timestamps. Motion is implemented by straight-line interpolation in a locally anchored horizontal frame. A position update is converted between geographic coordinates and local north--east offsets, and altitude is recorded as the vertical state.
+
+The task planner and closed-loop agent share a finite set of environment tools: fly to a geographic coordinate, move by a relative horizontal or vertical offset, hover, run disaster detection, mark a target, and produce a report. The inspection controller additionally uses answer, abstain, and stop as episode decisions. A reobservation maps to one or more movement primitives, such as centering on evidence and descending by one camera-ladder state, followed by a new render and perception pass.
+
+This action model supports repeatable studies of where the sensor is pointed and how often another observation is requested. It omits rigid-body attitude dynamics, acceleration limits, wind, terrain following, collision checking, communications, and battery discharge. Executed action count is therefore the principal online cost in this paper. Any time estimate obtained from configured speeds remains a simulator quantity rather than measured endurance.
+
+\subsection{Interactive operation and experiment instrumentation}
+The console exposes disaster selection, a georeferenced situation map, manual flight controls, language-task submission, perception displays, agent state, and event logs. An operator can activate a disaster tile, select a target location, issue an inspection task, observe the planned or closed-loop actions, and inspect the returned damage evidence. Figure~\ref{fig:console} illustrates these functions after the agent loop has been defined. The screenshots support interface description and diagnosis; they do not supply quantitative evidence.
+
+The headless benchmark initializes a question and vehicle state, invokes the same observation and action modules, and writes the evolving answer, evidence, controller decision, movement, budget, and terminal outcome. Frozen question identifiers allow policies to be compared on paired tasks. The study also supports a fixed-view mode that holds the environment state constant while repeating answer generation. This instrumentation is what permits environmental change and model-generation change to be analyzed separately.

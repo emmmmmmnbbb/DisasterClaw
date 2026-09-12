@@ -1,40 +1,26 @@
 # 最终审阅稿技术验证
 
-日期：2026-09-06。对象：`cja_en/main.pdf`，23 页，18 条参考文献、3 幅矢量图、6 张表。
+日期：2026-09-11。对象：`cja_en/main.pdf`，30 页，18 条参考文献、4 幅正文图、7 张表（正文 4 张、附录 3 张）。
 
-**技术一致性检查通过；科学投稿成熟度仍为 Major revision。** 这不是 ARS 总体 integrity PASS、独立专家外审结论或 CJA 格式认证。
+**技术一致性检查通过；当前仍是作者审阅稿。** 这不是独立专家外审结论或 CJA 格式认证。
 
 ## 实际检查与结果
 
-执行 `make -C cja_en pdf`，由 latexmk、pdfLaTeX 与 BibTeX 编译。执行 `python3 cja_en/scripts/validate_manuscript.py`，读取 PDF 和编译日志并核验输入。
-
+- `latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex` 编译成功。
 - 编译错误、未解析引用、未解析标签、重复标签、缺失输入文件：0。
 - LaTeX warning、Overfull 与 Underfull：0。
-- 18 个引用键均有 BibTeX 条目，无未使用条目；英文源文件未检出汉字，PDF 无 `??` 或重复 Appendix 前缀。
-- 166 个受保护原论文/源码文件、12 个固定原始运行输入：SHA-256 均与此前清单一致。
-- 分析文件绑定当前审计 hash；归档算术核验无不一致，在线记录无重复 configuration/question 键。
-- 通过 Poppler 将当前 PDF 的 1–23 页全部渲染为 PNG，逐页实际查看。正文、方程、三图、六表、附录与参考文献未见裁剪、重叠、缺字或缺图。作者查询与实验 TODO 为审阅稿的有意保留内容。
-- `visual_qa_matches_current_pdf = true`；视觉记录严格绑定此次 PDF，不沿用旧版检查结论。
+- 18 个引用键均有 BibTeX 条目；英文 TeX 无汉字，PDF 无 `??` 或重复 Appendix 前缀。
+- 166 个受保护原论文/源码文件和 12 个固定运行输入仍由机器检查核对指纹。
+- Figure 1--3 为 TikZ 矢量图；Figure 4 当前显示两个有意保留的截图占位框，固定 PNG 到位后自动替换。
+- 通过 Poppler 以 120 dpi 渲染 1--30 页并逐页检查。正文、方程、四图、七表、附录与参考文献未见裁剪、重叠、缺字或缺图；Figure 1 的最终日志连线另行重新渲染检查。
+- `visual_qa_matches_current_pdf = true`。
 
-当前 PDF SHA-256：`158516818c3e8d9c870df0894a87a9539900b21cb1cdf28342f71315fdd66742`。
+当前 PDF SHA-256：`e863ab49c8f8170a7136fcab48bc57bfc3818167b3ac051a769daad4e5f13c20`。
 
-## 保留的非致命提示
+## 数值与语义边界
 
-BibTeX 有三条缺页码提示：`curtis2024tampura`、`ovadia2019can`、`romano2020adaptive`。相关论文存在性和核心元数据已核验；尚未直接核实的页范围没有虚填。RSS 条目已给官方 DOI。这些提示不妨碍审阅稿编译，但仍列入参考元数据终核。
+离线 7×5 分配曲线和三档 FOV 指标来自既有重建；160 题近匹配与固定视图控制按作者提供汇总呈现。200 指令 VLN B0--B3 表按作者确认直接采用 `paper_cja_v1/x6_main` 归档结果，没有在本轮复算。VLN 表仅作组件接入诊断，不支持模块增益或跨种子结论。
 
-## 数值与语义验证边界
+VLM 身份按作者确认为本地 Qwen2.5-VL-7B-Instruct。该确认不替代 checkpoint revision、prompt hash、dirty 源码快照和训练曝光归档。Figure 4 截图只说明平台功能。
 
-离线 7×5 分配曲线和三档 FOV 主指标由原始逐建筑预测重建，容差 1e-9。在线 1,600 条记录对应 160 道题在 10 个配置下的重复评估，不能当 1,600 个独立样本。新增 ROI bootstrap 与共同匹配敏感性不调用模型，结果条件化于已记录预测及拟合配置。
-
-该验证不认证原始图像标签、实际 VLM 身份、dirty 运行源码、训练曝光声明或评分器的端到端正确性；原始实体仍有缺项。事后风险曲线也不是可部署的可靠拒答保证。
-
-## 可复查材料
-
-- [机器检查记录](technical_validation.json)
-- [逐页视觉检查记录](visual_qa.json)
-- [原始结果审计](downloaded_results_audit.json)
-- [新增分析](manuscript_analysis.json)
-- [内部复审与落实](final_reviewer_simulation.md)
-- [任务完成情况及后续依赖](task_completion_status.md)
-
-如修改 TeX、图表或重新生成 PDF，应重新编译并更新逐页检查，旧视觉 hash 不再覆盖新版。
+如替换 Figure 4 PNG 或修改 TeX，应重新编译并更新视觉 QA 的 PDF hash。

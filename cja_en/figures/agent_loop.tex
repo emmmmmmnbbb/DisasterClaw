@@ -1,0 +1,35 @@
+\begin{tikzpicture}[
+  font=\footnotesize,
+  >=Latex,
+  state/.style={draw=blue!58!black,rounded corners=2pt,fill=blue!3,align=center,
+    text width=3.25cm,minimum height=.88cm,inner sep=4pt},
+  decision/.style={diamond,draw=orange!80!black,fill=orange!7,aspect=2.15,
+    align=center,text width=2.4cm,inner sep=1.5pt},
+  terminal/.style={draw=green!45!black,rounded corners=2pt,fill=green!6,align=center,
+    text width=2.7cm,minimum height=.8cm},
+  arr/.style={->,thick,draw=blue!58!black},
+  control/.style={draw=black!45,dashed,rounded corners=2pt,fill=gray!4,align=center,
+    text width=3.2cm,inner sep=4pt}
+]
+\node[state] (init) {Task $q$, target ROI, initial UAV state and action budget};
+\node[state,right=8mm of init] (render) {Render georeferenced observation $I_t$ and read state $s_t$};
+\node[state,right=8mm of render] (infer) {Extract damage/spatial evidence $z_t$; generate Qwen candidate};
+\node[decision,below=9mm of infer] (enough) {Evidence sufficient for the task?};
+\node[terminal,right=9mm of enough] (answer) {Answer and report terminal outcome};
+\node[decision,left=16mm of enough] (feasible) {Budget and action feasible?};
+\node[terminal,left=9mm of feasible] (abstain) {Abstain or stop; log terminal outcome};
+\node[state,below=10mm of feasible] (choose) {Select search, center, descend, or a composed movement};
+\node[state,right=11mm of choose] (execute) {Execute action, decrement budget, and append episode log};
+\node[control,below=9mm of answer] (fixed) {Fixed-view control: repeat answer generation while holding $s_t$, $I_t$, and $z_t$ constant};
+
+\draw[arr] (init)--(render);
+\draw[arr] (render)--(infer);
+\draw[arr] (infer)--(enough);
+\draw[arr] (enough)--node[above]{yes}(answer);
+\draw[arr] (enough)--node[above]{no}(feasible);
+\draw[arr] (feasible)--node[above]{no}(abstain);
+\draw[arr] (feasible)--node[right]{yes}(choose);
+\draw[arr] (choose)--(execute);
+\draw[arr] (execute.east) -- ++(.55,0) |- (render.south);
+\draw[->,thick,dashed,draw=black!55] (infer.east) -- ++(.55,0) |- (fixed.north);
+\end{tikzpicture}

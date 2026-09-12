@@ -1,35 +1,75 @@
-\section{Inspection implementation and observation policies}
-\label{sec:method}
-\subsection{Perception and task grounding}
-The implementation combines a damage-perception backend, a georeferenced semantic representation, a language-conditioned inspection controller, and movement tools. The evaluated backend is recorded as \texttt{xview2\_first}, with a single ResNet-34 configuration and seed 0. It processes pre-/post-disaster image pairs and supplies detected building locations and four-class damage probabilities. The four classes are no damage, minor damage, major damage, and destroyed. This backend is shared within the principal offline comparisons; its training-exposure limitation is stated in Section~\ref{sec:setup}.
+\section{Disaster-response agent and reobservation mechanism}
+\label{sec:agent}
+\subsection{Task modes and closed-loop state}
+DisasterClaw exposes two task modes over the same environment tools. In plan-and-execute mode, a language planner converts an operator instruction into a finite sequence of typed actions with parameters and reasons; a rule-based fallback handles simple geographic tasks when the planner model is unavailable. In closed-loop inspection mode, the agent alternates observation, evidence extraction, decision, and execution until it answers, abstains, stops, or reaches an episode limit. The experiments in this paper evaluate the latter mode.
 
-In the offline renderer, the post-disaster footprint is first sampled at the fixed camera output resolution. The corresponding pre-disaster window is rendered at the assumed source scale. The post-disaster image is then resized to the pre-disaster input dimensions for the paired-image detector; this resizing adds no new information. Thus, the ladder primarily degrades the post-disaster observation while preserving a higher-resolution archival reference. It should not be interpreted as simultaneous camera degradation of both images.
+An inspection task contains a question $q$, a target region of interest (ROI), and a reference answer $y_q$. At step $t$, the environment state $s_t=(x_t,y_t,h_t)$ identifies the UAV's map position and height. The renderer returns image $I_t=\mathcal{R}(\mathcal{M},s_t)$ from georeferenced scene $\mathcal{M}$. The agent observation $o_t=(I_t,z_t)$ also includes structured evidence $z_t$, such as target coordinates, detected-building counts, damage probabilities, and a semantic-map summary. The state notation describes the implemented observation process rather than a complete aircraft dynamics model.
 
-Predictions inside the target ROI are matched to annotated buildings by a greedy, one-to-one nearest-centroid rule, using a distance threshold of 12 m. An unmatched building receives a no-damage probability vector before normalization and temperature scaling. This convention is material: the reported building endpoint combines localization, matching, and damage classification, and may reward missed detections of undamaged buildings. We retain it when reproducing the archived experiment, disclose unmatched counts, and avoid presenting the scores as pure classification on perfectly localized buildings.
+The agent-level decision set is
+\begin{equation}
+ \mathcal{A}_q=\{\text{search},\text{center},\text{descend},\text{answer},\text{abstain},\text{stop}\}.
+ \label{eq:agentactions}
+\end{equation}
+Search and center become relative horizontal movements; descend changes to the next state of the camera ladder. Each movement is executed by the platform before a new image and structured state are returned. The task score is assigned only to the terminal answer, while the episode log retains intermediate answers, decisions, and costs.
 
-For online inspection, the controller receives the current rendered image together with structured counts and a semantic-map snapshot. A damage question can include a marked target location and a finite answer vocabulary. Spatial representations and memory support grounding and search; they are engineering components informed by prior aerial planning and representation work~\cite{zhang2025citynavagent,gao2024stmr}. The evaluated episodes do not isolate their contribution. The system's ability to expose these tools must therefore be distinguished from an experimentally established navigation improvement.
+Figure~\ref{fig:agent-loop} shows the resulting state machine. The evidence-sufficiency test and the budget/action-feasibility test separate a model decision from an executable environment transition. This distinction also makes the fixed-view control explicit: it repeats answer generation while holding the complete environment observation fixed.
 
-\subsection{Offline allocation rules}
-Let $r_{ij}$ denote an uncalibrated class probability. Temperature scaling produces
+\begin{figure}[htbp]
+\centering
+\resizebox{\linewidth}{!}{\input{figures/agent_loop}}
+\caption{Closed-loop disaster-response agent and reobservation state machine. A reobservation is counted only after a feasible movement is executed and a new georeferenced observation is rendered. The dashed branch denotes the unchanged-view control used to measure answer-generation variation.}
+\label{fig:agent-loop}
+\end{figure}
+
+\subsection{Perception, spatial evidence, and answer generation}
+The evaluated damage backend is recorded as \texttt{xview2\_first}, with a single ResNet-34 configuration and seed 0. It processes pre-/post-disaster image pairs and supplies detected building locations and four-class damage probabilities: no damage, minor damage, major damage, and destroyed. The backend is shared within the principal offline comparisons. Its prior exposure to evaluation events is disclosed in Section~\ref{sec:setup}.
+
+Predictions inside the target ROI are matched to annotated buildings by a greedy, one-to-one nearest-centroid rule with a 12 m distance threshold. An unmatched building receives a no-damage probability vector before normalization and temperature scaling. Consequently, the reported building endpoint combines localization, matching, and damage classification. We retain this archived convention, disclose unmatched counts, and add a matched-only sensitivity analysis.
+
+For online inspection, the agent receives the current image, target scope, structured counts, damage evidence, and a semantic-map snapshot. Spatial representations, hierarchical planning, and memory can support grounding and search~\cite{zhang2025citynavagent,gao2024stmr,shah2023lmnav}; in this study they are system components whose individual navigation effects are not isolated. The final structured question-answering call uses the locally loaded Qwen2.5-VL-7B-Instruct model. Its output is normalized against the task's answer vocabulary before scoring.
+
+This modular organization keeps the decision boundary visible. A perception module can change a building label without repairing the requested answer, and Qwen can vary its answer without a new environment observation. The episode record preserves both stages so those cases can be distinguished.
+
+\subsection{Uncertainty-guided reobservation}
+Let $r_{ij}$ denote an uncalibrated probability for damage class $j$. Temperature scaling produces
 \begin{equation}
  p_{ij}(T)=\frac{r_{ij}^{1/T}}{\sum_{\ell=1}^{4}r_{i\ell}^{1/T}},\qquad
  H(p_i)=-\frac{1}{\log 4}\sum_{j=1}^{4}p_{ij}\log p_{ij}.
  \label{eq:entropy}
 \end{equation}
-The implementation normalizes probabilities, clips small values for numerical stability, and rounds normalized entropy to three decimal places for ranking. A positive scalar temperature preserves each vector's highest-probability class, but can change the ordering of uncertainty between buildings. All evaluated allocation outputs use the same calibrated vectors in Eq.~\eqref{eq:allocation}. The raw-entropy rule changes the ranking score, not the probability representation used to score the final predictions.
+The implementation normalizes probabilities, clips small values for numerical stability, and rounds normalized entropy to three decimal places for ranking. A positive scalar temperature preserves the highest-probability class but can change uncertainty ordering between buildings.
 
-The no-reobservation rule always retains the cruise prediction. Random allocation samples $k$ buildings without replacement. Raw and calibrated entropy select the $k$ largest corresponding cruise entropies. The expected-entropy-reduction rule fits the mean paired difference $H(p^c)-H(p^f)$ on development buildings, conditioned on the cruise predicted class and one of five equal-width cruise-entropy bins. Empty class/bin cells fall back to the class mean and then the global mean. This is an empirical uncertainty-reduction proxy; it is not trained on task correctness or the cost of an online trajectory.
-
-The prediction-set rule sorts classes by probability and counts how many are needed for their cumulative probability to reach the frozen adaptive prediction set (APS) threshold. This rule draws on adaptive conformal classification~\cite{romano2020adaptive}, but uses the resulting set size only as a sensing priority here. Finally, a label-informed diagnostic assigns score $+1$ to correctable cases, $-1$ to harmful cases, and zero otherwise. It uses evaluation labels and cannot be deployed. Because it ranks accuracy changes rather than optimizing macro-F1, its curve is not a theoretical macro-F1 upper bound. Ties in deterministic scores retain input order. The random curve uses seed 0 and independent draws at each nonzero budget, so its selected sets are not nested across budget fractions.
-
-\subsection{Online triggering and motion feedback}
-The online controller evaluates whether to reobserve after producing a candidate answer and associated perception evidence. A trigger can use raw or calibrated entropy, a prediction set containing more than one class, a fixed allocation, or an expected-entropy lookup. The configured entropy threshold is 0.7. For the expected-entropy trigger, the controller computes
+The online controller evaluates whether to reobserve after producing a candidate answer and associated perception evidence. A trigger can use raw or calibrated entropy, a prediction set containing more than one class, a fixed allocation, or an expected-entropy lookup. For the expected-entropy rule, the controller computes
 \begin{equation}
  \widetilde G_t=\max\{0,H_t-\widehat\mu(g_{t+1},\hat c_t)\},
  \label{eq:onlinegain}
 \end{equation}
-and requests reobservation when $\widetilde G_t>0.02$, subject to available budget and action checks. Here $\widehat\mu$ is a development-set mean entropy indexed by GSD and predicted damage class. The current implementation requires the compatible FOV entropy-table schema for this mode.
+and requests reobservation when $\widetilde G_t>0.02$, subject to the available budget and action checks. Here $\widehat\mu$ is a development-set mean entropy indexed by future GSD and predicted damage class. This is a plug-in uncertainty-reduction heuristic, not an estimate of expected question utility given the full task history. Its local damage signal can be misaligned with the evidence needed for a count or spatial question.
 
-This lookup differs from the paired offline predictor. Its stored mean at a future GSD groups development examples by the class predicted at that GSD, whereas the online query supplies the current predicted class. Consequently, Eq.~\eqref{eq:onlinegain} is a plug-in heuristic with a conditional-variable mismatch when classes change across views. It is not an estimate of expected question utility given the current history. This distinction is especially relevant when a local damage signal controls reobservation for a count or spatial question.
+An accepted request invokes centering, descent, or both. The next rendered view passes through perception and answer generation, and the controller records the new answer, uncertainty, action, and remaining budget. Valid answers are not rejected solely because their self-reported confidence lies below an answer-confidence threshold; the implemented agent is therefore not described as calibrated selective prediction.
 
-An accepted reobservation invokes the movement interface to center on evidence, descend within the camera ladder, or combine both operations. The next rendered view is passed through perception and answer generation. The controller limits the episode and records the candidate answer, uncertainty, decision, action, and remaining budget. Answer validity and missing-target conditions can lead to abstention or further search. In the inspected implementation, a valid answer is not rejected solely because its confidence lies below a configured answer-confidence threshold. We therefore do not describe the controller as implementing calibrated selective prediction; any confidence-threshold analysis below is a retrospective evaluation of recorded answers.
+\subsection{Offline allocation rules and paired endpoints}
+The building-level study isolates observation allocation from route construction. Each of $N$ buildings has a cruise probability vector $p_i^c$ and a floor vector $p_i^f$. For budget fraction $b$, a policy selects $S_b$ with $k=\operatorname{round}(bN)$ buildings, giving
+\begin{equation}
+ p_i^{(b)}=\begin{cases}p_i^f,&i\in S_b,\\p_i^c,&i\notin S_b.\end{cases}
+ \label{eq:allocation}
+\end{equation}
+Each selected building counts as one additional observation in this abstraction. The cost does not represent a route visiting all selected buildings.
+
+Random allocation samples $k$ buildings without replacement. Raw and calibrated entropy select the largest corresponding cruise entropies. Expected entropy reduction fits the mean paired difference $H(p^c)-H(p^f)$ on development buildings, conditioned on cruise predicted class and one of five equal-width entropy bins. Empty cells fall back to a class mean and then the global mean. The prediction-set rule ranks by the number of classes required to reach a frozen adaptive prediction set threshold~\cite{romano2020adaptive}. A label-informed diagnostic ranks correctable cases first and is used only for retrospective mechanism interpretation.
+
+Let $\hat y_i^v=\arg\max_j p_{ij}^v$. A correctable case has $\hat y_i^c\ne y_i$ and $\hat y_i^f=y_i$; a harmful case has $\hat y_i^c=y_i$ and $\hat y_i^f\ne y_i$. For a fixed selected set,
+\begin{equation}
+ \Delta\mathrm{Acc}(S_b)=\frac{N_{\mathrm{corrected}}(S_b)-N_{\mathrm{harmed}}(S_b)}{N}.
+ \label{eq:net}
+\end{equation}
+This identity applies to the hard-label endpoint, not to macro-F1, probability quality, or language-task utility.
+
+Online correctness counts every task in its denominator, including abstentions as unsuccessful answers. Executed reobservation actions are reported separately. If $a_q$ is the terminal answer, task accuracy is $|Q|^{-1}\sum_q\mathbf{1}[a_q=y_q]$. The unchanged-view control holds $s_t$, $I_t$, and $z_t$ fixed while repeating the answer-generation call, providing a direct measure of within-input generation variability.
+
+\begin{figure}[htbp]
+\centering
+\input{figures/console_composite}
+\caption{DisasterClaw operator console. Panel (a) summarizes scene selection, the georeferenced map, UAV state, task entry, and perception output. Panel (b) exposes the evolving trajectory, agent decision, evidence, remaining budget, and event log during closed-loop inspection. These screenshots document implemented functions and are not used as quantitative evidence.}
+\label{fig:console}
+\end{figure}

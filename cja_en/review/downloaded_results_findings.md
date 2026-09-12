@@ -2,6 +2,8 @@
 
 日期：2026-09-05。本记录更新早先“原始目录尚未取得”的状态：运行文件已陆续到达，并完成下述核心文件的本地复算。整个下载是否完成、训练权重与数据包是否齐全仍未确认。
 
+> **历史结果说明（2026-09-07）：** 第 4--5 节记录的是首轮在线运行，现已被作者补做的近匹配预算重跑取代，不再作为主文在线结果。新结果及其边界见 [`matched_budget_result.md`](matched_budget_result.md)、[`no_move_reask_result.md`](no_move_reask_result.md) 和 [`supplemental_result_audit.md`](supplemental_result_audit.md)。首轮记录保留用于追踪原预算问题，不能回填到当前正文。
+
 复算入口：`python3 cja_en/scripts/audit_downloaded_results.py`。结果与输入 SHA-256 见 `downloaded_results_audit.json`。仅读取 `runs/`，输出到 `cja_en/review/`；校验运行期间输入内容未变。
 
 ## 1. 预算表来源已确认，数值算术可复现

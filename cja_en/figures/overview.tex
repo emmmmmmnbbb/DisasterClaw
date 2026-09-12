@@ -1,11 +1,27 @@
-\begin{tikzpicture}[font=\small,>=Latex,
- box/.style={draw=blue!55!black,rounded corners,align=center,fill=blue!3,inner sep=7pt},
- arrow/.style={->,thick,draw=blue!55!black}]
-\node[box,text width=11.8cm] (source) {Georeferenced pre-/post-disaster imagery\\Assumed source GSD: 0.5 m/pixel; no detail beyond source resolution};
-\node[box,text width=11.8cm,below=8mm of source] (camera) {Fixed output: $1024\times1024$ pixels; FOV: $60^\circ$\\Cruise: 1.5 m/px $\longrightarrow$ Mid: 1.0 m/px $\longrightarrow$ Floor: 0.5 m/px\\Smaller footprint: more target pixels, less surrounding context};
-\node[box,text width=5.2cm,minimum height=2.7cm,below=10mm of camera.south,xshift=-3cm] (offline) {Offline paired predictions\\3,753 buildings / 44 ROIs\\Select $k$ floor-view predictions\\Classification; correction/harm};
-\node[box,text width=5.2cm,minimum height=2.7cm,right=6mm of offline] (online) {Online inspection episodes\\160 questions / 10 configurations\\Action $\to$ new view $\to$ answer\\Task score; observation count};
-\draw[arrow] (source)--(camera);
-\draw[arrow] (camera.south)-- ++(0,-.4) -| (offline.north);
-\draw[arrow] (camera.south)-- ++(0,-.4) -| (online.north);
+\begin{tikzpicture}[
+  font=\footnotesize,
+  >=Latex,
+  box/.style={draw=blue!58!black,rounded corners=2pt,align=center,fill=blue!3,
+    text width=3.25cm,minimum height=1.18cm,inner sep=5pt},
+  core/.style={box,text width=3.75cm,minimum height=2.32cm,fill=blue!7},
+  env/.style={box,fill=green!6,draw=green!45!black},
+  log/.style={box,text width=11.3cm,fill=orange!7,draw=orange!60!black},
+  arr/.style={->,thick,draw=blue!58!black},
+  bi/.style={<->,thick,draw=blue!58!black},
+  darr/.style={->,thick,dashed,draw=black!50}
+]
+\node[box] (operator) at (-4.25,1.25) {\textbf{Operator console}\\scene selection, task entry, manual control, monitoring};
+\node[box] (runner) at (-4.25,-1.25) {\textbf{Headless benchmark}\\frozen tasks, configurations, paired scoring};
+\node[core] (agent) at (0,0) {\textbf{Disaster-response agent}\\task interpreter and planner\\[2pt]reobservation policy\\[2pt]action controller};
+\node[box] (model) at (4.25,1.25) {\textbf{Perception and models}\\damage/spatial evidence, semantic map, Qwen answers};
+\node[env] (world) at (4.25,-1.25) {\textbf{Georeferenced simulation}\\scene and FOV renderer, UAV state, action executor};
+\node[log] (record) at (0,-3.45) {\textbf{Episode recorder}\quad observations and evidence $\vert$ decisions and actions $\vert$ budgets $\vert$ answers and outcomes $\vert$ replay metadata};
+
+\draw[arr] (operator.east)--node[above]{task}(agent.west |- operator.east);
+\draw[arr] (runner.east)--node[below]{task}(agent.west |- runner.east);
+\draw[bi] (agent.east |- model.west)--(model.west);
+\draw[bi] (agent.east |- world.west)--(world.west);
+\draw[darr] (agent.south)--(record.north);
+\draw[darr] (model.east) -- ++(.35,0) |- (record.east);
+\draw[darr] (world.south)--(record.north east);
 \end{tikzpicture}

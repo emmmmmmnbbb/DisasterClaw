@@ -1,85 +1,64 @@
-\section{Results and discussion}
-\subsection{The camera ladder changes the building endpoint}
-Table~\ref{tab:fov} reports the reconstructed final evaluation population, rather than development-set scores. Moving from cruise to the floor increases macro-F1 from 0.6118 to 0.6542 and accuracy from 0.7250 to 0.7423. Brier score and NLL also decrease. The camera ladder therefore produces a measurable response in this perception pipeline. This response is conditional on the existing imagery, matching convention, and exposed backbone; it is not evidence from real changes in UAV acquisition altitude.
+\section{Platform-enabled evaluation and results}
+\subsection{Controllable views produce a measurable perception response}
+The platform generates three observations of the same geographic target scope while varying its footprint and effective GSD. The evaluation retains the same 3,753 building identities across 44 ROIs. Table~\ref{tab:fov} reports the reconstructed final evaluation population. Moving from cruise to floor increases macro-F1 from 0.6118 to 0.6542 and accuracy from 0.7250 to 0.7423; Brier score and NLL also decrease. The observation control therefore produces a measurable response in the implemented perception pipeline.
 
 \begin{table}[htbp]
 \centering\small
-\caption{Building-level results at three simulated views on the same 3,753 evaluation buildings. Lower Brier score and NLL are better.}
+\caption{Building-level results at three simulated camera states on the same 3,753 evaluation buildings. Lower Brier score and NLL are better.}
 \label{tab:fov}
 \input{tables/fov}
 \end{table}
 
-Across cruise and floor, 383 buildings change predicted class. Of these, 191 change from incorrect to correct and 126 from correct to incorrect; the other 66 change between incorrect classes. The net accuracy gain is therefore 65/3,753, or 1.73 percentage points. Full reobservation does not simply reveal a uniformly better label: it exchanges some correct judgments for incorrect ones. A useful selection rule must identify beneficial opportunities while avoiding harmful changes.
+Across cruise and floor, 383 buildings change predicted class. Of these, 191 change from incorrect to correct and 126 from correct to incorrect; 66 change between incorrect classes. The net accuracy gain is 65/3,753, or 1.73 percentage points. Thus, a narrower footprint does not act as a uniformly beneficial treatment. It creates both correction opportunities and harmful changes that an allocation rule must distinguish.
 
-Localization also affects this endpoint. The cruise, intermediate, and floor records contain 912, 916, and 907 unmatched buildings, respectively. Among the 191 corrected cases, 35 involve an unmatched record in at least one of the two views; among the 126 harmed cases, 18 do so. The remaining 156 corrections and 108 harms involve detections in both views. These counts show why the observed change should be attributed to the full perception-and-matching pipeline rather than solely to a damage classifier receiving sharper crops.
+Localization contributes to this endpoint. The cruise, intermediate, and floor records contain 912, 916, and 907 unmatched buildings. Among the 191 corrected cases, 35 involve an unmatched record in at least one view; among the 126 harmed cases, 18 do so. On the 2,757 buildings matched at all three views, macro-F1 still rises from 0.7069 to 0.7489 (Table~\ref{tab:matched}). The response therefore persists in the matched-only subset, although that selected population cannot replace the full endpoint.
 
-An added sensitivity analysis restricts evaluation to the 2,757 buildings with matched detections in all three views. Macro-F1 still rises, from 0.7069 at cruise to 0.7489 at the floor (Table~\ref{tab:matched}). Thus, the direction of the view response persists when cases involving an unmatched record are removed. This is a selected subset, conditioned on outcomes of the detection pipeline; its higher absolute score is not an improved estimate of full-population performance.
+These results validate the platform's use for a controlled observation-allocation study. They do not validate the assumed altitude against the original sensor, and they do not show that a physical revisit would reproduce the same change.
 
-\subsection{Budgeted allocation and uncertainty quality}
-At $b=0.25$, each active offline allocation rule selects 938 buildings (Table~\ref{tab:allocation}). Calibrated entropy obtains macro-F1 0.6433, compared with 0.6241 for random allocation and 0.6118 without reobservation. It produces 53 net additional correct predictions, versus 19 for random allocation. Thus, uncertainty-based selection can identify useful reobservations in this population under a common building budget.
+\subsection{Budgeted allocation on paired observations}
+At $b=0.25$, each active rule selects 938 buildings (Table~\ref{tab:allocation}). Calibrated entropy obtains macro-F1 0.6433, compared with 0.6241 for random allocation and 0.6118 without reobservation. It produces 53 net additional correct predictions, versus 19 for the recorded random allocation. Uncertainty-based ranking can therefore identify useful reobservations in this observed building population under a common selection budget.
 
 \begin{table}[htbp]
 \centering\footnotesize
-\caption{Offline allocation at $b=0.25$. All active rules select 938 floor-view predictions and are scored with the same calibrated probability vectors. Net correct counts corrections minus harms relative to cruise. The label-informed row uses evaluation labels.}
+\caption{Offline allocation at $b=0.25$. All active rules select 938 floor-view predictions and are scored with the same calibrated vectors. Net correct counts corrections minus harms. The label-informed row uses evaluation labels.}
 \label{tab:allocation}
 \input{tables/allocation}
 \end{table}
 
-The strongest practical macro-F1 at this budget is obtained by raw entropy (0.6448), slightly above calibrated entropy. Expected entropy reduction reaches 0.6308 and APS set size reaches 0.6367. The evidence therefore does not establish a benefit from calibrating the allocation score or from replacing uncertainty with the fitted entropy-reduction proxy. Entropy reduction is an imperfect target because becoming more confident need not correct the predicted class. Its fitted conditional means also average across buildings whose errors and visual contexts differ.
+Raw entropy is numerically strongest among deployable rules at this budget, with macro-F1 0.6448. Expected entropy reduction reaches 0.6308 and APS set size reaches 0.6367. The experiment therefore does not establish an advantage for calibrating the ranking score or for replacing uncertainty with the fitted entropy-reduction proxy. The label-informed diagnostic performs better at intermediate budgets by selecting corrections and postponing harmful cases, but it uses evaluation labels and is not deployable.
 
-Figure~\ref{fig:budget} shows the full budget response. All active policies converge to the same floor endpoint at $b=1$, because every building then uses its floor prediction. The label-informed diagnostic can exceed that endpoint at intermediate budgets by preferentially selecting corrections and postponing harmful cases. This behavior illustrates the importance of selection; it is not achievable without label information and is not an upper bound for arbitrary task reasoning.
+The exploratory ROI bootstrap gives a calibrated-entropy minus random macro-F1 difference of 0.0192, with interval [0.0097, 0.0419]. The difference from raw entropy is $-0.0015$, with interval [$-0.0093$, 0.0061]. These estimates support a conditional distinction from the recorded random selection but no clear benefit over raw entropy. They do not quantify transfer to new disasters.
 
-\begin{figure}[htbp]
-\centering
-\input{figures/budget_curve}
-\caption{Offline macro-F1 against reobservation fraction on the fixed evaluation population. Lines connect the five evaluated budgets; random selections are not nested. The label-informed curve is a retrospective accuracy-oriented diagnostic.}
-\label{fig:budget}
-\end{figure}
+Probability quality follows a different ordering. At $b=0.25$, calibrated-entropy allocation raises ECE from 0.2423 to 0.2609 and NLL from 1.3564 to 1.3769, although Brier score decreases from 0.4814 to 0.4763. Improved hard-label performance cannot be described as an overall calibration improvement.
 
-The exploratory ROI bootstrap gives a calibrated-entropy minus random macro-F1 difference of 0.0192, with interval [0.0097, 0.0419]. The corresponding difference from raw entropy is $-0.0015$, with interval [$-0.0093$, 0.0061]. These estimates support a conditional distinction between entropy selection and the recorded random allocation, while leaving no clear advantage for calibration over raw entropy. They do not establish equality of those two policies or quantify event-level generalization.
+\subsection{Closed-loop inspection and fixed-view answer variation}
+The closed-loop suite tests whether building-level view effects transfer to complete inspection answers. Table~\ref{tab:controls}(a) gives the seven paired endpoints at near-matched executed cost. No reported pairwise difference is significant after Holm correction, and expected entropy reduction does not outperform all matched controls. These results do not support a ranking of the online controllers; their role here is to expose the task-level endpoint of the platform.
 
-Probability quality does not follow the same ordering as macro-F1. At $b=0.25$, calibrated-entropy allocation raises ECE from 0.2423 to 0.2609 and NLL from 1.3564 to 1.3769, although Brier score decreases from 0.4814 to 0.4763. Selectively replacing views can change the confidence distribution as well as the errors. Consequently, the improvement in hard-label performance cannot be described as an overall calibration improvement.
-
-\subsection{Offline gains do not establish an online task gain}
-Table~\ref{tab:online} summarizes all recorded online configurations. Hold answers 50 of 160 questions correctly. Random and center-only configurations answer 51 correctly, expected entropy reduction answers 49, and the complete range is 48--51. These differences are only one or two questions relative to hold. The records provide no stable demonstration that additional sensing improves the final inspection endpoint.
+The fixed-view control repeats Qwen answer generation five times with the same initial image and structured evidence. Answers vary for 11 of 160 questions (6.9\%), while the controller decision varies for one question (0.6\%). None of the 43 damage or 44 presence questions changes answer, compared with 4 of 43 count and 7 of 30 spatial questions (Table~\ref{tab:controls}, panel (b)). The other 149 questions retain the same answer across all five generations.
 
 \begin{table}[htbp]
-\centering\footnotesize
-\caption{Recorded online outcomes on 160 paired questions. Actions are executed reobservations; episodes count questions receiving at least one. Gain/loss compares final correctness with hold and does not identify the causal effect of an action. Motion variants and random allocation did not match the reference's actual budget.}
-\label{tab:online}
+\centering\small
+\caption{Closed-loop and fixed-view controls on the same 160 questions. (a) Allocated budgets match by question; active policies differ by at most one executed action, and no reported pairwise difference is significant after Holm correction. (b) A flip denotes more than one normalized answer across five Qwen2.5-VL-7B-Instruct outputs for the same image and structured evidence.}
+\label{tab:controls}
+\begin{minipage}{0.90\linewidth}
+\centering
+\textit{(a) Closed-loop policy endpoints}\\[2pt]
 \input{tables/online}
+\vspace{7pt}
+
+\textit{(b) Fixed-view answer variation by question type}\\[2pt]
+\input{tables/no_move_reask}
+\end{minipage}
 \end{table}
 
-The costs are unequal. Expected entropy reduction executes 15 reobservations in eight episodes, random executes 14, fixed executes 15, and APS executes 44 in 29 episodes. Each of the three motion variants executes 11. Their intended reference matching cannot be assumed from configuration names. A record-level check identifies three questions where each motion variant's allocated budget differs from the current reference, accounting for four missing actions. The runs permit crash-resume, and the affected variant records predate the current reference records. This is consistent with stale dependent records surviving a resumed evaluation, although the complete execution history is unavailable. The variants remain descriptive observations; they do not provide a clean causal decomposition of centering and descent.
+Repeated inference is therefore an unlikely explanation for answer changes on damage and presence questions in this control. Count and spatial questions retain a nonzero generation-variability component, so a changed answer on those task types cannot automatically be attributed to newly acquired visual evidence. The supplied summary reports no case in which repeated questioning converts a consistently wrong answer into a consistently correct one. This observation remains descriptive until the 800 raw generations are archived locally.
 
-The limited task gain also cannot be inferred directly from the building-level result. The offline score aggregates many building decisions, while each online question may depend on a target marker, semantic counts, direction reasoning, or an answer format. A higher building macro-F1 need not repair the evidence required by a particular question. Moreover, comparison with hold includes differences in generated answers even when no additional observation occurs. The one-question loss in count performance for expected entropy reduction occurs with zero count-question reobservations (Table~\ref{tab:types}); it cannot be attributed to a descent harming the view.
+\subsection{Archived VLN component diagnostic}
+The earlier VLN switch experiment provides an additional system-level check (Table~\ref{tab:vln-ablation}). Strict success changes only from 0.070 for the keyword/greedy baseline to 0.080 for hierarchical planning, with overlapping Wilson intervals. Adding uncertainty recheck leaves the reported outcome identical because the recheck mechanism never triggers in B2. Adding topological memory also leaves strict success at 0.080, reduces semantic success from 0.155 to 0.140, and increases mean navigation error from 223.9 to 305.7 m.
 
-\begin{table}[htbp]
-\centering\footnotesize
-\caption{Question-type breakdown for hold and expected entropy reduction. Correct counts use all questions of each type. All expected-policy sensing actions are concentrated in damage questions.}
-\label{tab:types}
-\input{tables/question_types}
-\end{table}
+This experiment confirms that the planner, recheck, and memory switches were integrated into a complete language-guided navigation path. It does not establish that any of these components improves navigation. In particular, B2 diagnoses an inactive decision path in that archived configuration, and B3 shows that activating memory can alter trajectories without improving strict success. These results support the paper's emphasis on observable component behavior and evaluation boundaries rather than a claimed VLN performance gain.
 
-\subsection{A trace-level failure mode: sensing already-correct cases}
-The expected-entropy policy reobserves eight questions, all from the Moore tornado, all asking about damage, and all with the no-damage reference answer. Every one is already answered correctly, and none changes its answer after reobservation. The calibrated-entropy policy exhibits the same concentration. Their extra observations therefore do not target the unsuccessful count and spatial judgments that contribute to the low overall accuracy. This is a concrete failure of task targeting in the recorded episodes, rather than a general claim that another view cannot help disaster inspection.
+\subsection{What the platform reveals about reobservation}
+The combined experiments separate three stages that would otherwise be conflated. First, the camera ladder changes the building-level perception endpoint. Second, budgeted ranking can select a more favorable subset of those changes under a common building budget. Third, that advantage does not transfer clearly to the current set of complete inspection answers. The remaining gap lies between the question's evidence requirement, the local damage signal used by the trigger, and Qwen's answer formation.
 
-The APS trigger covers a broader set: its 29 reobserved episodes span three events and four question types, and 16 of them finish correctly. Its greater action count nevertheless leaves overall correctness at 50/160. More widespread triggering alone is therefore insufficient in this sample. A future controller should connect the requested evidence to the question's unresolved requirements, but the present data do not evaluate such a replacement policy.
-
-Across configurations, 93 reobserved episodes contain comparable initial and final confidence values. Confidence rises in 74, is unchanged in 18, and falls in one; the mean increases from 0.8344 to 0.9463. These are repeated configuration/question records, not 93 independent tasks. Because many selected episodes were already correct, this increase cannot by itself demonstrate additional task success. Nor does it show that confidence is always made less reliable: that requires probability-quality measurements on a defined population, rather than a conclusion drawn from confidence movement alone.
-
-\subsection{Confidence and implications for aerospace autonomy}
-Figure~\ref{fig:risk} gives retrospective risk--coverage operating points for hold, expected entropy reduction, and APS triggering. The curves retain all confidence ties and exclude already-abstained outputs from the accepted set. Their points represent different selected question populations; connecting them is a visual aid, not evidence that intermediate coverage levels are attainable without breaking ties. High-confidence answers can still be wrong, and small high-threshold subsets can appear reliable because of their composition. The curves do not validate an operational reject threshold or transfer a detector-level guarantee to the VLM.
-
-At threshold 0.9, hold and expected entropy reduction each accept 62 questions, with error fractions of 0.5645 and 0.5323, respectively. APS accepts 65 with error fraction 0.4769. At threshold 0.95, expected entropy reduction retains only eight questions and makes no recorded error, corresponding to 5\% coverage. This small accepted subset coincides with the already-correct cases receiving reobservation. Its zero observed error therefore supports a narrow descriptive statement, not a guarantee for the remaining tasks.
-
-\begin{figure}[htbp]
-\centering
-\input{figures/risk_coverage}
-\caption{Retrospective error--coverage points at confidence thresholds 0, 0.8, 0.9, 0.95, 0.99, and 1.0, retaining ties. Coverage uses all 160 questions; risk uses the accepted non-abstained answers. Thresholds are diagnostic, with no fitted deployment rule or guarantee.}
-\label{fig:risk}
-\end{figure}
-
-For aerospace embodied perception, the practical finding is that changing a sensor state and receiving feedback are necessary elements of an inspection loop but do not establish decision value. In this setting, the camera ladder changes evidence, offline allocation extracts some useful corrections, and the online trigger often spends its budget on questions that were already resolved. These three observations identify where the evidence chain succeeds and where it stops. They motivate task-conditioned sensing evaluation with verified costs, without supporting broader claims about flight safety, aircraft control, swarms, or energy-aware autonomy.
-
-The principal limitations concern both sensing and execution. The perception backbone has prior event exposure, the source imagery is two-dimensional, the two image dates undergo different degradation, and unmatched buildings receive a default class. Execution provenance is incomplete, only one online seed is recorded, and action budgets differ. Only three evaluation events are represented. A convincing extension requires a recoverable frozen implementation, strict checkpoint and event accounting, regenerated matched controls, and repeated runs with question-level evidence annotations. Those experiments could strengthen or overturn the current interpretation; their outcomes are not assumed here.
+This diagnosis illustrates the value of the framework beyond a single policy score. DisasterClaw makes the environment state, observation transition, perception response, controller action, and terminal answer separately observable. A subsequent task-conditioned policy can therefore be tested on whether it acquires evidence relevant to damage, count, presence, or spatial reasoning, rather than only on whether a generic uncertainty measure decreases.

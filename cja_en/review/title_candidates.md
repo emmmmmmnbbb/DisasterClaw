@@ -1,6 +1,6 @@
 # 英文标题候选
 
-日期：2026-09-05。下列为初始候选；审核后已采用文末的 task value 标题，见独立英文稿。
+日期：2026-09-05。下列为初始机制论文候选，现作为历史记录保留。2026-09-08 主线已调整为平台和救灾智能体，当前标题见文末。
 
 1. **When Does Reobservation Help? A Study of Budgeted UAV Disaster Inspection**
    - 暂推荐用于讨论。航空任务明确，问题清楚；新颖性来自研究发现而非模块名称，具身关联由 reobservation 体现。风险较低，但正文须有足够有信息量的受控研究。
@@ -16,8 +16,8 @@
    - 适合稳定、有解释力的边界结果；清楚而克制。必须将限制限定于已评估观测模型和底座，不能把一次实现失败泛化成所有 UAV 的极限。
 
 暂不使用：Reliable、Safe、Certified、Optimal、General-Purpose、Fixed-Wing、Swarm 或 97% 等未获证据支持的词语。DisasterClaw 可作为系统名称出现在正文，是否进入标题取决于最终贡献重心。
-# 当前采用的标题（审核后更新）
+# 当前采用的标题（2026-09-08 更新）
 
-**Evaluating the task value of budgeted reobservation for UAV disaster inspection**
+**DisasterClaw: A Georeferenced Simulation and Agent Framework for Budgeted UAV Disaster Inspection**
 
-选择理由：点明任务效用和观测预算，不预设性能提升或通用算法创新。已用于独立英文稿 `main.tex`。下方保留最初六个候选供比较。
+选择理由：标题把平台和救灾智能体置于首位，同时把预算重观测限定为评测案例，不预设在线策略取得显著提升。已用于独立英文稿 `main.tex`。

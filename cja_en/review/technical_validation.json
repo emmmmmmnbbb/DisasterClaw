@@ -1,8 +1,8 @@
 {
   "scope": "technical consistency only; submission readiness remains incomplete",
   "errors": [],
-  "pdf_pages": 23,
-  "pdf_sha256": "158516818c3e8d9c870df0894a87a9539900b21cb1cdf28342f71315fdd66742",
+  "pdf_pages": 30,
+  "pdf_sha256": "e863ab49c8f8170a7136fcab48bc57bfc3818167b3ac051a769daad4e5f13c20",
   "latex_warnings": [],
   "bibtex_warnings": [
     "Warning--empty pages in curtis2024tampura",

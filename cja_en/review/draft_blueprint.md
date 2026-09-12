@@ -1,5 +1,7 @@
 # 已审核方向与英文稿证据蓝图
 
+> 历史状态：本蓝图记录 2026-09-05 至 2026-09-07 的机制论文结构。作者于 2026-09-08 接受新的贡献层级，当前执行依据改为 [平台主线方案](platform_reframing_plan.md)：DisasterClaw 仿真平台和救灾智能体为主贡献，预算重观测为机制案例。
+
 2026-09-05：用户“审核完成 继续工作吧”后，采用已讨论的机制/评测路径 B 推进；后续“继续”保持该方向。没有把初审通过解释为允许虚构未完成实验或提交期刊。
 
 最终当前标题：**Evaluating the task value of budgeted reobservation for UAV disaster inspection**。

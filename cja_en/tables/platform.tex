@@ -1,0 +1,13 @@
+\begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{2.25cm}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X@{}}
+\toprule
+Capability & Implemented function & Boundary in this study \\
+\midrule
+Scene & Georeferenced pre-/post-disaster tiles, building annotations, map anchors, target ROIs, and contextual basemap & Three evaluated events and 44 ROIs; incomplete source archive and no global coverage claim \\
+Observation & Nadir fixed-FOV crop and resampling at three footprint widths; paired archival and current-image channels & Orthographic imagery; no new viewpoint, acquisition time, or detail below the assumed 0.5 m/pixel source scale \\
+Vehicle and actions & Geographic and local position, altitude, heading, speed, task state, straight-line motion, centering, descent, hover, marking, and reporting & One UAV with simplified kinematics; no six-degree-of-freedom dynamics, wind, collision, communication, or battery model \\
+Perception and models & Building localization and four-class damage evidence, spatial summaries, semantic map, planner, and Qwen answer generation & Modular system integration; model revision and some archived runtime fields remain incomplete \\
+Tasks & Operator instructions, damage/presence/count/spatial questions, and archived language-guided navigation instructions & Task-scoped simulation; no claim of unrestricted natural-language or open-world competence \\
+Logging and evaluation & Interactive monitoring, headless episodes, paired task IDs, intermediate evidence, actions, budgets, answers, and terminal scores & New online records are locally represented by supplied summaries; screenshots illustrate function only \\
+Physical boundary & Map-anchored scene transitions and a controlled observation ladder & No photorealistic sensor synthesis, aircraft certification model, hardware-in-the-loop result, or physical-flight validation \\
+\bottomrule
+\end{tabularx}

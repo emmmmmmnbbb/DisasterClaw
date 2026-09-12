@@ -1,0 +1,15 @@
+\begin{minipage}{0.96\linewidth}
+\centering
+\IfFileExists{figures/console/console_overview.png}{%
+  \includegraphics[width=\linewidth,height=.285\textheight,keepaspectratio]{figures/console/console_overview.png}%
+}{%
+  \fbox{\parbox[c][.19\textheight][c]{.94\linewidth}{\centering\textbf{Screenshot placeholder (a)}\\[4pt]
+  Save the operator-console overview as\\\path{figures/console/console_overview.png}}}}%
+\\[-1pt]\textbf{(a)} Operator overview: georeferenced scene, UAV state, task and perception panels.\\[5pt]
+\IfFileExists{figures/console/console_agent_loop.png}{%
+  \includegraphics[width=\linewidth,height=.285\textheight,keepaspectratio]{figures/console/console_agent_loop.png}%
+}{%
+  \fbox{\parbox[c][.19\textheight][c]{.94\linewidth}{\centering\textbf{Screenshot placeholder (b)}\\[4pt]
+  Save the closed-loop inspection view as\\\path{figures/console/console_agent_loop.png}}}}%
+\\[-1pt]\textbf{(b)} Closed-loop inspection: trajectory, evidence, agent decision, budget and log.
+\end{minipage}

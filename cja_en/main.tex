@@ -4,7 +4,7 @@
 \usepackage{lmodern}
 \usepackage{amsmath,amssymb,booktabs,graphicx,tabularx}
 \usepackage{xcolor,tikz,pgfplots}
-\usetikzlibrary{arrows.meta,positioning,fit}
+\usetikzlibrary{arrows.meta,positioning,fit,shapes.geometric,calc}
 \pgfplotsset{compat=1.18}
 \usepackage[hidelinks]{hyperref}
 \usepackage{microtype}
@@ -14,18 +14,18 @@
 \journal{Chinese Journal of Aeronautics -- review draft}
 \begin{document}
 \begin{frontmatter}
-\title{Evaluating the task value of budgeted reobservation for UAV disaster inspection}
+\title{DisasterClaw: A georeferenced simulation and agent framework for budgeted UAV disaster inspection}
 \author{Author names to be confirmed}
 \affiliation{organization={Affiliations and corresponding-author details to be confirmed}}
 \begin{abstract}
-Aerial disaster inspection requires deciding whether another observation is worth its cost. A closer view may improve damage classification without improving an inspection answer. We study this distinction in a single-UAV imagery simulation with a fixed camera model and budgeted reobservation. Paired predictions for 3,753 buildings in 44 regions quantify correction opportunities and harmful changes. At a reobservation fraction of 0.25, calibrated-entropy allocation raises macro-F1 from 0.6118 to 0.6433, compared with 0.6241 for random allocation and 0.6448 for raw entropy. Full reobservation corrects 191 decisions but harms 126. In 160 online inspection questions, configurations answer 48--51 correctly, versus 50 without reobservation. The expected-entropy policy spends all 15 additional observations on eight already-correct, no-damage questions from one event. These records reveal a mismatch between changing local evidence and directing observations to unresolved tasks. The findings are conditional on a perception backbone with prior evaluation-event exposure. Unequal online action counts and incomplete execution provenance further limit causal interpretation. The study separates observation change, uncertainty change, and task value through reproducible analysis of recorded evidence, without establishing unseen-event generalization or a language-model reliability guarantee.
+Aerial disaster agents need an environment in which sensing actions can change the available evidence and their task value can be measured. We present DisasterClaw, a georeferenced simulation and agent framework that converts paired disaster imagery into closed-loop single-UAV inspection episodes. The framework combines map-anchored pre- and post-disaster scenes, a fixed-field-of-view observation renderer, simplified vehicle motion, damage perception, language-conditioned task execution, and episode-level instrumentation. We use DisasterClaw to study budgeted reobservation at two levels. Paired predictions for 3,753 buildings in 44 regions quantify both corrections and harmful changes across three camera footprints. At a reobservation fraction of 0.25, calibrated-entropy allocation raises macro-F1 from 0.6118 to 0.6433, compared with 0.6241 for random allocation and 0.6448 for raw entropy. A 160-question closed-loop study finds no statistically distinguishable advantage among the tested online observation rules at near-matched executed cost. An unchanged-view control further shows answer variation in 11 of 160 questions across five Qwen2.5-VL-7B-Instruct generations, concentrated in count and spatial questions. The framework therefore separates changes caused by the observation, the allocation rule, and answer generation. The current evidence is limited to rendered orthographic imagery, simplified kinematics, an exposed perception backbone, and incomplete raw provenance for the new online runs.
 \end{abstract}
 \begin{keyword}
-UAV disaster inspection \sep Embodied perception \sep Active perception \sep Reobservation budget \sep Uncertainty calibration \sep Vision-language agents
+UAV disaster inspection \sep Embodied AI \sep Simulation platform \sep Active perception \sep Budgeted reobservation \sep Vision-language agents
 \end{keyword}
 \end{frontmatter}
 
-\noindent\begin{minipage}{\linewidth}\textbf{Review status.} This manuscript is an author-review draft. Quantitative tables are regenerated from the archived predictions and episode records. Author details, execution-model identity, and the remaining provenance items in \ref{app:provenance} require confirmation before submission.\end{minipage}
+\noindent\begin{minipage}{\linewidth}\textbf{Review status.} This manuscript is an author-review draft. Quantitative tables are reconstructed from archived records and the supplied rerun summaries. Author details and the remaining provenance items in \ref{app:provenance} require confirmation before submission.\end{minipage}
 
 \input{sections/01_introduction}
 \input{sections/02_related_work}
@@ -33,10 +33,12 @@ UAV disaster inspection \sep Embodied perception \sep Active perception \sep Reo
 \input{sections/04_methodology}
 \input{sections/05_experimental_setup}
 \input{sections/06_results_discussion}
-\input{sections/07_conclusion}
+\input{sections/07_limitations}
+\input{sections/08_conclusion}
 \input{appendix/declarations}
 \appendix
 \setcounter{table}{0}
+\renewcommand{\theHtable}{A.\arabic{table}}
 \input{appendix/reproducibility}
 \begingroup\small
 \bibliographystyle{elsarticle-num}
