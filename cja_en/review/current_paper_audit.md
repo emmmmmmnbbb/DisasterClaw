@@ -2,7 +2,7 @@
 
 日期：2026-09-05。对象：`paper_cja/main.tex` 及其九个正文文件、参考文献、导出表图、修订建议和对应实现。采用 academic-research-suite 的 pipeline、reviewer、integrity 工作流，在当前会话内执行；不是独立多人外审，也不代表 CJA 编辑决定。
 
-**同日更新：**本报告初写后 `runs/` 已到达，核心离线概率与 1600 条在线记录已复算。最新证据状态见 [下载结果首轮复核](downloaded_results_findings.md)。下文涉及原始目录缺失的措辞是初审时状态，现已部分解除；总体判断及论断问题仍成立。
+**2026-09-12 更新：**核心离线概率记录仍保留；旧在线记录因目标接地和证据路由缺陷失效并删除。下文在线部分只作历史审计，不得用于当前结论；现状见 [在线结果失效记录](invalidated_online_results.md)。
 
 ## Overall assessment
 

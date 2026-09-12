@@ -1,0 +1,23 @@
+{
+  "schema": "cja-section6-figure-manifest/1.0",
+  "scope": "Audited offline records only; no model execution",
+  "inputs": {
+    "runs/benchmarks/paper_cja_mech_v1/budget_allocation.json": "09315295843e905a3de77f38a9b6ad9ba04500f75a3353d4f30dcdce2e1b4d2d",
+    "runs/benchmarks/paper_cja_mech_v1/final_fov/fov_ladder_eval_items.jsonl": "d825ecaf07595e63997775ec53de627d504d201d4b9a606bb33ba7f7a3753958"
+  },
+  "derived_values": {
+    "incorrect_to_correct": 191,
+    "correct_to_incorrect": 126,
+    "incorrect_to_different_incorrect": 66,
+    "changed_total": 383
+  },
+  "outputs": {
+    "figures/view_change_outcomes.tex": "a5ce163cb039d7476164238f2ee91fca956d5e8e7fee406f6ab81c8967b718d4",
+    "figures/budget_curve.tex": "759f2e1d73f40af6cd21528a19ece4d9b19762681a4227b8c3b8a90557fbbbb8"
+  },
+  "limitations": [
+    "The perception backbone recorded for these inputs has prior exposure to evaluation events.",
+    "The random allocation curve represents the recorded seeded allocation, not uncertainty over random-policy seeds.",
+    "The budget curve is an offline building-allocation analysis and does not represent a UAV route cost."
+  ]
+}

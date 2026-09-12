@@ -86,14 +86,17 @@ def test_recheck_factory_receives_all_policy_switches(monkeypatch) -> None:
     assert captured["conformal_alpha"] == 0.2
 
 
-def test_damage_marker_is_visible_at_image_center() -> None:
+def test_damage_marker_uses_projected_target_not_image_center() -> None:
     image = Image.new("RGB", (128, 128), "black")
     raw = BytesIO()
     image.save(raw, format="JPEG")
-    marked = Image.open(BytesIO(app._mark_agent_vqa_target(raw.getvalue()))).convert("RGB")
+    marked = Image.open(BytesIO(app._mark_agent_vqa_target(
+        raw.getvalue(), [0.25, 0.75], [0.1, 0.1, 0.9, 0.9]
+    ))).convert("RGB")
+    target = marked.getpixel((32, 96))
     center = marked.getpixel((64, 64))
-    assert max(center) > 100
-    assert center != (0, 0, 0)
+    assert max(target) > 100
+    assert max(center) < 40
 
 
 def test_fixed_policy_forces_center_descent_when_rechecker_skips(monkeypatch) -> None:

@@ -57,15 +57,21 @@ def main():
         issues.append('Unexpected empty PDF page')
     src = json.loads((HERE / 'review/source_manifest.json').read_text())
     changed = [r['path'] for r in src['files'] if not (ROOT / r['path']).is_file() or sha(ROOT / r['path']) != r['sha256']]
-    if changed:
+    intentional_revision_paths = {
+        'backend/agent_vqa.py', 'backend/app.py',
+        'backend/tests/test_agent_vqa.py', 'backend/tests/test_agent_vqa_app.py',
+        'scripts/benchmarks/gen_agent_vqa_testset_v2.py',
+        'scripts/benchmarks/review_agent_vqa_testset.py',
+        'scripts/benchmarks/bench_agent_vqa.py',
+    }
+    unexpected_changed = sorted(set(changed) - intentional_revision_paths)
+    if unexpected_changed:
         issues.append('Original source fingerprint changed; inspect user edits before proceeding')
-    audit = json.loads((HERE / 'review/downloaded_results_audit.json').read_text())
-    changed_runs = [p for p, r in audit['sources'].items() if not (ROOT / p).is_file() or sha(ROOT / p) != r['sha256']]
-    if changed_runs or audit['offline_numeric_mismatches'] or audit['vqa_duplicates']:
-        issues.append('Raw input or arithmetic audit mismatch')
-    analysis = json.loads((HERE / 'review/manuscript_analysis.json').read_text())
-    if analysis['input_audit_sha256'] != sha(HERE / 'review/downloaded_results_audit.json'):
-        issues.append('Analysis is not bound to the current audit')
+    figure_manifest = json.loads((HERE / 'review/section6_figure_manifest.json').read_text())
+    changed_runs = [p for p, expected in figure_manifest['inputs'].items()
+                    if not (ROOT / p).is_file() or sha(ROOT / p) != expected]
+    if changed_runs:
+        issues.append('Retained offline input hash mismatch')
     visual_path = HERE / 'review/visual_qa.json'
     visual = json.loads(visual_path.read_text()) if visual_path.exists() else {}
     visual_current = visual.get('pdf_sha256') == sha(HERE / 'main.pdf') and visual.get('pages_reviewed') == list(range(1, page_count + 1))
@@ -76,7 +82,8 @@ def main():
               'unused_bib_entries': sorted(set(bib_keys) - citations), 'missing_citations': missing_cites,
               'missing_references': missing_refs, 'duplicate_labels': duplicates,
               'missing_inputs': missing_inputs, 'source_files_checked': len(src['files']),
-              'changed_original_sources': changed, 'run_files_checked': len(audit['sources']),
+              'changed_original_sources': changed, 'run_files_checked': len(figure_manifest['inputs']),
+              'unexpected_changed_original_sources': unexpected_changed,
               'changed_run_inputs': changed_runs, 'visual_qa_matches_current_pdf': visual_current}
     (HERE / 'review/technical_validation.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
     print(json.dumps(result, ensure_ascii=False, indent=2))

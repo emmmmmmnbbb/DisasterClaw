@@ -11,6 +11,13 @@ The platform generates three observations of the same geographic target scope wh
 
 Across cruise and floor, 383 buildings change predicted class. Of these, 191 change from incorrect to correct and 126 from correct to incorrect; 66 change between incorrect classes. The net accuracy gain is 65/3,753, or 1.73 percentage points. Thus, a narrower footprint does not act as a uniformly beneficial treatment. It creates both correction opportunities and harmful changes that an allocation rule must distinguish.
 
+\begin{figure}[htbp]
+\centering
+\input{figures/view_change_outcomes}
+\caption{Outcome decomposition for the 383 buildings whose predicted class changes from the cruise to the floor view. The categories are mutually exclusive. Counts are 191 incorrect-to-correct changes, 126 correct-to-incorrect changes, and 66 changes between incorrect classes. The figure describes the recorded imagery-based perception response; it is not a physical-flight treatment effect.}
+\label{fig:view-change-outcomes}
+\end{figure}
+
 Localization contributes to this endpoint. The cruise, intermediate, and floor records contain 912, 916, and 907 unmatched buildings. Among the 191 corrected cases, 35 involve an unmatched record in at least one view; among the 126 harmed cases, 18 do so. On the 2,757 buildings matched at all three views, macro-F1 still rises from 0.7069 to 0.7489 (Table~\ref{tab:matched}). The response therefore persists in the matched-only subset, although that selected population cannot replace the full endpoint.
 
 These results validate the platform's use for a controlled observation-allocation study. They do not validate the assumed altitude against the original sensor, and they do not show that a physical revisit would reproduce the same change.
@@ -27,31 +34,18 @@ At $b=0.25$, each active rule selects 938 buildings (Table~\ref{tab:allocation})
 
 Raw entropy is numerically strongest among deployable rules at this budget, with macro-F1 0.6448. Expected entropy reduction reaches 0.6308 and APS set size reaches 0.6367. The experiment therefore does not establish an advantage for calibrating the ranking score or for replacing uncertainty with the fitted entropy-reduction proxy. The label-informed diagnostic performs better at intermediate budgets by selecting corrections and postponing harmful cases, but it uses evaluation labels and is not deployable.
 
+Figure~\ref{fig:budget-curve} places the reference operating point in the complete recorded budget sweep. The relative ordering is budget dependent, and all policies converge to the same all-floor endpoint at $b=1$. The label-informed curve is shown only as a retrospective diagnostic.
+
+\begin{figure}[htbp]
+\centering
+\input{figures/budget_curve}
+\caption{Offline building-level macro-F1 over the recorded reobservation-budget sweep. Each selected building replaces its cruise prediction with its paired floor prediction. The vertical axis is displayed from 0.60 to resolve the observed differences. The random curve is one frozen seeded allocation, the label-informed diagnostic uses evaluation labels, and the action fraction is not a route or mission-cost measure.}
+\label{fig:budget-curve}
+\end{figure}
+
 The exploratory ROI bootstrap gives a calibrated-entropy minus random macro-F1 difference of 0.0192, with interval [0.0097, 0.0419]. The difference from raw entropy is $-0.0015$, with interval [$-0.0093$, 0.0061]. These estimates support a conditional distinction from the recorded random selection but no clear benefit over raw entropy. They do not quantify transfer to new disasters.
 
 Probability quality follows a different ordering. At $b=0.25$, calibrated-entropy allocation raises ECE from 0.2423 to 0.2609 and NLL from 1.3564 to 1.3769, although Brier score decreases from 0.4814 to 0.4763. Improved hard-label performance cannot be described as an overall calibration improvement.
-
-\subsection{Closed-loop inspection and fixed-view answer variation}
-The closed-loop suite tests whether building-level view effects transfer to complete inspection answers. Table~\ref{tab:controls}(a) gives the seven paired endpoints at near-matched executed cost. No reported pairwise difference is significant after Holm correction, and expected entropy reduction does not outperform all matched controls. These results do not support a ranking of the online controllers; their role here is to expose the task-level endpoint of the platform.
-
-The fixed-view control repeats Qwen answer generation five times with the same initial image and structured evidence. Answers vary for 11 of 160 questions (6.9\%), while the controller decision varies for one question (0.6\%). None of the 43 damage or 44 presence questions changes answer, compared with 4 of 43 count and 7 of 30 spatial questions (Table~\ref{tab:controls}, panel (b)). The other 149 questions retain the same answer across all five generations.
-
-\begin{table}[htbp]
-\centering\small
-\caption{Closed-loop and fixed-view controls on the same 160 questions. (a) Allocated budgets match by question; active policies differ by at most one executed action, and no reported pairwise difference is significant after Holm correction. (b) A flip denotes more than one normalized answer across five Qwen2.5-VL-7B-Instruct outputs for the same image and structured evidence.}
-\label{tab:controls}
-\begin{minipage}{0.90\linewidth}
-\centering
-\textit{(a) Closed-loop policy endpoints}\\[2pt]
-\input{tables/online}
-\vspace{7pt}
-
-\textit{(b) Fixed-view answer variation by question type}\\[2pt]
-\input{tables/no_move_reask}
-\end{minipage}
-\end{table}
-
-Repeated inference is therefore an unlikely explanation for answer changes on damage and presence questions in this control. Count and spatial questions retain a nonzero generation-variability component, so a changed answer on those task types cannot automatically be attributed to newly acquired visual evidence. The supplied summary reports no case in which repeated questioning converts a consistently wrong answer into a consistently correct one. This observation remains descriptive until the 800 raw generations are archived locally.
 
 \subsection{Archived VLN component diagnostic}
 The earlier VLN switch experiment provides an additional system-level check (Table~\ref{tab:vln-ablation}). Strict success changes only from 0.070 for the keyword/greedy baseline to 0.080 for hierarchical planning, with overlapping Wilson intervals. Adding uncertainty recheck leaves the reported outcome identical because the recheck mechanism never triggers in B2. Adding topological memory also leaves strict success at 0.080, reduces semantic success from 0.155 to 0.140, and increases mean navigation error from 223.9 to 305.7 m.
@@ -59,6 +53,6 @@ The earlier VLN switch experiment provides an additional system-level check (Tab
 This experiment confirms that the planner, recheck, and memory switches were integrated into a complete language-guided navigation path. It does not establish that any of these components improves navigation. In particular, B2 diagnoses an inactive decision path in that archived configuration, and B3 shows that activating memory can alter trajectories without improving strict success. These results support the paper's emphasis on observable component behavior and evaluation boundaries rather than a claimed VLN performance gain.
 
 \subsection{What the platform reveals about reobservation}
-The combined experiments separate three stages that would otherwise be conflated. First, the camera ladder changes the building-level perception endpoint. Second, budgeted ranking can select a more favorable subset of those changes under a common building budget. Third, that advantage does not transfer clearly to the current set of complete inspection answers. The remaining gap lies between the question's evidence requirement, the local damage signal used by the trigger, and Qwen's answer formation.
+The retained experiments separate two stages that would otherwise be conflated. First, the camera ladder changes the building-level perception endpoint. Second, budgeted ranking can select a more favorable subset of those changes under a common building budget. Establishing transfer to complete inspection answers requires a new run of the repaired target-grounding and evidence-routing path.
 
 This diagnosis illustrates the value of the framework beyond a single policy score. DisasterClaw makes the environment state, observation transition, perception response, controller action, and terminal answer separately observable. A subsequent task-conditioned policy can therefore be tested on whether it acquires evidence relevant to damage, count, presence, or spatial reasoning, rather than only on whether a generic uncertainty measure decreases.

@@ -20,13 +20,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agent_vqa import (  # noqa: E402
-    AgentVqaConfig, AgentVqaController, QuestionSpec, VqaAnswer,
-    build_evidence_from_perception, parse_question,
+    AgentVqaConfig, AgentVqaController, QuestionSpec, TaskContext, VqaAnswer,
+    build_evidence_from_perception, parse_question, task_context_from_item,
 )
 
 
 class _FakePerception:
-    def __init__(self, dets=None, pw=100, ph=100, degraded=False):
+    def __init__(self, dets=None, pw=100, ph=100, degraded=False, extras=None):
         self.detection = {"detections": dets or []}
         self.patch_width = pw
         self.patch_height = ph
@@ -35,13 +35,14 @@ class _FakePerception:
         self.degraded = degraded
         self.degraded_reason = "no_post_coverage" if degraded else ""
         self.patch_id = "obs0"
+        self.extras = extras or {}
 
 
 def _det(cls, conf, bbox=None):
     return {"class_name": cls, "conf": conf, "bbox": bbox or [40, 40, 60, 60]}
 
 
-def _vlm_confident(img, result, spec, qid):
+def _vlm_confident(img, result, spec, qid, evidence):
     """VLM 桩: 总是返回高置信回答。"""
     if spec.question_type == "presence":
         answer = "是"
@@ -56,14 +57,14 @@ def _vlm_confident(img, result, spec, qid):
             '"evidence": {"source": "image", "norm_xy": [0.5, 0.5]}}')
 
 
-def _vlm_low_conf(img, result, spec, qid):
+def _vlm_low_conf(img, result, spec, qid, evidence):
     """VLM 桩: 总是返回低置信 (触发 reobserve)。"""
     return ('{"answer": "是", "confidence": 0.3, "abstain": false, '
             '"decision": "answer", "reason_code": "sufficient_evidence", '
             '"evidence": {"source": "image", "norm_xy": [0.5, 0.5]}}')
 
 
-def _vlm_invalid(img, result, spec, qid):
+def _vlm_invalid(img, result, spec, qid, evidence):
     """VLM 桩: 返回非 JSON (触发 invalid_output -> 规则回退)。"""
     return "我觉得有损坏"
 
@@ -324,6 +325,53 @@ def test_static_negative_presence_answers_no() -> None:
     assert ans.answer == "否" and ans.decision == "answer" and not ans.abstain
 
 
+def test_damage_target_is_projected_and_associated_without_subtype_filter() -> None:
+    perception = _FakePerception(
+        [
+            _det("无损伤建筑", 0.95, [5, 5, 20, 20]),
+            _det("严重损伤建筑", 0.80, [70, 20, 90, 40]),
+        ],
+        extras={
+            "window": {"west": 120.0, "east": 121.0, "south": 30.0, "north": 31.0},
+            "roi_norm_bbox": [0.1, 0.1, 0.9, 0.9],
+        },
+    )
+    spec = parse_question("标记区域内标记建筑 b-17 的损伤等级是什么？")
+    ctx = TaskContext(target_ref_id="b-17", target_lat=30.7, target_lon=120.8)
+    ev = build_evidence_from_perception(perception, spec, "obs", ctx)
+    assert ev.target_norm_xy == [0.8, 0.3]
+    assert ev.target_visible and ev.target_matched
+    assert ev.target_subtype == "major-damage"
+    assert ev.matching_count == 1
+    assert ev.match_method == "target_point_in_bbox"
+
+
+def test_task_context_never_exposes_answer_or_damage_subtype() -> None:
+    spec = parse_question("标记区域内标记建筑 b-17 的损伤等级是什么？")
+    ctx = task_context_from_item({
+        "answer": "完全损毁",
+        "tile_id": "tile-a",
+        "target": {"ref_id": "b-17", "lat": 30.1, "lon": 120.2,
+                   "subtype": "destroyed"},
+    }, spec)
+    assert ctx.target_ref_id == "b-17"
+    assert ctx.target_lat == 30.1 and ctx.target_lon == 120.2
+    assert not hasattr(ctx, "answer") and not hasattr(ctx, "target_subtype")
+
+
+def test_hybrid_rejects_vlm_damage_answer_without_target_match() -> None:
+    ctl = AgentVqaController(
+        config=AgentVqaConfig(answer_mode="hybrid", max_search_steps=0, max_reobservations=0),
+        vlm_answer_fn=_vlm_confident,
+        perceive_fn=lambda: _FakePerception([]),
+    )
+    item = {"target": {"ref_id": "b-17", "lat": 30.1, "lon": 120.2,
+                       "subtype": "destroyed"}, "answer": "完全损毁"}
+    ans = ctl.run("标记区域内标记建筑 b-17 的损伤等级是什么？", "q_guard", item=item)
+    assert ans.decision == "abstain" and ans.reason_code == "budget_exhausted"
+    assert ans.answer == ""
+
+
 # ── 8. 四类问题在控制器层都能跑通 ───────────────────────────────────────────────
 
 def test_all_four_types_run() -> None:
@@ -357,6 +405,9 @@ def _run_all() -> int:
         test_rule_fallback_count_and_spatial_use_all_detections,
         test_raw_evidence_does_not_fallback_to_detector,
         test_static_negative_presence_answers_no,
+        test_damage_target_is_projected_and_associated_without_subtype_filter,
+        test_task_context_never_exposes_answer_or_damage_subtype,
+        test_hybrid_rejects_vlm_damage_answer_without_target_match,
         test_all_four_types_run,
     ]
     failed = 0

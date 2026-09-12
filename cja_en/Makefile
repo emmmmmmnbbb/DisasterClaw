@@ -1,14 +1,15 @@
-.PHONY: all audit assets pdf clean
+.PHONY: all audit assets section6-figures pdf clean
 
 all: pdf
 
-audit:
-	python3 scripts/audit_downloaded_results.py
+audit: section6-figures
 
-assets: audit
-	python3 scripts/build_assets.py
+assets: section6-figures
 
-pdf:
+section6-figures:
+	python3 scripts/build_section6_figures.py
+
+pdf: section6-figures
 	latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex
 
 clean:

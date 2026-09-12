@@ -2,7 +2,7 @@
 
 日期：2026-09-05。
 
-**同日更新：**`runs/` 已出现并完成核心文件首轮复算；下列“尚未取得”描述保留为初始清单。最新获取范围、哈希与验证结果见 [下载复核记录](downloaded_results_findings.md) 和 `downloaded_results_audit.json`。`backend/data/` 仍未取得，完整下载状态未确认。
+**2026-09-12 更新：**离线核心文件仍保留；旧 Agent-VQA 运行和下载审计已经失效并删除。下列初始清单仅作历史记录，当前在线状态见 [在线结果失效记录](invalidated_online_results.md)。
 
 ## 原工程与会话保护
 

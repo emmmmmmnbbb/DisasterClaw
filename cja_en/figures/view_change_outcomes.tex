@@ -1,0 +1,28 @@
+
+\definecolor{cjaBlue}{HTML}{0077BB}
+\definecolor{cjaOrange}{HTML}{EE7733}
+\definecolor{cjaGray}{HTML}{777777}
+\begin{tikzpicture}
+\begin{axis}[
+    width=.70\linewidth,
+  height=5.2cm,
+  xbar,
+  bar width=11pt,
+  xmin=0,
+  xmax=215,
+  xlabel={Buildings (n)},
+  ytick={0,1,2},
+  yticklabels={Changed but still incorrect,Harmed,Corrected},
+  nodes near coords,
+  nodes near coords align={horizontal},
+  enlarge y limits=.24,
+  axis line style={black!65},
+  tick style={black!65},
+  xmajorgrids=true,
+  grid style={black!12},
+]
+\addplot+[draw=black!60,fill=cjaBlue] coordinates {(191,2)};
+\addplot+[draw=black!60,fill=cjaOrange] coordinates {(126,1)};
+\addplot+[draw=black!60,fill=cjaGray] coordinates {(66,0)};
+\end{axis}
+\end{tikzpicture}

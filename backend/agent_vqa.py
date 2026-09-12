@@ -16,7 +16,8 @@ r"""backend/agent_vqa.py — Agent-VQA 结构化问答控制器 (D3).
 信息边界 (计划 7.3 必须避免):
   - 不得从测试条目的 answer 或未来图像读取在线决策信息;
   - 不得把前端可见的 GT 建筑足迹传入智能体观测;
-  - 不得通过 item 参数向非 oracle 配置泄漏目标坐标。
+  - 评测条目先经过白名单化 TaskContext；damage 题只暴露题面已声明的 ref_id/
+    经纬度用于目标定位，绝不暴露 answer 或 target.subtype。
 
 本模块不直接做 IO / 模型调用; 几何换算复用 semantic_map.offset_from_norm。
 """
@@ -80,6 +81,42 @@ class QuestionSpec:
             "target_subtypes": list(self.target_subtypes), "ref_id": self.ref_id,
             "needs_target_location": self.needs_target_location,
         }
+
+
+@dataclass(frozen=True)
+class TaskContext:
+    """控制器可读的最小任务上下文；不含答案和真值损伤类别。"""
+    roi_tile_id: str = ""
+    roi_bounds: Optional[dict[str, float]] = None
+    target_ref_id: str = ""
+    target_lat: Optional[float] = None
+    target_lon: Optional[float] = None
+
+
+def task_context_from_item(item: Optional[dict], spec: QuestionSpec) -> TaskContext:
+    """从评测条目构造白名单上下文，阻止 answer/subtype 泄漏。"""
+    item = item or {}
+    roi = item.get("roi") if isinstance(item.get("roi"), dict) else {}
+    bounds = roi.get("bounds") if isinstance(roi.get("bounds"), dict) else None
+    clean_bounds = None
+    if bounds and all(k in bounds for k in ("west", "south", "east", "north")):
+        try:
+            clean_bounds = {k: float(bounds[k]) for k in ("west", "south", "east", "north")}
+        except (TypeError, ValueError):
+            clean_bounds = None
+    target = item.get("target") if isinstance(item.get("target"), dict) else {}
+    lat = lon = None
+    ref_id = ""
+    if spec.question_type == "damage":
+        try:
+            lat, lon = float(target["lat"]), float(target["lon"])
+        except (KeyError, TypeError, ValueError):
+            lat = lon = None
+        ref_id = str(target.get("ref_id") or spec.ref_id or "")
+    return TaskContext(
+        roi_tile_id=str(roi.get("tile_id") or item.get("tile_id") or ""),
+        roi_bounds=clean_bounds, target_ref_id=ref_id, target_lat=lat, target_lon=lon,
+    )
 
 
 _PRESENCE_RE = re.compile(r"是否存在\s*(.+?)\s*[？?]")
@@ -166,6 +203,13 @@ class EvidenceBundle:
     target_subtype: str = ""
     target_conf: float = 0.0
     norm_xy: Optional[list[float]] = None
+    target_norm_xy: Optional[list[float]] = None
+    roi_norm_bbox: Optional[list[float]] = None
+    target_ref_id: str = ""
+    target_visible: bool = False
+    target_matched: bool = False
+    match_method: str = ""
+    match_distance_px: Optional[float] = None
     matching_count: int = 0
     class_probs: Optional[dict] = None
     detection_source: str = ""
@@ -179,33 +223,86 @@ class EvidenceBundle:
             "observation_id": self.observation_id, "source": self.source,
             "target_label": self.target_label, "target_subtype": self.target_subtype,
             "target_conf": round(self.target_conf, 4), "norm_xy": self.norm_xy,
+            "target_norm_xy": self.target_norm_xy, "roi_norm_bbox": self.roi_norm_bbox,
+            "target_ref_id": self.target_ref_id, "target_visible": self.target_visible,
+            "target_matched": self.target_matched, "match_method": self.match_method,
+            "match_distance_px": self.match_distance_px,
             "matching_count": self.matching_count,
             "class_probs": self.class_probs, "detection_source": self.detection_source,
             "risk_level": self.risk_level, "scene_text": self.scene_text,
             "degraded": self.degraded, "degraded_reason": self.degraded_reason,
         }
 
+    def to_prompt_dict(self) -> dict:
+        """传给 VLM 的目标相关证据；字段固定且不含真值答案。"""
+        return {
+            "target_label": self.target_label,
+            "predicted_target_subtype": self.target_subtype,
+            "target_confidence": round(self.target_conf, 4),
+            "matching_count": self.matching_count,
+            "matched_detection_norm_xy": self.norm_xy,
+            "question_target_norm_xy": self.target_norm_xy,
+            "target_visible": self.target_visible,
+            "target_matched": self.target_matched,
+            "target_ref_id": self.target_ref_id,
+            "roi_norm_bbox": self.roi_norm_bbox,
+            "match_method": self.match_method,
+        }
+
+
+def _geo_to_norm(window: Any, lat: float, lon: float) -> Optional[list[float]]:
+    if not isinstance(window, dict):
+        return None
+    try:
+        west, east = float(window["west"]), float(window["east"])
+        south, north = float(window["south"]), float(window["north"])
+        if east <= west or north <= south:
+            return None
+        return [(lon - west) / (east - west), (north - lat) / (north - south)]
+    except (KeyError, TypeError, ValueError, ZeroDivisionError):
+        return None
+
 
 def build_evidence_from_perception(perception_result: Any, spec: QuestionSpec,
-                                    observation_id: str) -> EvidenceBundle:
+                                    observation_id: str,
+                                    task_context: Optional[TaskContext] = None) -> EvidenceBundle:
     """从 PerceptionResult 提取与当前问题相关的证据 (计划 7.5)。
 
     不把 scene_text 中未经验证的自由文本当作事实标签; 只用检测器/分类器的
     结构化输出与目标框/图像位置。
     """
     dets = (perception_result.detection or {}).get("detections", []) if perception_result else []
-    target_subtypes = spec.target_subtypes or (spec.target_subtype,)
+    task_context = task_context or TaskContext()
+    target_subtypes = tuple(s for s in spec.target_subtypes if s)
+    if not target_subtypes and spec.target_subtype:
+        target_subtypes = (spec.target_subtype,)
+    extras = getattr(perception_result, "extras", {}) or {} if perception_result else {}
+    roi_norm = extras.get("roi_norm_bbox")
+    window = extras.get("window")
+    target_norm = None
+    if (spec.question_type == "damage" and task_context.target_lat is not None
+            and task_context.target_lon is not None):
+        target_norm = _geo_to_norm(window, task_context.target_lat, task_context.target_lon)
     matching = []
     for d in dets:
         cls = d.get("class_name", "")
         sub = CLASS_TO_SUBTYPE.get(cls, "")
         if spec.question_type == "damage" and not sub:
             continue
-        if target_subtypes and sub not in target_subtypes:
+        if spec.question_type != "damage" and target_subtypes and sub not in target_subtypes:
             continue
+        box = d.get("bbox") or d.get("bbox_xyxy")
+        pw = float(getattr(perception_result, "patch_width", 0) or 0)
+        ph = float(getattr(perception_result, "patch_height", 0) or 0)
+        if (spec.question_type != "damage" and roi_norm and box and pw > 0 and ph > 0):
+            cx = (float(box[0]) + float(box[2])) * .5 / pw
+            cy = (float(box[1]) + float(box[3])) * .5 / ph
+            if not (float(roi_norm[0]) <= cx <= float(roi_norm[2])
+                    and float(roi_norm[1]) <= cy <= float(roi_norm[3])):
+                continue
         matching.append(d)
 
-    def _center_distance(det: dict) -> float:
+    def _center_distance(det: dict, ref=(0.5, 0.5)) -> float:
         bbox = det.get("bbox") or det.get("bbox_xyxy")
         pw = float(getattr(perception_result, "patch_width", 0) or 0)
         ph = float(getattr(perception_result, "patch_height", 0) or 0)
@@ -213,18 +310,48 @@ def build_evidence_from_perception(perception_result: Any, spec: QuestionSpec,
             return float("inf")
         cx = (float(bbox[0]) + float(bbox[2])) * 0.5 / pw
         cy = (float(bbox[1]) + float(bbox[3])) * 0.5 / ph
-        return math.hypot(cx - 0.5, cy - 0.5)
+        return math.hypot(cx - ref[0], cy - ref[1])
 
     best = None
+    match_method = ""
     if matching:
-        # damage 的题面明确指向视场中心标记建筑；spatial 问“最近”目标。两者都应
-        # 选择最接近图像中心的匹配检测，而不是选择置信度最高但可能属于另一栋的框。
-        if spec.question_type in {"damage", "spatial"}:
-            best = min(matching, key=lambda d: (_center_distance(d), -float(d.get("conf", 0.0))))
+        if spec.question_type == "damage" and target_norm is not None:
+            pw = float(getattr(perception_result, "patch_width", 0) or 0)
+            ph = float(getattr(perception_result, "patch_height", 0) or 0)
+            tx, ty = target_norm[0] * pw, target_norm[1] * ph
+            containing = []
+            for d in matching:
+                box = d.get("bbox") or d.get("bbox_xyxy")
+                if box and float(box[0]) <= tx <= float(box[2]) and float(box[1]) <= ty <= float(box[3]):
+                    containing.append(d)
+            if containing:
+                best = min(containing, key=lambda d: (_center_distance(d), -float(d.get("conf", 0.0))))
+                match_method = "target_point_in_bbox"
+            elif pw > 0 and ph > 0:
+                def _target_distance(d):
+                    box = d.get("bbox") or d.get("bbox_xyxy")
+                    if not box:
+                        return float("inf")
+                    cx, cy = (float(box[0]) + float(box[2])) * .5, (float(box[1]) + float(box[3])) * .5
+                    return math.hypot(cx - tx, cy - ty)
+                candidate = min(matching, key=lambda d: (_target_distance(d), -float(d.get("conf", 0.0))))
+                if _target_distance(candidate) <= 0.08 * min(pw, ph):
+                    best, match_method = candidate, "nearest_target_center"
+        elif spec.question_type == "spatial":
+            roi_center = ((float(roi_norm[0]) + float(roi_norm[2])) * .5,
+                          (float(roi_norm[1]) + float(roi_norm[3])) * .5) if roi_norm else (0.5, 0.5)
+            best = min(matching, key=lambda d: (_center_distance(d, roi_center),
+                                                -float(d.get("conf", 0.0))))
+            match_method = "nearest_roi_center"
         else:
             best = max(matching, key=lambda d: float(d.get("conf", 0.0)))
+            match_method = "highest_confidence"
     ev = EvidenceBundle(observation_id=observation_id)
-    ev.matching_count = len(matching)
+    ev.matching_count = len(matching) if spec.question_type != "damage" else int(best is not None)
+    ev.target_ref_id = task_context.target_ref_id
+    ev.target_norm_xy = None if target_norm is None else [round(float(target_norm[0]), 4), round(float(target_norm[1]), 4)]
+    ev.target_visible = bool(target_norm and 0.0 <= target_norm[0] <= 1.0 and 0.0 <= target_norm[1] <= 1.0)
+    ev.roi_norm_bbox = list(roi_norm) if isinstance(roi_norm, (list, tuple)) and len(roi_norm) == 4 else None
     if perception_result is not None:
         ev.risk_level = getattr(perception_result, "risk_level", "") or ""
         ev.scene_text = getattr(perception_result, "scene_text", "") or ""
@@ -238,6 +365,8 @@ def build_evidence_from_perception(perception_result: Any, spec: QuestionSpec,
         ev.target_conf = best_conf
         ev.class_probs = best.get("class_probs")
         ev.detection_source = "detector"
+        ev.target_matched = True
+        ev.match_method = match_method
         bbox = best.get("bbox") or best.get("bbox_xyxy")
         pw = getattr(perception_result, "patch_width", 0) if perception_result else 0
         ph = getattr(perception_result, "patch_height", 0) if perception_result else 0
@@ -246,6 +375,9 @@ def build_evidence_from_perception(perception_result: Any, spec: QuestionSpec,
             cy = (float(bbox[1]) + float(bbox[3])) * 0.5 / ph
             # 全系统统一为图像坐标：[0,1]，左上 (0,0)，右下 (1,1)。
             ev.norm_xy = [round(_clamp01(cx), 4), round(_clamp01(cy), 4)]
+            if target_norm is not None:
+                ev.match_distance_px = round(math.hypot(cx * pw - target_norm[0] * pw,
+                                                        cy * ph - target_norm[1] * ph), 2)
     return ev
 
 
@@ -403,10 +535,11 @@ class AgentVqaConfig:
     oracle: bool = False                  # 仅诊断; 不得部署
     allow_target_leak: bool = False        # oracle 时才允许从 item 读目标坐标
     evidence_level: str = "struct"         # raw | struct | state
+    answer_mode: str = "vlm"                # vlm | deterministic | hybrid
 
 
 # 依赖注入类型 (均为可调用, 便于测试用桩替换)
-VlmAnswerFn = Callable[[str, Any, QuestionSpec, str], str]      # (image_bytes, perception, spec, qid) -> json text
+VlmAnswerFn = Callable[[str, Any, QuestionSpec, str, EvidenceBundle], str]
 PerceiveFn = Callable[[], Any]                                  # () -> PerceptionResult
 SearchFn = Callable[[QuestionSpec, int, Any], Optional[dict]]    # (spec, step, perception) -> params | None
 ReobserveFn = Callable[[Any, QuestionSpec], Optional[dict]]     # -> {kind, params, reason} | None
@@ -492,16 +625,18 @@ class AgentVqaController:
 
     def run(self, question: str, question_id: str = "",
              item: Optional[dict] = None,
+             task_context: Optional[TaskContext] = None,
              on_step: Optional[Callable[[dict], None]] = None) -> VqaAnswer:
         """运行单回合 Agent-VQA (计划 5.4 终止条件)。
 
-        item 仅在 oracle 配置下用于读取目标坐标做诊断; 非 oracle 时忽略 item 的
-        answer / target 字段, 不泄漏在线信息。
+        非 oracle 运行只读取白名单化 task_context。为兼容现有调用，传入 item 时
+        也会先白名单化；answer 与 target.subtype 永远不会进入控制器证据。
 
         on_step: 每完成一次"感知→候选答案→决策"后以该步 trajectory dict 调用一次，
         供前端 socket 实时广播（不阻塞闭环）。默认 None。
         """
         spec = parse_question(question)
+        task_context = task_context or task_context_from_item(item, spec)
         qid = question_id or f"q_{len(self.answer_history)}"
         if spec.question_type == "invalid_question":
             return self._final(qid, spec, "", 0.0, decision="abstain",
@@ -533,7 +668,7 @@ class AgentVqaController:
             # executes motion synchronously, so reading position later would
             # incorrectly attach the post-action altitude to the pre-action image.
             observation_position = self._pos()
-            ev = build_evidence_from_perception(result, spec, obs_id)
+            ev = build_evidence_from_perception(result, spec, obs_id, task_context)
 
             # 2) 生成候选答案 (VLM 不可用时规则回退)
             ans = self._candidate_answer(qid, spec, ev, result)
@@ -602,14 +737,18 @@ class AgentVqaController:
 
     # ── 内部: 候选答案 ────────────────────────────────────────────────────────
     def _candidate_answer(self, qid, spec, ev, result) -> VqaAnswer:
+        mode = (self.config.answer_mode or "hybrid").strip().lower()
+        if mode == "deterministic":
+            return self._rule_fallback(qid, spec, ev)
         if self._vlm is None:
             if self.config.evidence_level == "raw":
                 return VqaAnswer(qid, spec.question_type, decision="abstain", abstain=True,
                                  reason_code="vlm_unavailable", evidence={"source": "image"})
+            self.fallback_used = True
             return self._rule_fallback(qid, spec, ev)
         try:
             img = self._img(result)
-            text = self._vlm(img, result, spec, qid)
+            text = self._vlm(img, result, spec, qid, ev)
         except Exception as exc:
             self.fallback_used = True
             self.degraded_reason = f"vlm_error:{exc}"
@@ -621,11 +760,16 @@ class AgentVqaController:
         if ans.reason_code == "invalid_output":
             self.degraded_reason = "invalid_model_output"
             return ans
+        if mode == "hybrid":
+            rule = self._rule_fallback(qid, spec, ev)
+            if rule.answer:
+                return rule
+            if spec.needs_target_location:
+                return rule
         return ans
 
     def _rule_fallback(self, qid, spec, ev) -> VqaAnswer:
         """VLM 不可用时的规则回退 (计划 3.1 / RQ5)。只用结构化检测证据。"""
-        self.fallback_used = True
         if spec.question_type == "presence":
             present = bool(ev.target_subtype and
                             (not spec.target_subtypes or ev.target_subtype in spec.target_subtypes))
@@ -652,8 +796,13 @@ class AgentVqaController:
         if spec.question_type == "spatial":
             if ev.norm_xy and ev.target_subtype:
                 nx, ny = ev.norm_xy
-                north = 0.5 - float(ny)
-                east = float(nx) - 0.5
+                if ev.roi_norm_bbox:
+                    rcx = (float(ev.roi_norm_bbox[0]) + float(ev.roi_norm_bbox[2])) * .5
+                    rcy = (float(ev.roi_norm_bbox[1]) + float(ev.roi_norm_bbox[3])) * .5
+                else:
+                    rcx = rcy = 0.5
+                north = rcy - float(ny)
+                east = float(nx) - rcx
                 angle = math.degrees(math.atan2(east, north)) % 360.0
                 direction = BEARING_CHOICES[int((angle + 22.5) // 45) % 8]
                 return VqaAnswer(qid, spec.question_type, answer=direction,
@@ -673,7 +822,7 @@ class AgentVqaController:
                 return "continue_search", "target_missing", "fly_relative"
             return "abstain", ans.reason_code, "stop"
         # 目标缺失 -> 继续搜索; 预算耗尽 -> 弃答 (计划 5.4: 步数预算耗尽)
-        if spec.needs_target_location and not ev.target_subtype and not ans.answer:
+        if spec.needs_target_location and not ev.target_matched:
             if search_budget > 0:
                 return "continue_search", "target_missing", "fly_relative"
             return "abstain", "budget_exhausted", "stop"

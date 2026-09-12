@@ -212,7 +212,13 @@ def _base_item(tile_id, disaster, split, qtype, question, choices, answer,
         "target": target,
         "observation_model": "mosaic_fov_roi_scoped",
         "difficulty": difficulty,
-        "review": {"status": "pending", "ambiguity_flags": flags, "author_checked": False},
+        "review": {
+            "auto_review": {"status": "pending", "errors": []},
+            "human_review": {"status": "pending", "author_checked": False,
+                             "reviewer": "", "reviewed_at": ""},
+            "adjudication": {"status": "not_required", "note": ""},
+            "ambiguity_flags": flags,
+        },
     }
 
 
@@ -513,7 +519,7 @@ def main() -> int:
     strat = stratify(items, disasters)
     manifest_sha = sha256_file(Path(args.manifest)) if Path(args.manifest).exists() else ""
     out = {
-        "schema_version": "agent-vqa/2.0",
+        "schema_version": "agent-vqa/3.0",
         "dataset_manifest_sha256": manifest_sha,
         "dataset_manifest_path": str(Path(args.manifest).relative_to(REPO_ROOT)) if Path(args.manifest).exists() else "",
         "dataset_root": str(dataset_root),
@@ -548,8 +554,8 @@ def main() -> int:
             "roi_min_coverage": args.min_coverage,
         },
         "review_protocol": (
-            "模型辅助生成 + 作者抽查; 100% 自动几何与答案一致性检查; "
-            "所有带 ambiguity_flags 的题由作者检查; 不得表述为纯人工审核。"
+            "模型辅助生成; 100% 自动几何与答案一致性检查和独立人工审核分栏记录; "
+            "human_review.status=approved 前不得称题目已人工审核。"
         ),
         "stratification": strat,
         "gen_counts": {

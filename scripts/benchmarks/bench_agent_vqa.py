@@ -20,7 +20,7 @@ manifest 记录 env / git commit / 数据 hash / prompt / 阈值，结果自描�
 用法 (先 source .env 让本地 VLM/planner 配置生效):
     cd backend && set -a && source ../.env && set +a && \\
       python ../scripts/benchmarks/bench_agent_vqa.py \\
-        --configs V0_RAW,A0_HOLD,A3_ENTROPY --limit 8 --split test
+        --configs V0_RAW,D0_RULE,A0_HOLD,A3_ENTROPY --limit 8 --split test
 """
 
 from __future__ import annotations
@@ -52,7 +52,11 @@ RUNS_DIR = REPO_ROOT / "runs" / "benchmarks" / "cja_agent_vqa"
 # recheck_trigger: 控制 reobserve_fn 的 RecheckController 触发模式
 CONFIGS = {
     "V0_RAW": {"evidence_level": "raw", "max_search": 0, "max_reobs": 0,
-               "recheck_trigger": "threshold", "desc": "静态 VLM 基线 (仅图像)"},
+               "answer_mode": "vlm", "recheck_trigger": "threshold",
+               "desc": "静态 VLM 基线 (仅图像)"},
+    "D0_RULE": {"evidence_level": "struct", "max_search": 0, "max_reobs": 0,
+                "answer_mode": "deterministic", "recheck_trigger": "threshold",
+                "desc": "结构化证据确定性回答基线"},
     "V1_STRUCT": {"evidence_level": "struct", "max_search": 0, "max_reobs": 0,
                   "recheck_trigger": "threshold", "desc": "图像 + 结构化感知"},
     "V2_STATE": {"evidence_level": "state", "max_search": 0, "max_reobs": 0,
@@ -128,6 +132,7 @@ def apply_config(app, cfg: dict) -> None:
     if cfg.get("offline_only"):
         raise ValueError("O_REF 是 report_agent_vqa.py 从 A0_HOLD/A2_ALWAYS 合成的离线参照")
     app.AGENT_VQA_EVIDENCE_LEVEL = cfg["evidence_level"]
+    app.AGENT_VQA_ANSWER_MODE = cfg.get("answer_mode", "hybrid")
     app.AGENT_VQA_MAX_SEARCH_STEPS = int(cfg["max_search"])
     app.AGENT_VQA_MAX_REOBSERVATIONS = int(cfg["max_reobs"])
     # reobserve_fn 内部新建 RecheckController 时读这些 app 级开关
@@ -152,6 +157,7 @@ def effective_config(app) -> dict:
     """记录实际传入控制器的开关，防止消融名称与运行行为不一致。"""
     return {
         "evidence_level": app.AGENT_VQA_EVIDENCE_LEVEL,
+        "answer_mode": app.AGENT_VQA_ANSWER_MODE,
         "max_search": app.AGENT_VQA_MAX_SEARCH_STEPS,
         "max_reobs": app.AGENT_VQA_MAX_REOBSERVATIONS,
         "trigger_mode": app.VLN_RECHECK_TRIGGER,
@@ -424,13 +430,15 @@ def md_table(per_config: dict) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description="Agent-VQA 评测 (E1-E5 消融成绩单)")
     ap.add_argument("--testset", default=str(DEFAULT_TESTSET))
-    ap.add_argument("--configs", default="V0_RAW,A0_HOLD,A3_ENTROPY")
+    ap.add_argument("--configs", default="V0_RAW,D0_RULE,A0_HOLD,A3_ENTROPY")
     ap.add_argument("--limit", type=int, default=0, help="每个配置最多跑前 N 题 (0=全部)")
     ap.add_argument("--split", default="", help="只跑某 split train/val/test (空=全部)")
     ap.add_argument("--qtype", default="", help="只跑某题型 presence/damage/count/spatial (空=全部)")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--frozen-manifest", default="",
                     help="冻结配置 JSON；校验题库 hash 并注入 T/qhat/阈值/熵表")
+    ap.add_argument("--review-report", default="",
+                    help="agent-vqa-review/2.0 审核报告；final 题库必须提供且每题 overall approved")
     ap.add_argument("--matched-reference", default="A5_EXPECTED",
                     help="同预算基线的参考配置（必须在 matched 配置前运行）")
     ap.add_argument("--matched-budget-frac", type=float, default=-1.0,
@@ -489,6 +497,10 @@ def main() -> int:
         if not args.frozen_manifest:
             print("[ERROR] final 题库必须提供 --frozen-manifest", file=sys.stderr)
             return 3
+        if not args.review_report:
+            print("[ERROR] final 题库必须提供 --review-report，自动检查不能替代人工审核",
+                  file=sys.stderr)
+            return 3
     frozen = {}
     if args.frozen_manifest:
         frozen_path = Path(args.frozen_manifest)
@@ -507,6 +519,19 @@ def main() -> int:
         items = [it for it in items if it.get("split") == args.split]
     if args.qtype:
         items = [it for it in items if it.get("question_type") == args.qtype]
+    review_report = None
+    if args.review_report:
+        review_path = Path(args.review_report)
+        review_report = json.loads(review_path.read_text(encoding="utf-8"))
+        if review_report.get("schema_version") != "agent-vqa-review/2.0":
+            print("[ERROR] --review-report 必须使用 agent-vqa-review/2.0", file=sys.stderr)
+            return 3
+        statuses = {str(r.get("id")): r.get("status") for r in review_report.get("per_item", [])}
+        not_approved = [str(it.get("id")) for it in items if statuses.get(str(it.get("id"))) != "approved"]
+        if not_approved:
+            print(f"[ERROR] {len(not_approved)} 题未同时通过自动与人工审核，拒绝运行",
+                  file=sys.stderr)
+            return 3
     if args.limit > 0:
         items = items[: args.limit]
     if not items:
@@ -680,6 +705,8 @@ def main() -> int:
         "env": results["env"],
         "testset": results["testset"],
         "testset_sha256_16": results["testset_sha256_16"],
+        "review_report": str(args.review_report or ""),
+        "review_report_sha256_16": file_hash(Path(args.review_report)) if args.review_report else "",
         "configs": {c: CONFIGS[c] for c in configs},
         "frozen_manifest": str(args.frozen_manifest or ""),
         "frozen_manifest_sha256_16": file_hash(Path(args.frozen_manifest)) if args.frozen_manifest else "",
@@ -687,6 +714,9 @@ def main() -> int:
         "n_execution_errors": execution_errors,
         "agent_vqa_confidence_threshold": os.environ.get("AGENT_VQA_CONFIDENCE_THRESHOLD", "0.5"),
         "agent_vqa_evidence_levels": {c: CONFIGS[c]["evidence_level"] for c in configs},
+        "agent_vqa_answer_modes": {
+            c: CONFIGS[c].get("answer_mode", "hybrid") for c in configs
+        },
         "vlm_system_prompt": "见 backend/vlm_analyzer.py:AGENT_VQA_SYSTEM_PROMPT",
     }
     (out_dir / "manifest.json").write_text(

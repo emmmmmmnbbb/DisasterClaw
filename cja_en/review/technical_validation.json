@@ -1,8 +1,8 @@
 {
   "scope": "technical consistency only; submission readiness remains incomplete",
   "errors": [],
-  "pdf_pages": 30,
-  "pdf_sha256": "e863ab49c8f8170a7136fcab48bc57bfc3818167b3ac051a769daad4e5f13c20",
+  "pdf_pages": 28,
+  "pdf_sha256": "8a9844a75533f12e7798ac0d8d3b2daa1661d80f03ed8f15c2b83fac95f484a8",
   "latex_warnings": [],
   "bibtex_warnings": [
     "Warning--empty pages in curtis2024tampura",
@@ -17,8 +17,16 @@
   "duplicate_labels": [],
   "missing_inputs": [],
   "source_files_checked": 166,
-  "changed_original_sources": [],
-  "run_files_checked": 12,
+  "changed_original_sources": [
+    "backend/agent_vqa.py",
+    "backend/app.py",
+    "backend/tests/test_agent_vqa.py",
+    "backend/tests/test_agent_vqa_app.py",
+    "scripts/benchmarks/gen_agent_vqa_testset_v2.py",
+    "scripts/benchmarks/review_agent_vqa_testset.py"
+  ],
+  "run_files_checked": 2,
+  "unexpected_changed_original_sources": [],
   "changed_run_inputs": [],
-  "visual_qa_matches_current_pdf": true
+  "visual_qa_matches_current_pdf": false
 }

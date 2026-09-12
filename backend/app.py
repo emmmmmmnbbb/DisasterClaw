@@ -35,10 +35,12 @@ from vlm_analyzer import VLMAnalyzer
 from agent_vqa import (
     AgentVqaConfig,
     AgentVqaController,
+    EvidenceBundle,
     QuestionSpec,
     build_evidence_from_perception,
     parse_question,
     parse_vlm_json_output,
+    task_context_from_item,
 )
 from vln_navigator import (
     GroundHit,
@@ -965,6 +967,7 @@ AGENT_VQA_ORACLE = os.getenv("AGENT_VQA_ORACLE", "0").lower() in {"1", "true", "
 # 证据层级 (计划 9.1): raw=仅图像, struct=图像+结构化感知, state=struct+STMR/历史。
 # 控制下发给 VLM 的 evidence_text 是否包含结构化检测/状态信息。
 AGENT_VQA_EVIDENCE_LEVEL = (os.getenv("AGENT_VQA_EVIDENCE_LEVEL", "struct") or "struct").strip().lower()
+AGENT_VQA_ANSWER_MODE = (os.getenv("AGENT_VQA_ANSWER_MODE", "hybrid") or "hybrid").strip().lower()
 
 # 进程内缓存的记忆图（懒加载，跨 episode/任务复用并落盘）。
 _memory_graph: MemoryGraph | None = None
@@ -1959,18 +1962,27 @@ def run_vln_episode_headless(
 
 # ───────────────────────── Agent-VQA 闭环 (D3, 计划 7.3) ──────────────────────
 
-def _mark_agent_vqa_target(image_bytes: bytes) -> bytes:
-    """在 VQA 图像中心叠加可见十字；标记像素不进入感知或策略状态。"""
+def _mark_agent_vqa_target(image_bytes: bytes, target_norm_xy=None, roi_norm_bbox=None) -> bytes:
+    """按地理投影位置叠加目标十字和 ROI 边界；叠加图只提供给 VLM。"""
     with Image.open(BytesIO(image_bytes)) as opened:
         image = opened.convert("RGB")
     draw = ImageDraw.Draw(image)
-    cx, cy = image.width // 2, image.height // 2
-    arm = max(12, min(image.width, image.height) // 16)
-    width = max(3, min(image.width, image.height) // 100)
-    for color, extra in (("white", width + 4), ("#ff2d55", width)):
-        draw.line((cx - arm, cy, cx + arm, cy), fill=color, width=extra)
-        draw.line((cx, cy - arm, cx, cy + arm), fill=color, width=extra)
-        draw.ellipse((cx - arm, cy - arm, cx + arm, cy + arm), outline=color, width=extra)
+    if isinstance(roi_norm_bbox, (list, tuple)) and len(roi_norm_bbox) == 4:
+        x0, y0, x1, y1 = roi_norm_bbox
+        box = tuple(int(round(v * s)) for v, s in zip((x0, y0, x1, y1),
+                                                       (image.width, image.height, image.width, image.height)))
+        draw.rectangle(box, outline="#00e5ff", width=max(2, min(image.width, image.height) // 128))
+    if isinstance(target_norm_xy, (list, tuple)) and len(target_norm_xy) == 2:
+        cx = int(round(float(target_norm_xy[0]) * image.width))
+        cy = int(round(float(target_norm_xy[1]) * image.height))
+        cx = max(0, min(image.width - 1, cx))
+        cy = max(0, min(image.height - 1, cy))
+        arm = max(12, min(image.width, image.height) // 16)
+        width = max(3, min(image.width, image.height) // 100)
+        for color, extra in (("white", width + 4), ("#ff2d55", width)):
+            draw.line((cx - arm, cy, cx + arm, cy), fill=color, width=extra)
+            draw.line((cx, cy - arm, cx, cy + arm), fill=color, width=extra)
+            draw.ellipse((cx - arm, cy - arm, cx + arm, cy + arm), outline=color, width=extra)
     out = BytesIO()
     image.save(out, format="JPEG", quality=95)
     return out.getvalue()
@@ -1991,17 +2003,20 @@ def _make_agent_vqa_controller(source: str) -> AgentVqaController:
     # VLM 结构化问答：读当前 patch 图像字节
     _vlm = VLMAnalyzer()
 
-    def vlm_answer_fn(image_bytes, perception_result, spec, qid):
+    def vlm_answer_fn(image_bytes, perception_result, spec, qid, evidence: EvidenceBundle):
         if not image_bytes:
             raise RuntimeError("no_patch_bytes")
-        if spec.question_type == "damage":
-            image_bytes = _mark_agent_vqa_target(image_bytes)
+        image_bytes = _mark_agent_vqa_target(
+            image_bytes,
+            evidence.target_norm_xy if spec.question_type == "damage" else None,
+            evidence.roi_norm_bbox,
+        )
         ev_text = ""
         # 证据层级 (计划 9.1): raw 不下发结构化证据; struct 下发检测计数; state 额外含 STMR/历史
         if AGENT_VQA_EVIDENCE_LEVEL != "raw" and perception_result is not None:
             det = (perception_result.detection or {}).get("class_counts", {})
-            if det:
-                ev_text = json.dumps(det, ensure_ascii=False)
+            payload = {"target_evidence": evidence.to_prompt_dict(), "roi_class_counts": det}
+            ev_text = json.dumps(payload, ensure_ascii=False)
             if AGENT_VQA_EVIDENCE_LEVEL == "state":
                 smap = getattr(state, "semantic_map", None)
                 if smap is not None:
@@ -2134,6 +2149,7 @@ def _make_agent_vqa_controller(source: str) -> AgentVqaController:
             oracle=AGENT_VQA_ORACLE,
             allow_target_leak=AGENT_VQA_ORACLE,
             evidence_level=AGENT_VQA_EVIDENCE_LEVEL,
+            answer_mode=AGENT_VQA_ANSWER_MODE,
         ),
         vlm_answer_fn=vlm_answer_fn,
         perceive_fn=perceive_fn,
@@ -2212,9 +2228,9 @@ def run_agent_vqa_episode(question: str, source: str = "ai", item: dict | None =
         # 逐步广播轨迹（不阻塞闭环）；最终结果由 agent_query_result 统一发出
         def _on_step(rec: dict) -> None:
             socketio.emit("agent_query_update", rec)
-        ans = ctl.run(
-            question, question_id=f"agentvqa_{task_started_ns}", item=item, on_step=_on_step,
-        )
+        task_context = task_context_from_item(item, spec)
+        ans = ctl.run(question, question_id=f"agentvqa_{task_started_ns}",
+                      task_context=task_context, on_step=_on_step)
         # 执行最终动作
         last = ctl.trajectory[-1] if ctl.trajectory else None
         if last:
@@ -2255,8 +2271,8 @@ def run_agent_vqa_episode_headless(
 ) -> dict:
     """无头评测入口：把 UAV 放到指定起点后同步跑一次 Agent-VQA episode (计划 7.3)。
 
-    与 run_agent_vqa_episode 共享同一套感知/问答/搜索/重观测逻辑。item 仅在
-    oracle 配置下用于诊断；非 oracle 时忽略 item 的 answer/target，不泄漏在线信息。
+    与 run_agent_vqa_episode 共享同一套感知/问答/搜索/重观测逻辑。item 会先被
+    白名单化；damage 题只传题面目标 ref_id/经纬度，绝不传 answer/target.subtype。
     """
     try:
         lat = float(start["lat"])

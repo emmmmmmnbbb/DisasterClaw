@@ -12,12 +12,12 @@ The agent-level decision set is
 \end{equation}
 Search and center become relative horizontal movements; descend changes to the next state of the camera ladder. Each movement is executed by the platform before a new image and structured state are returned. The task score is assigned only to the terminal answer, while the episode log retains intermediate answers, decisions, and costs.
 
-Figure~\ref{fig:agent-loop} shows the resulting state machine. The evidence-sufficiency test and the budget/action-feasibility test separate a model decision from an executable environment transition. This distinction also makes the fixed-view control explicit: it repeats answer generation while holding the complete environment observation fixed.
+Figure~\ref{fig:agent-loop} shows the resulting state machine. The evidence-sufficiency test and the budget/action-feasibility test separate a model decision from an executable environment transition. The same interface can repeat answer generation while holding the complete environment observation fixed.
 
 \begin{figure}[htbp]
 \centering
 \resizebox{\linewidth}{!}{\input{figures/agent_loop}}
-\caption{Closed-loop disaster-response agent and reobservation state machine. A reobservation is counted only after a feasible movement is executed and a new georeferenced observation is rendered. The dashed branch denotes the unchanged-view control used to measure answer-generation variation.}
+\caption{Closed-loop disaster-response agent and reobservation state machine. A reobservation is counted only after a feasible movement is executed and a new georeferenced observation is rendered. The dashed branch denotes the available unchanged-view diagnostic.}
 \label{fig:agent-loop}
 \end{figure}
 
@@ -65,7 +65,7 @@ Let $\hat y_i^v=\arg\max_j p_{ij}^v$. A correctable case has $\hat y_i^c\ne y_i$
 \end{equation}
 This identity applies to the hard-label endpoint, not to macro-F1, probability quality, or language-task utility.
 
-Online correctness counts every task in its denominator, including abstentions as unsuccessful answers. Executed reobservation actions are reported separately. If $a_q$ is the terminal answer, task accuracy is $|Q|^{-1}\sum_q\mathbf{1}[a_q=y_q]$. The unchanged-view control holds $s_t$, $I_t$, and $z_t$ fixed while repeating the answer-generation call, providing a direct measure of within-input generation variability.
+A future online evaluation will count every task in its denominator, including abstentions as unsuccessful answers, and report executed reobservation actions separately. If $a_q$ is the terminal answer, task accuracy is $|Q|^{-1}\sum_q\mathbf{1}[a_q=y_q]$. The unchanged-view diagnostic holds $s_t$, $I_t$, and $z_t$ fixed while repeating the answer-generation call.
 
 \begin{figure}[htbp]
 \centering

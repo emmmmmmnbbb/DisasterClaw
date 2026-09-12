@@ -225,19 +225,34 @@ def review(data, dataset_root, manifest_entries):
             errs.append("duplicate")
         seen.add(key)
         # 歧义标志需作者检查
-        flags = it.get("review", {}).get("ambiguity_flags", [])
+        review_meta = it.get("review", {})
+        flags = review_meta.get("ambiguity_flags", [])
         needs_author = bool(flags) or any("ambiguous" in e for e in errs)
-        status = "approved" if not errs else "rejected"
+        auto_status = "approved" if not errs else "rejected"
+        human = review_meta.get("human_review", {})
+        # 兼容旧格式，但绝不把旧 author_checked=false 推断成人工通过。
+        human_status = str(human.get("status") or "pending")
+        author_checked = bool(human.get("author_checked", review_meta.get("author_checked", False)))
+        if not author_checked and human_status == "approved":
+            human_status = "pending"
+        overall_status = "approved" if auto_status == human_status == "approved" else (
+            "rejected" if "rejected" in {auto_status, human_status} else "pending"
+        )
         per_item.append({
             "id": it.get("id"), "tile_id": it.get("tile_id"),
             "question_type": it.get("question_type"), "answer": it.get("answer"),
             "errors": errs, "ambiguity_flags": flags,
-            "needs_author_check": needs_author, "status": status,
+            "needs_author_check": needs_author, "auto_status": auto_status,
+            "human_status": human_status, "status": overall_status,
         })
 
     n = len(per_item)
+    auto_approved = sum(1 for r in per_item if r["auto_status"] == "approved")
+    auto_rejected = n - auto_approved
+    human_approved = sum(1 for r in per_item if r["human_status"] == "approved")
     approved = sum(1 for r in per_item if r["status"] == "approved")
-    rejected = n - approved
+    rejected = sum(1 for r in per_item if r["status"] == "rejected")
+    pending = n - approved - rejected
     needs_author = sum(1 for r in per_item if r["needs_author_check"])
     err_counter = Counter()
     for r in per_item:
@@ -245,12 +260,14 @@ def review(data, dataset_root, manifest_entries):
             err_counter[e.split(":")[0]] += 1
     by_qtype = {}
     for r in per_item:
-        by_qtype.setdefault(r["question_type"], {"approved": 0, "rejected": 0})
+        by_qtype.setdefault(r["question_type"], {"approved": 0, "rejected": 0, "pending": 0})
         by_qtype[r["question_type"]][r["status"]] += 1
     return {
-        "schema_version": "agent-vqa-review/1.1",
-        "review_protocol": "模型辅助生成 + 作者抽查 (非纯人工审核); 100% 自动几何与答案一致性检查",
-        "n": n, "approved": approved, "rejected": rejected,
+        "schema_version": "agent-vqa-review/2.0",
+        "review_protocol": "自动检查与人工审核独立记录；overall approved 要求两者均 approved",
+        "n": n, "approved": approved, "rejected": rejected, "pending": pending,
+        "auto_approved": auto_approved, "auto_rejected": auto_rejected,
+        "human_approved": human_approved, "human_pending": n - human_approved,
         "needs_author_check": needs_author,
         "error_taxonomy": dict(err_counter),
         "by_question_type": by_qtype,
