@@ -23,6 +23,7 @@ from detectors.xview2_first import (  # noqa: E402
     _remap_se_keys,
     preprocess_inputs,
 )
+from detectors.changeos import ChangeOSDetector, collapse_damage_probs  # noqa: E402
 
 WEIGHTS = Path(__file__).resolve().parents[1] / "outputs" / "xview2_first" / "weights"
 needs_weights = pytest.mark.skipif(
@@ -109,6 +110,46 @@ def test_eventdisjoint_backend_is_not_leaky():
 def test_unknown_backend_raises():
     with pytest.raises(ValueError, match="unknown DETECTOR_BACKEND"):
         get_detector("no_such_backend")
+
+
+def test_changeos_backend_is_registered_and_binary():
+    detector = get_detector("changeos", device="cpu")
+    assert detector.name == "changeos"
+    assert detector.describe()["label_mode"] == "binary"
+    assert detector.describe()["classes"] == ["no-damage", "damaged"]
+    assert detector.leaky is False
+    assert detector.frozen is True
+    assert detector.describe()["evaluation_role"] == "fixed_external_perception_tool"
+    assert detector.describe()["policy_shared"] is True
+
+
+def test_changeos_collapses_four_classes_to_binary():
+    binary = collapse_damage_probs(np.array([0.4, 0.1, 0.2, 0.3]))
+    assert binary.tolist() == pytest.approx([0.4, 0.6])
+
+
+def test_changeos_binary_instance_has_entropy_ready_probs():
+    detector = ChangeOSDetector(device="cpu", min_area_px=1, watershed=False)
+    loc = np.zeros((16, 16), dtype=np.float32)
+    loc[3:10, 4:12] = 0.9
+    probs = np.zeros((16, 16, 4), dtype=np.float32)
+    probs[..., 0] = 0.1
+    probs[..., 1] = 0.2
+    probs[..., 2] = 0.3
+    probs[..., 3] = 0.4
+    detections = detector._instances(loc, probs)
+    assert len(detections) == 1
+    detection = detections[0]
+    assert detection.raw_class_name == "damaged"
+    assert detection.class_name == "受损建筑"
+    assert detection.class_probs == pytest.approx({"no-damage": 0.1, "damaged": 0.9})
+    assert detection.bbox_xyxy == [4.0, 3.0, 12.0, 10.0]
+
+
+def test_changeos_rejects_mismatched_sizes_before_loading_weights():
+    detector = ChangeOSDetector(device="cpu")
+    with pytest.raises(ValueError, match="尺寸不一致"):
+        detector.detect(Image.new("RGB", (64, 64)), Image.new("RGB", (32, 32)))
 
 
 def test_detect_rejects_mismatched_sizes():

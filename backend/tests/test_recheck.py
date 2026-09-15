@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import sys
 import json
+import math
 import tempfile
 from pathlib import Path
 
@@ -32,8 +33,14 @@ from recheck import (  # noqa: E402
     RecheckConfig,
     RecheckController,
     best_evidence,
+    count_bucket_uncertainty,
+    conformal_predict_set,
     entropy_uncertainty,
+    fit_conformal_qhat,
     info_gain_descend,
+    predicted_roi_coverage,
+    spatial_bearing_uncertainty,
+    task_conditioned_recheck_decision,
     uncertainty_score,
 )
 
@@ -50,6 +57,89 @@ def test_uncertainty_score() -> None:
     assert u_low > u_high, (u_low, u_high)
     assert uncertainty_score("any", 0.0, False) == 0.0
     print(f"[OK] 不确定性：low/低conf={u_low} > high/高conf={u_high}")
+
+
+def test_count_bucket_uncertainty_tracks_answer_not_worst_object() -> None:
+    uncertain_one = [{
+        "class_probs": {"no-damage": 0.5, "damaged": 0.5},
+    }]
+    certainly_many = [
+        {"class_probs": {"no-damage": 0.01, "damaged": 0.99}}
+        for _ in range(12)
+    ] + uncertain_one
+    assert count_bucket_uncertainty(uncertain_one) > 0.45
+    assert count_bucket_uncertainty(certainly_many) < 0.05
+
+
+def test_spatial_bearing_uncertainty_uses_boundary_margin_and_gsd() -> None:
+    bounds = {"west": 120.0, "south": 30.0, "east": 120.002, "north": 30.002}
+    center_lat, center_lon = 30.001, 120.001
+    # A target almost due north and far from the centre is stable.
+    stable = spatial_bearing_uncertainty(
+        [center_lat + 100.0 / 111_000.0, center_lon], bounds, 0.5,
+    )
+    # A close target has large angular error even at the same GSD.
+    close = spatial_bearing_uncertainty(
+        [center_lat + 4.0 / 111_000.0, center_lon], bounds, 0.5,
+    )
+    # Construct a far target on the N/NE boundary (22.5 degrees east of north).
+    east_m = 100.0 * math.sin(math.radians(22.5))
+    north_m = 100.0 * math.cos(math.radians(22.5))
+    boundary = spatial_bearing_uncertainty([
+        center_lat + north_m / 111_000.0,
+        center_lon + east_m / (111_000.0 * math.cos(math.radians(center_lat))),
+    ], bounds, 0.5)
+    assert stable < 0.2, stable
+    assert close > 0.5, close
+    assert boundary > 0.95, boundary
+
+
+def test_task_conditioned_damage_allows_useful_zoom() -> None:
+    out = task_conditioned_recheck_decision(
+        question_type="damage", uncertainty=0.9,
+        alt=1330.2, descend_step_m=443.4, alt_min_m=443.4,
+        roi_norm_bbox=[1 / 3, 1 / 3, 2 / 3, 2 / 3],
+        target_visible=True, target_matched=True, recenter_horizontal_m=20.0,
+    )
+    assert out.allow and out.motion_mode == "descend_center", out
+    assert out.utility > 0.0 and out.estimated_flight_time_s > 0.0, out
+
+
+def test_task_conditioned_context_preserves_roi() -> None:
+    central_roi = [1 / 3, 1 / 3, 2 / 3, 2 / 3]
+    assert predicted_roi_coverage(central_roi, next_span_ratio=2 / 3) == 1.0
+    allowed = task_conditioned_recheck_decision(
+        question_type="count", uncertainty=0.9,
+        alt=1330.2, descend_step_m=443.4, alt_min_m=443.4,
+        roi_norm_bbox=central_roi, target_visible=False, target_matched=False,
+    )
+    assert allowed.allow and allowed.motion_mode == "descend_only", allowed
+
+    wide_roi = [0.1, 0.1, 0.9, 0.9]
+    blocked = task_conditioned_recheck_decision(
+        question_type="spatial", uncertainty=0.9,
+        alt=1330.2, descend_step_m=443.4, alt_min_m=443.4,
+        roi_norm_bbox=wide_roi, target_visible=True, target_matched=True,
+    )
+    assert not blocked.allow, blocked
+    assert blocked.predicted_roi_coverage < 0.98
+    assert "ROI coverage" in blocked.reason
+
+
+def test_task_conditioned_presence_and_floor_hold() -> None:
+    presence = task_conditioned_recheck_decision(
+        question_type="presence", uncertainty=1.0,
+        alt=1330.2, descend_step_m=443.4, alt_min_m=443.4,
+        roi_norm_bbox=[0.4, 0.4, 0.6, 0.6],
+        target_visible=True, target_matched=True,
+    )
+    assert not presence.allow and presence.motion_mode == "hold", presence
+    floor = task_conditioned_recheck_decision(
+        question_type="damage", uncertainty=1.0,
+        alt=443.4, descend_step_m=443.4, alt_min_m=443.4,
+        roi_norm_bbox=None, target_visible=True, target_matched=True,
+    )
+    assert not floor.allow and "altitude floor" in floor.reason, floor
 
 
 def test_best_evidence() -> None:
@@ -72,6 +162,41 @@ def test_best_evidence_class_probs() -> None:
     conf, cls, _, probs = best_evidence([det])
     assert cls == "完全损毁建筑" and probs == det["class_probs"], probs
     print(f"[OK] best_evidence 回传 class_probs: {probs}")
+
+
+def test_best_evidence_rechecks_uncertain_binary_negative() -> None:
+    uncertain_negative = _det("无损伤建筑", 0.51)
+    uncertain_negative["class_probs"] = {"no-damage": 0.51, "damaged": 0.49}
+    confident_positive = _det("受损建筑", 0.95)
+    confident_positive["class_probs"] = {"no-damage": 0.05, "damaged": 0.95}
+    conf, cls, _, probs = best_evidence([confident_positive, uncertain_negative])
+    assert cls == "无损伤建筑" and abs(conf - 0.51) < 1e-9
+    assert probs == uncertain_negative["class_probs"]
+
+
+def test_conformal_predict_set_binary_uses_damaged_prob() -> None:
+    """二分类 class_probs 必须让 damaged 概率进入预测集合（旧默认 4 类顺序会忽略它）。"""
+    # damaged=0.51 > no-damage=0.49，但 qhat=0.9 时 top 类概率不足 → 集合应含两类。
+    pred_set = conformal_predict_set({"no-damage": 0.49, "damaged": 0.51}, 0.9)
+    assert set(pred_set) == {"no-damage", "damaged"}, pred_set
+    # 高置信时只含 top 类，不应触发复核。
+    confident = conformal_predict_set({"no-damage": 0.02, "damaged": 0.98}, 0.9)
+    assert confident == ["damaged"], confident
+
+
+def test_fit_conformal_qhat_infers_binary_order() -> None:
+    """无 class_order 时从观测标签空间推断二分类顺序，不再默认 4 类。"""
+    rows = [
+        ({"no-damage": 0.9, "damaged": 0.1}, "no-damage"),
+        ({"no-damage": 0.4, "damaged": 0.6}, "damaged"),
+        ({"no-damage": 0.2, "damaged": 0.8}, "damaged"),
+    ]
+    qhat = fit_conformal_qhat(rows, alpha=0.1)
+    # APS qhat 必须落在 (0,1]；二分类下被正确计算而非把 damaged 当缺失类。
+    assert 0.0 < qhat <= 1.0, qhat
+    # 显式二分类 class_order 与推断结果一致（验证推断没有走 4 类默认序）。
+    explicit = fit_conformal_qhat(rows, alpha=0.1, class_order=["no-damage", "damaged"])
+    assert abs(qhat - explicit) < 1e-9, (qhat, explicit)
 
 
 def test_entropy_uncertainty() -> None:
@@ -551,6 +676,11 @@ def test_harmed_answer_detected() -> None:
 def _run_all() -> int:
     tests = [
         test_uncertainty_score,
+        test_count_bucket_uncertainty_tracks_answer_not_worst_object,
+        test_spatial_bearing_uncertainty_uses_boundary_margin_and_gsd,
+        test_task_conditioned_damage_allows_useful_zoom,
+        test_task_conditioned_context_preserves_roi,
+        test_task_conditioned_presence_and_floor_hold,
         test_best_evidence,
         test_best_evidence_class_probs,
         test_entropy_uncertainty,

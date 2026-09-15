@@ -66,10 +66,22 @@ SPAN_CRUISE_M = FL.span_m_for_alt(ALT_CRUISE_M)          # 1536 m
 TILE_SPAN_M = FL.TILE_SPAN_M                              # 512 m
 AMBIGUITY_DIST_M = 18.0
 CENTERED_START = False  # 由 main() 根据 --centered-start 设置：E4 从 ROI 中心出发
+POST_COVERAGE_BOUNDS: list[dict[str, float]] = []
 
 BEARING_NAMES = ["北", "东北", "东", "东南", "南", "西南", "西", "西北"]
 DAMAGE_CHOICES = ["无损伤", "轻微损伤", "严重损伤", "完全损毁"]
 COUNT_CHOICES = ["0", "1", "2", "3+"]
+DAMAGE_LABEL_MODE = "four_class"
+
+
+def damage_answer(subtype: str) -> str:
+    if DAMAGE_LABEL_MODE == "binary":
+        return "无损伤" if subtype == "no-damage" else "损伤"
+    return SUBTYPE_TO_CN_LEVEL[subtype]
+
+
+def queried_damage_subtypes() -> tuple[str, ...]:
+    return DAMAGED_SUBTYPES if DAMAGE_LABEL_MODE == "binary" else SEVERE_SUBTYPES
 
 
 def bearing_name(north_m: float, east_m: float) -> str:
@@ -156,6 +168,16 @@ def in_roi(b: Building, bounds: dict) -> bool:
             and bounds["west"] <= b.lon <= bounds["east"])
 
 
+def _post_covered(point) -> bool:
+    if not POST_COVERAGE_BOUNDS:
+        return True
+    lat, lon = point
+    return any(
+        b["south"] <= lat <= b["north"] and b["west"] <= lon <= b["east"]
+        for b in POST_COVERAGE_BOUNDS
+    )
+
+
 def sample_start(center, bounds, rng, offset_range=(200.0, 600.0)):
     """采样 UAV 巡航起点。
 
@@ -165,16 +187,23 @@ def sample_start(center, bounds, rng, offset_range=(200.0, 600.0)):
     if CENTERED_START:
         return center
     lo, hi = offset_range
-    dist = rng.uniform(lo, hi)
-    ang = math.radians(rng.uniform(0.0, 360.0))
-    north, east = dist * math.cos(ang), dist * math.sin(ang)
-    lat, lon = meters_to_latlon(center[0], center[1], north, east)
-    # clamp 到「ROI 仍在巡航视场内」——距 ROI 中心不超过 span/2 - tile/2 的余量
+    # 「ROI 仍在巡航视场内」的最大偏移；同时要求起点本身落在任一 post
+    # 瓦片覆盖内，否则 headless 入口会在模型加载前报 start_not_covered。
     max_off = (SPAN_CRUISE_M - TILE_SPAN_M) / 2.0
-    if dist > max_off:
-        north, east = max_off * math.cos(ang), max_off * math.sin(ang)
-        lat, lon = meters_to_latlon(center[0], center[1], north, east)
-    return (lat, lon)
+    hi = min(float(hi), max_off)
+    lo = min(float(lo), hi)
+    for _ in range(256):
+        dist = rng.uniform(lo, hi)
+        ang = math.radians(rng.uniform(0.0, 360.0))
+        north, east = dist * math.cos(ang), dist * math.sin(ang)
+        point = meters_to_latlon(center[0], center[1], north, east)
+        if _post_covered(point):
+            return point
+    # ROI centre belongs to its post tile.  Falling back here keeps the item
+    # executable while making a pathologically isolated ROI explicit in stats.
+    if _post_covered(center):
+        return center
+    raise ValueError("ROI centre has no post-disaster coverage")
 
 
 def norm_xy_from_roi_center(center, target):
@@ -228,7 +257,8 @@ def gen_presence(tile_id, disaster, split, buildings, bounds, center, rng, count
     roi_blds = [b for b in buildings if in_roi(b, bounds)]
     if not roi_blds:
         return []
-    for st in PRIORITY_SUBTYPES:
+    positive_subtypes = DAMAGED_SUBTYPES if DAMAGE_LABEL_MODE == "binary" else PRIORITY_SUBTYPES
+    for st in positive_subtypes:
         cands = [b for b in roi_blds if b.subtype == st]
         if not cands:
             continue
@@ -241,18 +271,21 @@ def gen_presence(tile_id, disaster, split, buildings, bounds, center, rng, count
         start = sample_start(center, bounds, rng)
         items.append(_base_item(
             tile_id, disaster, split, "presence",
-            f"标记区域内是否存在{target.cls}？", ["否", "是"], "是", start, center,
+            ("标记区域内是否存在受损建筑？" if DAMAGE_LABEL_MODE == "binary"
+             else f"标记区域内是否存在{target.cls}？"), ["否", "是"], "是", start, center,
             {"lat": round(target.lat, 7), "lon": round(target.lon, 7), "subtype": target.subtype},
             {"distance": difficulty_of(geodesic_m(center, target.centroid())),
              "clutter": len(roi_blds) - 1, "edge_truncation": 0.0}, flags, bounds))
         counts.presence_pos += 1
         break
-    # 负例：ROI 内无 severe 建筑
-    if not any(b.subtype in SEVERE_SUBTYPES for b in roi_blds):
+    # 负例：ROI 内无题面所指损伤类。
+    if not any(b.subtype in queried_damage_subtypes() for b in roi_blds):
         start = sample_start(center, bounds, rng)
         items.append(_base_item(
             tile_id, disaster, split, "presence",
-            "标记区域内是否存在完全损毁建筑？", ["否", "是"], "否", start, center, None,
+            ("标记区域内是否存在受损建筑？" if DAMAGE_LABEL_MODE == "binary"
+             else "标记区域内是否存在完全损毁建筑？"),
+            ["否", "是"], "否", start, center, None,
             {"distance": "n/a", "clutter": len(roi_blds), "edge_truncation": 0.0},
             ["negative_by_geometry"], bounds))
         counts.presence_neg += 1
@@ -264,7 +297,13 @@ def gen_damage(tile_id, disaster, split, buildings, bounds, center, rng, counts)
     roi_blds = [b for b in buildings if in_roi(b, bounds)]
     if not roi_blds:
         return []
-    available = sorted({b.subtype for b in roi_blds}, key=lambda st: (counts.damage[st], rng.random()))
+    # 先对 subtype 集合做确定性排序，再按 (累计数, rng) 选类。若直接把 rng.random()
+    # 放进 sorted 的 key，排序键会按集合迭代顺序被调用，而字符串集合顺序受
+    # PYTHONHASHSEED 随机化影响 → 同 seed 跨进程生成不同题库（破坏 M5/M8 可复现性）。
+    available = sorted(
+        sorted({b.subtype for b in roi_blds}),
+        key=lambda st: (counts.damage[st], rng.random()),
+    )
     chosen = available[0]
     target = rng.choice([b for b in roi_blds if b.subtype == chosen])
     flags = []
@@ -275,8 +314,9 @@ def gen_damage(tile_id, disaster, split, buildings, bounds, center, rng, counts)
     start = sample_start(center, bounds, rng)
     items = [_base_item(
         tile_id, disaster, split, "damage",
-        f"标记区域内标记建筑 {target.uid} 的损伤等级是什么？", DAMAGE_CHOICES,
-        SUBTYPE_TO_CN_LEVEL[target.subtype], start, center,
+        f"标记区域内标记建筑 {target.uid} 的损伤状态是什么？",
+        (["无损伤", "损伤"] if DAMAGE_LABEL_MODE == "binary" else DAMAGE_CHOICES),
+        damage_answer(target.subtype), start, center,
         {"lat": round(target.lat, 7), "lon": round(target.lon, 7),
          "subtype": target.subtype, "ref_id": target.uid, "marker": "roi_crosshair"},
         {"distance": difficulty_of(geodesic_m(center, target.centroid())),
@@ -291,7 +331,7 @@ def gen_count(tile_id, disaster, split, buildings, bounds, center, rng, counts):
     roi_blds = [b for b in buildings if in_roi(b, bounds)]
     if not roi_blds:
         return []
-    severe = [b for b in roi_blds if b.subtype in SEVERE_SUBTYPES]
+    severe = [b for b in roi_blds if b.subtype in queried_damage_subtypes()]
     n = len(severe)
     bucket = "3+" if n >= 3 else str(n)
     flags = []
@@ -301,7 +341,9 @@ def gen_count(tile_id, disaster, split, buildings, bounds, center, rng, counts):
     start = sample_start(center, bounds, rng)
     items = [_base_item(
         tile_id, disaster, split, "count",
-        "标记区域内有多少栋严重或完全损毁建筑？", COUNT_CHOICES, bucket, start, center, None,
+        ("标记区域内有多少栋受损建筑？" if DAMAGE_LABEL_MODE == "binary"
+         else "标记区域内有多少栋严重或完全损毁建筑？"),
+        COUNT_CHOICES, bucket, start, center, None,
         {"distance": "n/a", "clutter": len(severe), "edge_truncation": 0.0}, flags, bounds)]
     counts.count[bucket] += 1
     return items
@@ -310,13 +352,14 @@ def gen_count(tile_id, disaster, split, buildings, bounds, center, rng, counts):
 def gen_spatial(tile_id, disaster, split, buildings, bounds, center, rng, counts):
     """Q4: 最近的 {class} 位于 ROI 中心哪个方向。方向相对 ROI 中心（§2.3）。"""
     roi_blds = [b for b in buildings if in_roi(b, bounds)]
-    cands = [b for b in roi_blds if b.subtype in PRIORITY_SUBTYPES]
+    cands = [b for b in roi_blds if b.subtype in (
+        DAMAGED_SUBTYPES if DAMAGE_LABEL_MODE == "binary" else PRIORITY_SUBTYPES
+    )]
     if not cands:
         return []
     # 优先选分布最少的方位
     proposals = []
     for _ in range(48):
-        seed = rng.choice(cands)
         target = min(cands, key=lambda b: geodesic_m(center, b.centroid()))
         # 让目标选择有一定随机性，但保持按方位分层
         n, e = latlon_to_meters(center[0], center[1], target.lat, target.lon)
@@ -332,7 +375,8 @@ def gen_spatial(tile_id, disaster, split, buildings, bounds, center, rng, counts
     start = sample_start(center, bounds, rng)
     items = [_base_item(
         tile_id, disaster, split, "spatial",
-        f"最近的{target.cls}位于标记区域中心哪个方向？", BEARING_NAMES, direction,
+        (("最近的受损建筑" if DAMAGE_LABEL_MODE == "binary" else f"最近的{target.cls}")
+         + "位于标记区域中心哪个方向？"), BEARING_NAMES, direction,
         start, center,
         {"lat": round(target.lat, 7), "lon": round(target.lon, 7), "subtype": target.subtype},
         {"distance": difficulty_of(geodesic_m(center, target.centroid())),
@@ -433,14 +477,23 @@ def main() -> int:
                     help="生成成功后将所用 ROI 原子登记到 --exclude-registry")
     ap.add_argument("--n", type=int, default=200, help="目标题数")
     ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--damage-label-mode", choices=["binary", "four_class"],
+                    default="four_class")
     ap.add_argument("--out", default=str(BACKEND / "data" / "benchmarks" / "agent_vqa_testset_v2.json"))
     args = ap.parse_args()
 
-    global CENTERED_START
+    global CENTERED_START, DAMAGE_LABEL_MODE, POST_COVERAGE_BOUNDS
     CENTERED_START = args.centered_start
+    DAMAGE_LABEL_MODE = args.damage_label_mode
     rng = random.Random(args.seed)
     dataset_root = xbd_map.resolve_dataset_root(args.dataset_root)
     manifest = json.loads(Path(args.manifest).read_text(encoding="utf-8"))
+    POST_COVERAGE_BOUNDS = [
+        {k: float(e["bounds"][k]) for k in ("west", "south", "east", "north")}
+        for e in manifest.get("items", [])
+        if str(e.get("stage") or "").lower() in {"post", "post_disaster"}
+        and e.get("has_georef") and isinstance(e.get("bounds"), dict)
+    ]
     cov = json.loads(Path(args.roi_index).read_text(encoding="utf-8"))["coverage"]
     wanted = {d.strip() for d in args.disasters.split(",") if d.strip()} or set(EVAL_EVENTS)
     registry_path = Path(args.exclude_registry) if args.exclude_registry else None
@@ -524,6 +577,7 @@ def main() -> int:
         "dataset_manifest_path": str(Path(args.manifest).relative_to(REPO_ROOT)) if Path(args.manifest).exists() else "",
         "dataset_root": str(dataset_root),
         "split_policy": "event-disjoint",
+        "damage_label_mode": DAMAGE_LABEL_MODE,
         "eval_role": args.eval_role or None,
         "consumption_registry": {
             "path": (

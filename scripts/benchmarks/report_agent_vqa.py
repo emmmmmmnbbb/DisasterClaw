@@ -47,6 +47,44 @@ def load_rows(run_dir: Path) -> list[dict]:
     return rows
 
 
+def load_manifest(run_dir: Path) -> dict:
+    fp = run_dir / "manifest.json"
+    if not fp.is_file():
+        return {}
+    try:
+        return json.loads(fp.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+# 回答模式决定"谁在答题": vlm=纯视觉语言模型, deterministic=规则查表, hybrid=二者结合。
+# 规则基线必须与主闭环策略分开报告，避免把"换了个回答器"读成"策略带来了增益"。
+RULE_ANSWER_MODE = "deterministic"
+OFFLINE_ONLY_CONFIGS = {"O_REF"}
+
+
+def answer_mode_by_config(run_dirs: list[Path], by_config: dict) -> tuple[dict, dict]:
+    """返回 (config → answer_mode, 冲突记录)。
+
+    模式来源两处: run 的 manifest.json (权威) 与 episode 行内自述。两者或
+    多个 run 之间不一致时记入冲突，调用方据此拒绝聚合。
+    """
+    seen: dict[str, set[str]] = defaultdict(set)
+    for rd in run_dirs:
+        modes = load_manifest(rd).get("agent_vqa_answer_modes") or {}
+        for cfg, mode in modes.items():
+            if mode:
+                seen[cfg].add(str(mode))
+    for cfg, rows in by_config.items():
+        for row in rows:
+            mode = row.get("answer_mode")
+            if mode:
+                seen[cfg].add(str(mode))
+    conflicts = {c: sorted(m) for c, m in seen.items() if len(m) > 1}
+    resolved = {c: sorted(m)[0] for c, m in seen.items() if len(m) == 1}
+    return resolved, conflicts
+
+
 def _mean(xs):
     xs = [x for x in xs if x is not None]
     return round(sum(xs) / len(xs), 4) if xs else None
@@ -130,7 +168,10 @@ def aggregate(rows):
     # 失败分类
     fail = defaultdict(int)
     for r in rows:
-        if r.get("ok") and not r.get("correct"):
+        reason = str(r.get("reason_code") or "")
+        if reason == "out_of_coverage":
+            fail[reason] += 1
+        elif r.get("ok") and not r.get("correct"):
             if r.get("reason_code") == "invalid_output":
                 fail["invalid_output"] += 1
             else:
@@ -355,6 +396,8 @@ def main() -> int:
     ap.add_argument("--out", default="", help="报告输出目录 (默认 <首个run>/reports)")
     ap.add_argument("--n-boot", type=int, default=2000)
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--matched-reference", default="T1_TASK",
+                    help="同预算参考配置（默认 T1_TASK；旧实验可显式传 A5_EXPECTED）")
     args = ap.parse_args()
 
     run_dirs = [Path(r) for r in args.runs]
@@ -402,15 +445,44 @@ def main() -> int:
         print("[ERROR] 没有可汇总的 episode 数据。", file=sys.stderr)
         return 2
 
+    # 回答模式 (vlm / deterministic / hybrid) 是实验身份的一部分。同一配置名下
+    # 混入多种模式时，聚合结果不可解释，直接拒绝。
+    answer_modes, mode_conflicts = answer_mode_by_config(run_dirs, by_config)
+    if mode_conflicts:
+        for cfg, modes in sorted(mode_conflicts.items()):
+            print(f"[ERROR] 配置 {cfg} 的回答模式不一致: {modes}；"
+                  "请分目录重跑，不要在聚合层混用。", file=sys.stderr)
+        return 3
+    rule_configs = sorted(
+        c for c in configs
+        if answer_modes.get(c) == RULE_ANSWER_MODE and c not in OFFLINE_ONLY_CONFIGS
+    )
+    model_configs = sorted(
+        c for c in configs
+        if c not in rule_configs and c not in OFFLINE_ONLY_CONFIGS
+    )
+    (out_dir / "config_meta.json").write_text(
+        json.dumps({
+            "answer_modes": answer_modes,
+            "rule_baseline_configs": rule_configs,
+            "model_driven_configs": model_configs,
+        }, ensure_ascii=False, indent=2), encoding="utf-8",
+    )
+
     # aggregate.json
     aggregate_all = {c: aggregate(by_config[c]) for c in configs}
     (out_dir / "aggregate.json").write_text(
         json.dumps(aggregate_all, ensure_ascii=False, indent=2), encoding="utf-8")
     (out_dir / "oracle_diagnostics.json").write_text(
         json.dumps(oracle_diagnostics, ensure_ascii=False, indent=2), encoding="utf-8")
-    reference_name = "A5_EXPECTED"
+    reference_name = args.matched_reference
+    # 兼容旧实验目录：若默认的 T1_TASK 不存在而存在旧参考臂，自动回退并在报告中保留实际名称。
+    if reference_name not in aggregate_all and args.matched_reference == "T1_TASK":
+        if "A5_EXPECTED" in aggregate_all:
+            reference_name = "A5_EXPECTED"
     matched_names = [
-        "A1_RANDOM_MATCHED", "A2_FIXED_MATCHED", "AB_CENTER", "AB_DESCEND", "AB_FULL",
+        "A1_RANDOM_MATCHED", "A2_FIXED_MATCHED", "AB_NOOP", "AB_CENTER",
+        "AB_DESCEND", "AB_FULL", "AB_WIDE",
     ]
     budget_audit = {"reference": reference_name, "checked": [], "passed": True}
     if reference_name in aggregate_all:
@@ -434,6 +506,10 @@ def main() -> int:
     for i, a in enumerate(configs):
         for b in configs[i + 1:]:
             paired[f"{b}_vs_{a}"] = {
+                "answer_modes": [answer_modes.get(a, ""), answer_modes.get(b, "")],
+                # 回答模式不同 → 差值同时包含"策略"和"回答器"两个变化，
+                # 只能作为规则基线参照，不能当作重观测策略的净增益。
+                "comparable_as_policy": answer_modes.get(a) == answer_modes.get(b),
                 "item_bootstrap": paired_bootstrap_correctness(
                     by_config[a], by_config[b], n_boot=args.n_boot, seed=args.seed,
                 ),
@@ -474,28 +550,57 @@ def main() -> int:
     (out_dir / "curves.json").write_text(
         json.dumps(curves, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    # 规则基线单独报告: deterministic 回答模式不经过 VLM，其成绩是"规则能拿到
+    # 多少"的下界参照，不与主闭环策略合并成一张增益表。
+    rule_reference = next(
+        (c for c in ("A0_HOLD",) if c in aggregate_all), "",
+    )
+    rule_baseline = {
+        "rule_configs": rule_configs,
+        "answer_modes": {c: answer_modes.get(c, "") for c in rule_configs},
+        "aggregate": {c: aggregate_all[c] for c in rule_configs},
+        "reference_config": rule_reference,
+        "note": "规则基线为独立报告项；不得与 VLM/hybrid 配置合并计算策略增益。",
+    }
+    if rule_reference:
+        for c in rule_configs:
+            key = f"{c}_vs_{rule_reference}"
+            rule_baseline.setdefault("vs_reference", {})[key] = paired.get(
+                key, paired.get(f"{rule_reference}_vs_{c}", {}),
+            )
+    (out_dir / "rule_baseline.json").write_text(
+        json.dumps(rule_baseline, ensure_ascii=False, indent=2), encoding="utf-8")
+
     # 控制台速览
     print(f"[report] 配置: {configs}")
+    print(f"[report] 回答模式: {answer_modes or '(manifest/行内均未记录)'}")
+    if rule_configs:
+        print(f"[report] 规则基线 (单独报告): {rule_configs}")
     print(f"[report] 指标 (accuracy / abstain_rate / flip_rate):")
     for c in configs:
         a = aggregate_all[c]
-        print(f"  {c}: n={a['n']} acc={a['accuracy']} abst={a['abstain_rate']} "
-              f"flip={a['flip_rate']} steps={a['n_steps_mean']}")
-    print(f"\n[report] 配对显著性 (excludes_zero=True 即 95% CI 不含 0):")
+        mode = answer_modes.get(c, "?")
+        tag = " [规则基线]" if c in rule_configs else ""
+        print(f"  {c} (answer_mode={mode}){tag}: n={a['n']} acc={a['accuracy']} "
+              f"abst={a['abstain_rate']} flip={a['flip_rate']} steps={a['n_steps_mean']}")
+    print(f"\n[report] 配对显著性 (excludes_zero=True 即 95% CI 不含 0;"
+          f" policy=回答模式相同, 仅比较策略):")
     for k, v in paired.items():
         item_test = v["item_bootstrap"]
         if item_test.get("n_paired"):
-            print(f"  {k}: diff={item_test['mean_difference']} CI={item_test['ci95']} "
-                  f"sig={item_test['excludes_zero']} "
+            scope = "policy" if v["comparable_as_policy"] else "mode-confounded"
+            print(f"  {k} [{scope}]: diff={item_test['mean_difference']} "
+                  f"CI={item_test['ci95']} sig={item_test['excludes_zero']} "
                   f"McNemar-Holm={v['mcnemar']['holm_p_value']:.4g} "
                   f"(n={item_test['n_paired']})")
     print(f"\n[report] 完成。报告目录: {out_dir}")
     print(f"[report]   - aggregate.json / paired_tests.json / curves.json")
+    print(f"[report]   - config_meta.json / rule_baseline.json")
     print(f"[report]   - event_breakdown.csv / failure_taxonomy.csv")
     if budget_audit["checked"] and not budget_audit["passed"]:
         print("[ERROR] 同预算审计失败，结果不得用于公平策略比较。", file=sys.stderr)
         return 3
-    expected = aggregate_all.get("A5_EXPECTED")
+    expected = aggregate_all.get("A5_EXPECTED") if reference_name == "A5_EXPECTED" else None
     if expected and (
         not expected.get("entropy_table_loaded") or expected.get("entropy_fallback_used")
     ):

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""对照三个检测器后端在同一事件不相交 test split 上的表现 (计划 §3.4 / §3.5)。
+"""对照检测器后端在同一事件不相交 test split 上的表现 (计划 §3.4 / §3.5)。
 
 同时报告两套口径，因为它们回答不同问题：
 
@@ -73,7 +73,13 @@ def _rasterize(polys, size) -> np.ndarray:
     return np.asarray(img, dtype=np.uint8)
 
 
-def _match_one_to_one(polys, dets):
+def _eval_subtype(subtype: str, binary: bool) -> str:
+    if not binary:
+        return subtype
+    return "no-damage" if subtype == "no-damage" else "damaged"
+
+
+def _match_one_to_one(polys, dets, binary: bool = False):
     """GT 多边形 ↔ 预测框 一对一贪心匹配。
 
     首版按「质心落进框」且只 break GT 侧，导致多个 GT 抢同一个框，
@@ -98,8 +104,10 @@ def _match_one_to_one(polys, dets):
             continue
         used.add(best)
         matched += 1
-        if dets[best].raw_class_name == sub:
-            tp[sub] += 1
+        gt_sub = _eval_subtype(sub, binary)
+        pred_sub = _eval_subtype(dets[best].raw_class_name, binary)
+        if pred_sub == gt_sub:
+            tp[gt_sub] += 1
     return tp, matched
 
 
@@ -154,8 +162,13 @@ def main() -> int:
         print(f"backend {args.backend!r} 无外部实例（legacy 内建路径），本脚本暂不支持")
         return 2
     if not det.is_available():
-        print(f"backend {args.backend!r} 权重不可用: {det.describe().get('weights_dir')}")
+        unavailable = det.describe()
+        weight_location = unavailable.get("weights_dir") or unavailable.get("weights")
+        print(f"backend {args.backend!r} 权重不可用: {weight_location}")
         return 2
+    desc = det.describe()
+    binary = desc.get("label_mode") == "binary"
+    eval_classes = ("no-damage", "damaged") if binary else DAMAGE_SUBTYPES
 
     # 像素口径累计
     loc_tp = loc_fp = loc_fn = 0
@@ -194,9 +207,13 @@ def main() -> int:
         loc_fp += int(((1 - gt_loc) & pr_loc).sum())
         loc_fn += int((gt_loc & (1 - pr_loc)).sum())
 
-        for cid, sub in enumerate(DAMAGE_SUBTYPES, start=1):
-            g = gt_dmg == cid
-            p = pr_dmg == cid
+        for cid, sub in enumerate(eval_classes, start=1):
+            if binary:
+                g = (gt_dmg == 1) if sub == "no-damage" else (gt_dmg >= 2)
+                p = (pr_dmg == 1) if sub == "no-damage" else (pr_dmg >= 2)
+            else:
+                g = gt_dmg == cid
+                p = pr_dmg == cid
             dmg_tp[sub] += int((g & p).sum())
             dmg_fp[sub] += int((~g & p).sum())
             dmg_fn[sub] += int((g & ~p).sum())
@@ -204,36 +221,37 @@ def main() -> int:
         # 逐建筑：一对一匹配
         ev = post["disaster"]
         per_event[ev]["tiles"] += 1
-        tile_tp, _ = _match_one_to_one(polys, dets)
+        tile_tp, _ = _match_one_to_one(polys, dets, binary=binary)
         for pts, sub in polys:
-            gt_n[sub] += 1
-            per_event[ev]["gt"][sub] += 1
+            eval_sub = _eval_subtype(sub, binary)
+            gt_n[eval_sub] += 1
+            per_event[ev]["gt"][eval_sub] += 1
         for s, c in tile_tp.items():
             match_tp[s] += c
             per_event[ev]["tp"][s] += c
         for d in dets:
-            pred_n[d.raw_class_name] += 1
+            pred_n[_eval_subtype(d.raw_class_name, binary)] += 1
 
         if i % 10 == 0:
             print(f"  {i}/{len(posts)} tiles", flush=True)
 
     loc_f1 = _f1(loc_tp, loc_fp, loc_fn)
-    per_cls_f1 = {s: _f1(dmg_tp[s], dmg_fp[s], dmg_fn[s]) for s in DAMAGE_SUBTYPES}
-    # xView2 官方 damage F1 = 四类 F1 的调和平均
-    vals = [per_cls_f1[s] for s in DAMAGE_SUBTYPES]
+    per_cls_f1 = {s: _f1(dmg_tp[s], dmg_fp[s], dmg_fn[s]) for s in eval_classes}
+    # Four-class mode matches the official xView2 harmonic metric. Binary mode
+    # uses the same aggregation only as an internal two-class summary.
+    vals = [per_cls_f1[s] for s in eval_classes]
     dmg_f1 = float(len(vals) / sum(1.0 / v for v in vals)) if all(v > 1e-9 for v in vals) else 0.0
     overall = 0.3 * loc_f1 + 0.7 * dmg_f1
 
-    recalls = {s: (match_tp[s] / gt_n[s] if gt_n[s] else None) for s in DAMAGE_SUBTYPES}
+    recalls = {s: (match_tp[s] / gt_n[s] if gt_n[s] else None) for s in eval_classes}
     b_f1 = {}
-    for s in DAMAGE_SUBTYPES:
+    for s in eval_classes:
         tp, g, p = match_tp[s], gt_n[s], pred_n[s]
         prec = tp / p if p else 0.0
         rec = tp / g if g else 0.0
         b_f1[s] = (2 * prec * rec / (prec + rec)) if (prec + rec) > 0 else 0.0
-    macro_f1 = float(np.mean([b_f1[s] for s in DAMAGE_SUBTYPES]))
+    macro_f1 = float(np.mean([b_f1[s] for s in eval_classes]))
 
-    desc = det.describe()
     report = {
         "schema": "detector-backend-eval/1.0",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -241,6 +259,7 @@ def main() -> int:
         "leaky": bool(desc.get("leaky")),
         "leaky_reason": desc.get("leaky_reason", ""),
         "detector": desc,
+        "label_mode": "binary" if binary else "four_class",
         "split": args.split,
         "events": sorted(events),
         "n_tiles": len(latencies),
@@ -269,16 +288,18 @@ def main() -> int:
                 "gt": dict(d["gt"]),
                 "recall": {
                     s: (round(d["tp"][s] / d["gt"][s], 4) if d["gt"][s] else None)
-                    for s in DAMAGE_SUBTYPES
+                    for s in eval_classes
                 },
             }
             for ev, d in sorted(per_event.items())
         },
         "gates": {
-            "sec_3_5_1_overall_gt_0_7": bool(overall > 0.7),
+            "sec_3_5_1_overall_gt_0_7": bool(overall > 0.7) if not binary else None,
             "sec_3_5_2_minor_and_major_recall_gt_0": bool(
                 (recalls["minor-damage"] or 0) > 0 and (recalls["major-damage"] or 0) > 0
-            ),
+            ) if not binary else None,
+            "binary_damaged_recall_gt_0": bool((recalls.get("damaged") or 0) > 0)
+            if binary else None,
             "sec_3_5_3_latency_under_2s": bool(
                 latencies and float(np.median(latencies)) < 2.0
             ),
@@ -287,18 +308,19 @@ def main() -> int:
     }
 
     out = Path(args.out) if args.out else (
-        ROOT / f"runs/benchmarks/detector_backends/{args.backend}_{args.split}_{desc.get('ensemble_id','')}.json"
+        ROOT / f"runs/benchmarks/detector_backends/{args.backend}_{args.split}_{desc.get('ensemble_id') or desc.get('architecture','')}.json"
     )
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    print(f"\n=== {args.backend} / {args.split} / {desc.get('ensemble_id')} "
+    model_id = desc.get("ensemble_id") or desc.get("architecture") or ""
+    print(f"\n=== {args.backend} / {args.split} / {model_id} "
           f"{'[LEAKY]' if report['leaky'] else ''} ===")
     print(f"tiles={report['n_tiles']}  median latency={report['latency_s']['median']}s")
     print(f"pixel : loc_f1={loc_f1:.4f}  damage_f1={dmg_f1:.4f}  overall={overall:.4f}")
     print(f"build : macro_f1={macro_f1:.4f}")
     print(f"{'class':16s} {'gt':>6s} {'pred':>6s} {'recall':>8s} {'F1':>8s}")
-    for s in DAMAGE_SUBTYPES:
+    for s in eval_classes:
         r = recalls[s]
         print(f"{s:16s} {gt_n[s]:6d} {pred_n[s]:6d} "
               f"{('  n/a' if r is None else f'{r:8.4f}')} {b_f1[s]:8.4f}")

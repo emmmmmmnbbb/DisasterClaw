@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import re
+import sys
 import threading
 import time
 from io import BytesIO
@@ -21,15 +23,26 @@ from ai_planner import TaskPlanner
 from geo import latlon_to_meters, meters_to_latlon
 from mock_adapter import MockAdapter
 from perception import (
+    MOSAIC_VIEW,
     PERCEPTION_OUTPUT_DIR,
     PerceptionResult,
     get_perception,
     level_for_risk,
 )
-from semantic_map import SemanticMap
+from semantic_map import SemanticMap, offset_from_norm
 from stmr_matrix import build_stmr
 from hspm_planner import HspmConfig, HspmNavigator, OroiScoreWeights
-from recheck import EVIDENCE_CLASSES, RecheckConfig, RecheckController
+from recheck import (
+    EVIDENCE_CLASSES,
+    RecheckConfig,
+    RecheckController,
+    best_evidence,
+    count_bucket_uncertainty,
+    predicted_roi_coverage,
+    spatial_bearing_uncertainty,
+    task_conditioned_recheck_decision,
+    uncertainty_score,
+)
 from memory_graph import MemoryGraph, text_match_scorer
 from vlm_analyzer import VLMAnalyzer
 from agent_vqa import (
@@ -37,6 +50,8 @@ from agent_vqa import (
     AgentVqaController,
     EvidenceBundle,
     QuestionSpec,
+    TaskContext,
+    bboxes_match,
     build_evidence_from_perception,
     parse_question,
     parse_vlm_json_output,
@@ -209,11 +224,16 @@ class AppState:
         # qwen-vl-warmup 与 perception-warmup 两线程并发首次 import 时撞上
         # accelerate 的循环导入（"partially initialized module"），导致 VLM /
         # SegFormer 永久加载失败。
-        self._eager_import_ml_libs()
-
-        self._prime_ml_imports()
-        self._warmup_local_qwen_vl([planner_cfg, vlm_cfg])
-        self._warmup_perception()
+        disable_model_warmup = (
+            os.getenv("DISASTERCLAW_DISABLE_MODEL_WARMUP", "").strip().lower()
+            in {"1", "true", "yes"}
+            or "pytest" in sys.modules
+        )
+        if not disable_model_warmup:
+            self._eager_import_ml_libs()
+            self._prime_ml_imports()
+            self._warmup_local_qwen_vl([planner_cfg, vlm_cfg])
+            self._warmup_perception()
 
     def _prime_ml_imports(self) -> None:
         """Resolve transformers/accelerate lazy submodules once, synchronously,
@@ -615,7 +635,7 @@ def _execute_detect_disaster(params: dict, source: str) -> dict:
             state.push_log("error", f"detect_disaster: 视觉模型未就绪 — {exc}")
             return {"success": False, "message": f"视觉模型未就绪: {exc}"}
 
-    patch_id = f"uav-{int(time.time() * 1000)}"
+    patch_id = f"uav-{os.getpid()}-{time.time_ns()}"
     state.push_log(
         "info",
         f"detect_disaster: 在 ({snap['lat']:.6f}, {snap['lon']:.6f}) @ "
@@ -949,6 +969,12 @@ VLN_ORACLE_GOAL: dict | None = None  # set per-episode by the headless bench
 # E11 对照基线专用（trigger_mode="random" 时才生效）：固定复核概率 + 可复现种子。
 VLN_RECHECK_RANDOM_PROB = float(os.getenv("VLN_RECHECK_RANDOM_PROB", "0.5"))
 VLN_RECHECK_RANDOM_SEED = int(os.getenv("VLN_RECHECK_RANDOM_SEED", "0"))
+# P2 task-conditioned gate: expected evidence gain minus flight and context loss.
+VLN_TASK_MIN_ROI_COVERAGE = float(os.getenv("VLN_TASK_MIN_ROI_COVERAGE", "0.98"))
+VLN_TASK_COST_WEIGHT = float(os.getenv("VLN_TASK_COST_WEIGHT", "0.05"))
+VLN_TASK_COVERAGE_WEIGHT = float(os.getenv("VLN_TASK_COVERAGE_WEIGHT", "1.0"))
+VLN_TASK_COST_SCALE_S = float(os.getenv("VLN_TASK_COST_SCALE_S", "60.0"))
+VLN_TASK_MIN_UTILITY = float(os.getenv("VLN_TASK_MIN_UTILITY", "0.05"))
 # P3：记忆拓扑图 + LM-Nav 图搜索（默认关，VLN_MEMORY=1 开）。
 VLN_MEMORY = os.getenv("VLN_MEMORY", "0").lower() in {"1", "true", "yes", "on"}
 VLN_MEMORY_PATH = os.getenv("VLN_MEMORY_PATH", str(BASE_DIR / "outputs" / "memory_graph.json"))
@@ -968,6 +994,10 @@ AGENT_VQA_ORACLE = os.getenv("AGENT_VQA_ORACLE", "0").lower() in {"1", "true", "
 # 控制下发给 VLM 的 evidence_text 是否包含结构化检测/状态信息。
 AGENT_VQA_EVIDENCE_LEVEL = (os.getenv("AGENT_VQA_EVIDENCE_LEVEL", "struct") or "struct").strip().lower()
 AGENT_VQA_ANSWER_MODE = (os.getenv("AGENT_VQA_ANSWER_MODE", "hybrid") or "hybrid").strip().lower()
+_GENERATION_SEED_RAW = os.getenv("AGENT_VQA_GENERATION_BASE_SEED", "").strip()
+AGENT_VQA_GENERATION_BASE_SEED = int(_GENERATION_SEED_RAW) if _GENERATION_SEED_RAW else None
+AGENT_VQA_GENERATION_REPEAT = int(os.getenv("AGENT_VQA_GENERATION_REPEAT", "0"))
+AGENT_VQA_FORCE_REOBSERVE_INVALID = False
 
 # 进程内缓存的记忆图（懒加载，跨 episode/任务复用并落盘）。
 _memory_graph: MemoryGraph | None = None
@@ -1269,7 +1299,7 @@ def _make_vln_grounder(mode: str):
     return _hybrid
 
 
-def _vln_perceive(source: str) -> tuple[PerceptionResult | None, dict, dict]:
+def _vln_perceive(source: str, roi_tile_id: str = "") -> tuple[PerceptionResult | None, dict, dict]:
     """
     在 UAV 当前位姿裁俯视视场并跑感知，发射 perception_result 供前端面板更新。
 
@@ -1294,13 +1324,24 @@ def _vln_perceive(source: str) -> tuple[PerceptionResult | None, dict, dict]:
             state.push_log("error", f"VLN: 视觉模型未就绪 — {exc}")
             return None, snap, active_tile
 
-    patch_id = f"vln-{int(time.time() * 1000)}"
+    # In mosaic mode the observation may be centred outside the question tile.
+    # Keep the question ROI fixed while the UAV moves; using the tile containing
+    # the current position silently changes what presence/count/spatial questions
+    # mean after every search or reobservation action.
+    perception_tile = active_tile
+    if roi_tile_id and MOSAIC_VIEW:
+        roi_entry = xbd_store.get_entry(roi_tile_id)
+        if roi_entry is None or not xbd_store._is_post(roi_entry):
+            return None, snap, active_tile
+        perception_tile = roi_entry
+
+    patch_id = f"vln-{os.getpid()}-{time.time_ns()}"
     try:
         result: PerceptionResult = perception.perceive_at(
             lat=float(snap["lat"]),
             lon=float(snap["lon"]),
             alt=float(snap["alt"]),
-            active_tile=active_tile,
+            active_tile=perception_tile,
             patch_id=patch_id,
         )
     except Exception as exc:
@@ -1994,7 +2035,7 @@ def _action_failed(result: object) -> bool:
     )
 
 
-def _make_agent_vqa_controller(source: str) -> AgentVqaController:
+def _make_agent_vqa_controller(source: str, task_context: TaskContext | None = None) -> AgentVqaController:
     """构造 Agent-VQA 控制器：复用 VLN 的感知/HSPM 搜索/复核底座，问答闭环独立。
 
     依赖注入使无模型环境也能跑（VLM/LLM 不可用时控制器自动规则回退）。
@@ -2002,8 +2043,10 @@ def _make_agent_vqa_controller(source: str) -> AgentVqaController:
     """
     # VLM 结构化问答：读当前 patch 图像字节
     _vlm = VLMAnalyzer()
+    task_context = task_context or TaskContext()
 
-    def vlm_answer_fn(image_bytes, perception_result, spec, qid, evidence: EvidenceBundle):
+    def vlm_answer_fn(image_bytes, perception_result, spec, qid,
+                      evidence: EvidenceBundle, generation_context):
         if not image_bytes:
             raise RuntimeError("no_patch_bytes")
         image_bytes = _mark_agent_vqa_target(
@@ -2030,11 +2073,12 @@ def _make_agent_vqa_controller(source: str) -> AgentVqaController:
             choices=_choices_for_spec(spec),
             evidence_text=ev_text,
             max_tokens=AGENT_VQA_VLM_MAX_TOKENS,
+            generation_seed=generation_context.seed,
         )
         return res["raw"]
 
     def perceive_fn():
-        result, snap, _tile = _vln_perceive(source)
+        result, snap, _tile = _vln_perceive(source, task_context.roi_tile_id)
         if result is None and _post_covered(float(snap["lat"]), float(snap["lon"])):
             raise RuntimeError("perception_backend_unavailable")
         return result
@@ -2094,12 +2138,113 @@ def _make_agent_vqa_controller(source: str) -> AgentVqaController:
         motion_mode=VLN_RECHECK_MOTION_MODE,
     ))
 
-    def reobserve_fn(perception_result, spec):
+    def reobserve_fn(perception_result, spec, evidence: EvidenceBundle):
         snap = state.adapter.snapshot()
         dets = (perception_result.detection or {}).get("detections", []) if perception_result else []
+        # Reobserve evidence relevant to this question.  In particular, a damage
+        # question must keep tracking its marked building instead of recentering
+        # on an unrelated, more uncertain building in the same frame.
+        if spec.question_type == "damage":
+            target_box = evidence.target_bbox
+            # 用 2 位小数近似比较，避免 legacy 全精度 bbox 与 target_bbox 的
+            # round(2) 表示因精度差而漏匹配（否则 damage 题会静默丢失目标）。
+            dets = [
+                d for d in dets
+                if bboxes_match(d.get("bbox") or d.get("bbox_xyxy"), target_box)
+            ]
+        elif spec.target_subtypes:
+            from agent_vqa import CLASS_TO_SUBTYPE
+            wanted = set(spec.target_subtypes)
+            binary_dets = [
+                d for d in dets
+                if isinstance(d.get("class_probs"), dict)
+                and set(d["class_probs"]) == {"no-damage", "damaged"}
+            ]
+            # Binary ChangeOS negatives are relevant to the uncertainty gate:
+            # 0.51 no-damage / 0.49 damaged must not disappear before entropy is
+            # computed merely because its argmax does not match the query class.
+            dets = binary_dets or [
+                d for d in dets
+                if CLASS_TO_SUBTYPE.get(str(d.get("class_name") or ""), "") in wanted
+            ]
         risk_level = getattr(perception_result, "risk_level", "low") or "low"
         if spec.question_type == "damage" and risk_level == "none" and dets:
             risk_level = "low"
+
+        policy_metrics = None
+        if VLN_RECHECK_TRIGGER == "task_conditioned":
+            extra_policy_metrics = {}
+            conf, _label, _bbox, probs = best_evidence(dets)
+            has_evidence = bool(_label) or risk_level not in {"", "none"}
+            unc = uncertainty_score(
+                risk_level,
+                conf if _label else 0.3,
+                has_evidence,
+                class_probs=probs,
+                mode=VLN_UNCERTAINTY_MODE,
+                temperature=VLN_RECHECK_TEMPERATURE,
+            )
+            uncertainty_source = "most_uncertain_binary_object"
+            if spec.question_type == "count":
+                unc = count_bucket_uncertainty(dets)
+                uncertainty_source = "count_answer_bucket_entropy"
+            elif spec.question_type in {"damage", "spatial"} and evidence.class_probs:
+                unc = uncertainty_score(
+                    risk_level, evidence.target_conf, evidence.target_matched,
+                    class_probs=evidence.class_probs, mode=VLN_UNCERTAINTY_MODE,
+                    temperature=VLN_RECHECK_TEMPERATURE,
+                )
+                uncertainty_source = f"{spec.question_type}_target_entropy"
+                if spec.question_type == "spatial":
+                    bearing_unc = spatial_bearing_uncertainty(
+                        evidence.target_geo, evidence.roi_geo_bounds,
+                        evidence.observation_gsd_m,
+                    )
+                    unc = max(unc, bearing_unc)
+                    uncertainty_source = "max_spatial_target_and_bearing_entropy"
+                    extra_policy_metrics["bearing_uncertainty"] = bearing_unc
+            elif spec.question_type == "damage" and evidence.target_visible:
+                unc = 1.0
+                uncertainty_source = "visible_target_localization_missing"
+            recenter_m = 0.0
+            if spec.question_type == "damage" and evidence.target_norm_xy:
+                north_m, east_m = offset_from_norm(
+                    (float(evidence.target_norm_xy[0]), float(evidence.target_norm_xy[1])),
+                    float(getattr(perception_result, "patch_radius_m", 60.0)),
+                )
+                recenter_m = min(40.0, math.hypot(north_m, east_m))
+            task_decision = task_conditioned_recheck_decision(
+                question_type=spec.question_type,
+                uncertainty=unc,
+                alt=float(snap["alt"]),
+                descend_step_m=VLN_RECHECK_DESCEND_M,
+                alt_min_m=VLN_RECHECK_ALT_MIN_M,
+                roi_norm_bbox=evidence.roi_norm_bbox,
+                target_visible=evidence.target_visible,
+                target_matched=evidence.target_matched,
+                recenter_horizontal_m=recenter_m,
+                uncertainty_trigger=VLN_RECHECK_THRESHOLD,
+                min_roi_coverage=VLN_TASK_MIN_ROI_COVERAGE,
+                cost_weight=VLN_TASK_COST_WEIGHT,
+                coverage_weight=VLN_TASK_COVERAGE_WEIGHT,
+                cost_scale_s=VLN_TASK_COST_SCALE_S,
+                min_utility=VLN_TASK_MIN_UTILITY,
+            )
+            policy_metrics = task_decision.to_dict()
+            policy_metrics["uncertainty_source"] = uncertainty_source
+            policy_metrics.update(extra_policy_metrics)
+            if not task_decision.allow:
+                return {
+                    "kind": "skip",
+                    "params": None,
+                    "reason": task_decision.reason,
+                    "uncertainty": unc,
+                    "label": _label,
+                    "entropy_table_loaded": False,
+                    "entropy_fallback_used": False,
+                    "motion_mode": task_decision.motion_mode,
+                    "policy_metrics": policy_metrics,
+                }
         out = rechecker.assess(
             lat=float(snap["lat"]), lon=float(snap["lon"]), alt=float(snap["alt"]),
             risk_level=risk_level,
@@ -2107,6 +2252,7 @@ def _make_agent_vqa_controller(source: str) -> AgentVqaController:
             patch_radius_m=float(getattr(perception_result, "patch_radius_m", 60.0)),
             patch_width=int(getattr(perception_result, "patch_width", 100)),
             patch_height=int(getattr(perception_result, "patch_height", 100)),
+            track_id=f"agent_vqa:{spec.raw}",
         )
         audit = {
             "kind": out.kind,
@@ -2116,28 +2262,93 @@ def _make_agent_vqa_controller(source: str) -> AgentVqaController:
             "label": out.label,
             "entropy_table_loaded": bool(getattr(rechecker, "entropy_table_loaded", False)),
             "entropy_fallback_used": False,
-            "motion_mode": VLN_RECHECK_MOTION_MODE,
+            "motion_mode": (
+                policy_metrics["motion_mode"] if policy_metrics else VLN_RECHECK_MOTION_MODE
+            ),
+            "policy_metrics": policy_metrics or {},
         }
-        # Agent-VQA A2_ALWAYS 是“额外观测上限”对照：即使当前 detector 没有给出
-        # 可疑目标，也应执行一次中心下降重观测，验证动作通道和额外图像本身的价值。
-        if out.kind == "skip" and VLN_RECHECK_TRIGGER == "fixed":
+        if policy_metrics and task_decision.allow:
+            up_m = -min(
+                VLN_RECHECK_DESCEND_M,
+                max(0.0, float(snap["alt"]) - VLN_RECHECK_ALT_MIN_M),
+            )
+            north_m = east_m = 0.0
+            if task_decision.motion_mode == "descend_center" and evidence.target_norm_xy:
+                north_m, east_m = offset_from_norm(
+                    (float(evidence.target_norm_xy[0]), float(evidence.target_norm_xy[1])),
+                    float(getattr(perception_result, "patch_radius_m", 60.0)),
+                )
+                distance = math.hypot(north_m, east_m)
+                if distance > 40.0:
+                    scale = 40.0 / distance
+                    north_m, east_m = north_m * scale, east_m * scale
+            audit.update({
+                "kind": "recheck",
+                "params": {
+                    "north_m": round(north_m, 1), "east_m": round(east_m, 1),
+                    "up_m": round(up_m, 1), "speed": 10.0,
+                },
+                "reason": task_decision.reason,
+                "uncertainty": task_decision.uncertainty,
+            })
+        # 固定动作臂严格使用参考策略给出的逐题观测预算。动作几何不再依赖
+        # detector 随机选中的框；damage 居中只使用题面公开的目标标记。
+        if VLN_RECHECK_TRIGGER == "fixed" and out.kind in {"skip", "recheck"}:
             up_m = -min(VLN_RECHECK_DESCEND_M, max(0.0, float(snap["alt"]) - VLN_RECHECK_ALT_MIN_M))
-            if VLN_RECHECK_MOTION_MODE not in {"descend_only", "descend_center"}:
+            if VLN_RECHECK_MOTION_MODE not in {"descend_only", "descend_center", "wide_roi"}:
                 up_m = 0.0
-            if VLN_RECHECK_MOTION_MODE != "hold" and (
-                up_m < 0 or VLN_RECHECK_MOTION_MODE == "center_only"
-            ):
+            north_m = east_m = 0.0
+            if VLN_RECHECK_MOTION_MODE in {"center_only", "descend_center"} and evidence.target_norm_xy:
+                north_m, east_m = offset_from_norm(
+                    (float(evidence.target_norm_xy[0]), float(evidence.target_norm_xy[1])),
+                    float(getattr(perception_result, "patch_radius_m", 60.0)),
+                )
+                distance = math.hypot(north_m, east_m)
+                if distance > 40.0:
+                    scale = 40.0 / distance
+                    north_m, east_m = north_m * scale, east_m * scale
+            if VLN_RECHECK_MOTION_MODE == "wide_roi":
+                next_span_ratio = max(
+                    0.0,
+                    (float(snap["alt"]) + float(up_m)) / max(float(snap["alt"]), 1e-6),
+                )
+                coverage = predicted_roi_coverage(
+                    evidence.roi_norm_bbox, next_span_ratio=next_span_ratio,
+                )
+                if coverage < VLN_TASK_MIN_ROI_COVERAGE:
+                    up_m = 0.0
+            if VLN_RECHECK_MOTION_MODE != "hold":
                 audit.update({
                     "kind": "recheck",
-                    "params": {"north_m": 0.0, "east_m": 0.0, "up_m": round(up_m, 1), "speed": 10.0},
-                    "reason": "A2_ALWAYS 固定基线：无论当前证据是否充分，强制获取一次更高分辨率观测。",
+                    "params": {
+                        "north_m": round(north_m, 1), "east_m": round(east_m, 1),
+                        "up_m": round(up_m, 1), "speed": 10.0,
+                    },
+                    "reason": f"固定动作消融：motion_mode={VLN_RECHECK_MOTION_MODE}。",
+                    "motion_mode": VLN_RECHECK_MOTION_MODE,
                 })
         if audit["kind"] == "recheck" and audit["params"]:
             # 真正执行降高+居中，使下一步感知看到放大后的同一目标。
             # 同一分支同时覆盖策略原生 recheck 与 A2 fixed 强制对照。
+            before = state.adapter.snapshot()
+            if all(abs(float(audit["params"].get(k, 0.0))) <= 1e-9
+                   for k in ("north_m", "east_m", "up_m")):
+                audit["executed"] = {"north_m": 0.0, "east_m": 0.0, "up_m": 0.0}
+                audit["zero_motion"] = True
+                return audit
             executed = execute_action("fly_relative", audit["params"], source=source)
             if _action_failed(executed):
                 raise RuntimeError(str(executed.get("message") or "reobserve_motion_failed"))
+            after = state.adapter.snapshot()
+            actual_n, actual_e = latlon_to_meters(
+                float(before["lat"]), float(before["lon"]),
+                float(after["lat"]), float(after["lon"]),
+            )
+            audit["executed"] = {
+                "north_m": round(float(actual_n), 3),
+                "east_m": round(float(actual_e), 3),
+                "up_m": round(float(after["alt"]) - float(before["alt"]), 3),
+            }
             return audit
         return audit
 
@@ -2150,6 +2361,9 @@ def _make_agent_vqa_controller(source: str) -> AgentVqaController:
             allow_target_leak=AGENT_VQA_ORACLE,
             evidence_level=AGENT_VQA_EVIDENCE_LEVEL,
             answer_mode=AGENT_VQA_ANSWER_MODE,
+            generation_base_seed=AGENT_VQA_GENERATION_BASE_SEED,
+            generation_repeat=AGENT_VQA_GENERATION_REPEAT,
+            force_reobserve_on_invalid_output=AGENT_VQA_FORCE_REOBSERVE_INVALID,
         ),
         vlm_answer_fn=vlm_answer_fn,
         perceive_fn=perceive_fn,
@@ -2224,12 +2438,13 @@ def run_agent_vqa_episode(question: str, source: str = "ai", item: dict | None =
             "ts_ms": task_started_ns // 1_000_000,
         })
 
-        ctl = _make_agent_vqa_controller(source)
+        task_context = task_context_from_item(item, spec)
+        ctl = _make_agent_vqa_controller(source, task_context)
         # 逐步广播轨迹（不阻塞闭环）；最终结果由 agent_query_result 统一发出
         def _on_step(rec: dict) -> None:
             socketio.emit("agent_query_update", rec)
-        task_context = task_context_from_item(item, spec)
-        ans = ctl.run(question, question_id=f"agentvqa_{task_started_ns}",
+        explicit_qid = str((item or {}).get("id") or f"agentvqa_{task_started_ns}")
+        ans = ctl.run(question, question_id=explicit_qid,
                       task_context=task_context, on_step=_on_step)
         # 执行最终动作
         last = ctl.trajectory[-1] if ctl.trajectory else None

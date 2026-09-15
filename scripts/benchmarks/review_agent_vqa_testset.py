@@ -113,7 +113,7 @@ def check_schema(it):
     return errs
 
 
-def check_geometry(it, buildings):
+def check_geometry(it, buildings, damage_label_mode="four_class"):
     """几何与答案一致性检查 (需传入该瓦片的全部建筑)。"""
     errs = []
     qt = it.get("question_type")
@@ -123,6 +123,8 @@ def check_geometry(it, buildings):
     roi = it.get("roi") or {}
     bounds = roi.get("bounds")
     roi_scoped = it.get("observation_model") == "mosaic_fov_roi_scoped" and bounds
+    binary = damage_label_mode == "binary"
+    queried = set(SUBTYPE_TO_CN_LEVEL) - {"no-damage"} if binary else set(SEVERE_SUBTYPES)
 
     def in_scope(building):
         if roi_scoped:
@@ -144,12 +146,12 @@ def check_geometry(it, buildings):
             else:
                 if not in_scope(target):
                     errs.append("target_outside_roi" if roi_scoped else "target_outside_fov")
-                if target.get("subtype") not in SEVERE_SUBTYPES:
-                    errs.append("positive_target_not_severe")
+                if target.get("subtype") not in queried:
+                    errs.append("positive_target_not_queried_damage")
         else:  # 否
-            in_zone = [b for b in buildings if b["subtype"] in SEVERE_SUBTYPES and in_scope(b)]
+            in_zone = [b for b in buildings if b["subtype"] in queried and in_scope(b)]
             if in_zone:
-                errs.append(f"negative_has_severe_in_buffer:{len(in_zone)}")
+                errs.append(f"negative_has_queried_damage:{len(in_zone)}")
 
     elif qt == "damage":
         if not target:
@@ -165,12 +167,16 @@ def check_geometry(it, buildings):
                 errs.append("damage_marker_missing")
             if not roi_scoped and "十字标记建筑" not in it.get("question", ""):
                 errs.append("damage_question_marker_not_visible")
-            expected = SUBTYPE_TO_CN_LEVEL.get(target.get("subtype", ""))
+            subtype = target.get("subtype", "")
+            expected = (
+                ("无损伤" if subtype == "no-damage" else "损伤")
+                if binary else SUBTYPE_TO_CN_LEVEL.get(subtype)
+            )
             if ans != expected:
                 errs.append(f"answer_subtype_mismatch:ans={ans} expected={expected}")
 
     elif qt == "count":
-        in_fov = [b for b in buildings if b["subtype"] in SEVERE_SUBTYPES and in_scope(b)]
+        in_fov = [b for b in buildings if b["subtype"] in queried and in_scope(b)]
         n = len(in_fov)
         expected = "3+" if n >= 3 else str(n)
         if ans != expected:
@@ -207,6 +213,7 @@ def review(data, dataset_root, manifest_entries):
         return buildings_cache[tile_id]
 
     per_item = []
+    damage_label_mode = str(data.get("damage_label_mode") or "four_class")
     seen = set()
     for it in data.get("items", []):
         errs = check_schema(it)
@@ -218,7 +225,9 @@ def review(data, dataset_root, manifest_entries):
             errs.append(f"event_not_in_eval:{d}")
         # 几何
         if not errs:
-            errs += check_geometry(it, buildings_for(it.get("tile_id", "")))
+            errs += check_geometry(
+                it, buildings_for(it.get("tile_id", "")), damage_label_mode,
+            )
         # 重复
         key = (it.get("tile_id"), it.get("question_type"), it.get("question"), it.get("answer"))
         if key in seen:
@@ -264,6 +273,7 @@ def review(data, dataset_root, manifest_entries):
         by_qtype[r["question_type"]][r["status"]] += 1
     return {
         "schema_version": "agent-vqa-review/2.0",
+        "damage_label_mode": damage_label_mode,
         "review_protocol": "自动检查与人工审核独立记录；overall approved 要求两者均 approved",
         "n": n, "approved": approved, "rejected": rejected, "pending": pending,
         "auto_approved": auto_approved, "auto_rejected": auto_rejected,

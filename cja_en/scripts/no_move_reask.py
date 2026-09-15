@@ -7,10 +7,9 @@
 temperature=0.1，evidence_level=state），统计答案翻转率。
 
 关键边界（务必遵守）：
-  - 不改 backend/ 与 scripts/ 的任何源码；本脚本只读 app/agent_vqa 内部函数。
   - 不移动、不重观测：只用 step 0 的观测，重复采样，不执行 fly_relative / search / reobserve。
   - 输出只写 cja_en/ 之下，绝不写 runs/ 或覆盖原始实验目录。
-  - 只读冻结 final 题库 (agent_vqa_final_v2.json)，不读取条目 answer 之外的在线决策信息。
+  - 开发阶段只读 diagnostic 题库；final 运行需另行传入审核冻结的新题库。
 
 运行方式（需 source .env 以启用本地 Qwen，且需要空闲 GPU）：
     cd backend && set -a && source ../.env && set +a && \
@@ -20,6 +19,7 @@ temperature=0.1，evidence_level=state），统计答案翻转率。
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 import time
@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parents[2]
 BACKEND = ROOT / "backend"
 sys.path.insert(0, str(BACKEND))  # 必须在 import app 之前
 
-DEFAULT_TESTSET = BACKEND / "data" / "benchmarks" / "agent_vqa_final_v2.json"
+DEFAULT_TESTSET = BACKEND / "data" / "benchmarks" / "agent_vqa_v2_binary.json"
 
 
 def main() -> int:
@@ -40,6 +40,10 @@ def main() -> int:
     ap.add_argument("--qtype", default="", help="只跑某题型 presence/damage/count/spatial")
     ap.add_argument("--shard", default="", help="分片并行: 'i/N' 只跑 items[i::N]")
     ap.add_argument("--k", type=int, default=5, help="每题重复问 VLM 次数")
+    ap.add_argument("--generation-seed", type=int, default=42000)
+    ap.add_argument("--repeat-offset", type=int, default=0)
+    ap.add_argument("--verify-same-key", action="store_true",
+                    help="每个生成键额外调用一次并要求原始输出逐字一致")
     ap.add_argument("--out-dir", default=str(ROOT / "cja_en" / "runs" / "no_move_reask"))
     ap.add_argument("--tag", default="")
     ap.add_argument("--evidence-level", default="state",
@@ -74,13 +78,13 @@ def main() -> int:
     print("[reask] 正在 import app（首次加载感知 + 本地 VLM，可能数分钟）...", file=sys.stderr)
     t0 = time.time()
     import app  # noqa: E402
-    from agent_vqa import parse_question, parse_vlm_json_output  # noqa: E402
+    from agent_vqa import (  # noqa: E402
+        GenerationContext, build_evidence_from_perception, derive_generation_seed,
+        parse_question, parse_vlm_json_output, task_context_from_item,
+    )
 
     app.AGENT_VQA_EVIDENCE_LEVEL = args.evidence_level
     print(f"[reask] app ready in {time.time() - t0:.1f}s", file=sys.stderr)
-
-    # 复用论文实验的控制器闭包：ctl._vlm 即 vlm_answer_fn（同 prompt/证据/温度 0.1）
-    ctl = app._make_agent_vqa_controller("bench")
 
     raw_path = out_dir / "episodes.jsonl"
     raw_fp = raw_path.open("w", encoding="utf-8")
@@ -116,6 +120,10 @@ def main() -> int:
                 app.state.semantic_map = None
 
             spec = parse_question(question)
+            task_context = task_context_from_item(item, spec)
+            # 每题都建立带该题白名单上下文的 controller；damage 的目标经纬度
+            # 和 ROI tile 不得沿用上一题或退化为空上下文。
+            ctl = app._make_agent_vqa_controller("bench", task_context)
             result = ctl._perceive()          # step 0 观测（含检测器 + 感知）
             if result is None:
                 skipped.append({"qid": qid, "reason": "out_of_coverage"})
@@ -124,10 +132,34 @@ def main() -> int:
             if not img:
                 skipped.append({"qid": qid, "reason": "no_patch_bytes"})
                 continue
+            obs_id = getattr(result, "patch_id", "obs0")
+            evidence = build_evidence_from_perception(
+                result, spec, obs_id, task_context,
+            )
+            image_sha256 = hashlib.sha256(img).hexdigest()
+            evidence_sha256 = hashlib.sha256(json.dumps(
+                evidence.to_prompt_dict(), ensure_ascii=False, sort_keys=True,
+            ).encode("utf-8")).hexdigest()
 
             samples = []
             for k in range(args.k):
-                text = ctl._vlm(img, result, spec, qid)      # 同一观测重复采样
+                repeat = args.repeat_offset + k
+                seed = derive_generation_seed(
+                    args.generation_seed, qid, repeat, 0, "no_move_reask",
+                )
+                context = GenerationContext(
+                    qid=qid, repeat=repeat, step=0,
+                    call_role="no_move_reask", seed=seed,
+                )
+                text = ctl._vlm(img, result, spec, qid, evidence, context)
+                repeatability_match = None
+                if args.verify_same_key:
+                    duplicate = ctl._vlm(img, result, spec, qid, evidence, context)
+                    repeatability_match = duplicate == text
+                    if not repeatability_match:
+                        raise RuntimeError(
+                            f"generation seed repeatability failed for {qid} repeat={repeat}"
+                        )
                 ans = parse_vlm_json_output(text, spec, qid)
                 samples.append({
                     "answer": ans.answer,
@@ -135,6 +167,10 @@ def main() -> int:
                     "confidence": ans.confidence,
                     "abstain": bool(ans.abstain),
                     "reason_code": ans.reason_code,
+                    "generation_seed": seed,
+                    "repeat": repeat,
+                    "raw_output_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                    "same_key_repeatability_match": repeatability_match,
                 })
             rec = {
                 "qid": qid,
@@ -142,6 +178,8 @@ def main() -> int:
                 "disaster": item.get("disaster"),
                 "gt_answer": gt,
                 "k": args.k,
+                "image_sha256": image_sha256,
+                "evidence_sha256": evidence_sha256,
                 "samples": samples,
             }
             records.append(rec)
@@ -161,8 +199,13 @@ def main() -> int:
     raw_fp.close()
 
     # ── 汇总 ──────────────────────────────────────────────
+    valid_for_analysis = len(records) == len(items) and not skipped
     summary = {"n_items": len(items), "n_run": len(records), "n_skipped": len(skipped),
-               "k": args.k, "evidence_level": args.evidence_level, "skipped": skipped}
+               "k": args.k, "evidence_level": args.evidence_level,
+               "generation_seed": args.generation_seed,
+               "repeat_offset": args.repeat_offset,
+               "verify_same_key": bool(args.verify_same_key),
+               "valid_for_analysis": valid_for_analysis, "skipped": skipped}
     if records:
         flips = []
         per_type = Counter()
@@ -195,7 +238,7 @@ def main() -> int:
     print("\n[reask] 汇总:")
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     print(f"[reask] 完成：{len(records)} 题运行，{len(skipped)} 题跳过 → {out_dir}")
-    return 0
+    return 0 if valid_for_analysis else 1
 
 
 if __name__ == "__main__":

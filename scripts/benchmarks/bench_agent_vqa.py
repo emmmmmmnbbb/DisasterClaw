@@ -42,6 +42,7 @@ BACKEND = REPO_ROOT / "backend"
 sys.path.insert(0, str(BACKEND))  # 必须在 import app 之前
 
 from recheck import reobserve_flight_time_s  # noqa: E402
+from vlm_analyzer import AGENT_VQA_SYSTEM_PROMPT  # noqa: E402
 
 DEFAULT_TESTSET = BACKEND / "data" / "benchmarks" / "agent_vqa_testset_v2.json"
 RUNS_DIR = REPO_ROOT / "runs" / "benchmarks" / "cja_agent_vqa"
@@ -61,6 +62,15 @@ CONFIGS = {
                   "recheck_trigger": "threshold", "desc": "图像 + 结构化感知"},
     "V2_STATE": {"evidence_level": "state", "max_search": 0, "max_reobs": 0,
                  "recheck_trigger": "threshold", "desc": "V1 + STMR + 历史"},
+    # 纯 VLM 臂: 与同名 hybrid 配置逐字段相同, 只把 answer_mode 换成 vlm。
+    # 用途是在结构化证据下发后单独检验 VLM 是否仍然坍缩; hybrid 会用规则答案
+    # 覆盖 VLM, 因此不能用来判断 VLM 本身的能力或坍缩。
+    "V2_STATE_VLM": {"evidence_level": "state", "max_search": 0, "max_reobs": 0,
+                     "answer_mode": "vlm", "recheck_trigger": "threshold",
+                     "desc": "V2_STATE 的纯 VLM 回答臂 (无规则覆盖)"},
+    "A0_VLM": {"evidence_level": "state", "max_search": 6, "max_reobs": 0,
+               "answer_mode": "vlm", "recheck_trigger": "threshold",
+               "desc": "A0_HOLD 的纯 VLM 回答臂 (坍缩诊断用)"},
     "A0_HOLD": {"evidence_level": "state", "max_search": 6, "max_reobs": 0,
                 "recheck_trigger": "threshold", "desc": "Agent 单观测基线 (可搜索不可重观测)"},
     "A1_RANDOM": {"evidence_level": "state", "max_search": 6, "max_reobs": 2,
@@ -72,6 +82,15 @@ CONFIGS = {
                    "recheck_trigger": "threshold",
                    "recheck_extra": {"uncertainty_mode": "entropy"},
                    "desc": "校准熵驱动主动策略"},
+    "T1_TASK": {"evidence_level": "state", "max_search": 6, "max_reobs": 2,
+                "recheck_trigger": "task_conditioned",
+                "recheck_extra": {
+                    "uncertainty_mode": "entropy", "trigger": 0.5,
+                    "min_roi_coverage": 0.98, "cost_weight": 0.05,
+                    "coverage_weight": 1.0, "cost_scale_s": 60.0,
+                    "min_utility": 0.05,
+                },
+                "desc": "任务条件化效用策略（证据增益-动作成本-覆盖损失）"},
     "A3U_RAW_ENTROPY": {"evidence_level": "state", "max_search": 6, "max_reobs": 2,
                         "recheck_trigger": "threshold",
                         "recheck_extra": {"uncertainty_mode": "entropy_raw"},
@@ -103,23 +122,35 @@ CONFIGS = {
         "recheck_trigger": "fixed", "recheck_extra": {"motion_mode": "hold"},
         "desc": "动作消融：保持",
     },
+    "AB_NOOP": {
+        "evidence_level": "state", "max_search": 6, "max_reobs": 2,
+        "recheck_trigger": "fixed", "matched_baseline": "same_items",
+        "recheck_extra": {"motion_mode": "no_op", "force_reobserve_invalid": True},
+        "desc": "动作消融：同姿态重复观测",
+    },
     "AB_CENTER": {
         "evidence_level": "state", "max_search": 6, "max_reobs": 2,
         "recheck_trigger": "fixed", "matched_baseline": "same_items",
-        "recheck_extra": {"motion_mode": "center_only"},
+        "recheck_extra": {"motion_mode": "center_only", "force_reobserve_invalid": True},
         "desc": "动作消融：仅居中",
     },
     "AB_DESCEND": {
         "evidence_level": "state", "max_search": 6, "max_reobs": 2,
         "recheck_trigger": "fixed", "matched_baseline": "same_items",
-        "recheck_extra": {"motion_mode": "descend_only"},
+        "recheck_extra": {"motion_mode": "descend_only", "force_reobserve_invalid": True},
         "desc": "动作消融：仅下降",
     },
     "AB_FULL": {
         "evidence_level": "state", "max_search": 6, "max_reobs": 2,
         "recheck_trigger": "fixed", "matched_baseline": "same_items",
-        "recheck_extra": {"motion_mode": "descend_center"},
+        "recheck_extra": {"motion_mode": "descend_center", "force_reobserve_invalid": True},
         "desc": "动作消融：下降并居中",
+    },
+    "AB_WIDE": {
+        "evidence_level": "state", "max_search": 6, "max_reobs": 2,
+        "recheck_trigger": "fixed", "matched_baseline": "same_items",
+        "recheck_extra": {"motion_mode": "wide_roi", "force_reobserve_invalid": True},
+        "desc": "动作消融：仅在完整保留查询 ROI 时下降",
     },
     "O_REF": {"evidence_level": "state", "max_search": 6, "max_reobs": 2,
               "recheck_trigger": "threshold", "offline_only": True,
@@ -145,7 +176,13 @@ def apply_config(app, cfg: dict) -> None:
     app.VLN_RECHECK_RANDOM_PROB = float(extra.get("random_prob", 0.5))
     app.VLN_RECHECK_RANDOM_SEED = int(extra.get("random_seed", 0))
     app.VLN_RECHECK_MOTION_MODE = extra.get("motion_mode", "descend_center")
+    app.AGENT_VQA_FORCE_REOBSERVE_INVALID = bool(extra.get("force_reobserve_invalid", False))
     app.VLN_RECHECK_TEMPERATURE = float(extra.get("temperature", 1.0))
+    app.VLN_TASK_MIN_ROI_COVERAGE = float(extra.get("min_roi_coverage", 0.98))
+    app.VLN_TASK_COST_WEIGHT = float(extra.get("cost_weight", 0.05))
+    app.VLN_TASK_COVERAGE_WEIGHT = float(extra.get("coverage_weight", 1.0))
+    app.VLN_TASK_COST_SCALE_S = float(extra.get("cost_scale_s", 60.0))
+    app.VLN_TASK_MIN_UTILITY = float(extra.get("min_utility", 0.05))
     app.VLN_ENTROPY_TABLE = str(extra.get("entropy_table_path", app.VLN_ENTROPY_TABLE))
     app.VLN_CONFORMAL_QHAT = float(extra.get("conformal_qhat", 0.9))
     app.VLN_CONFORMAL_ALPHA = float(extra.get("conformal_alpha", 0.1))
@@ -167,7 +204,13 @@ def effective_config(app) -> dict:
         "random_prob": app.VLN_RECHECK_RANDOM_PROB,
         "random_seed": app.VLN_RECHECK_RANDOM_SEED,
         "motion_mode": app.VLN_RECHECK_MOTION_MODE,
+        "force_reobserve_invalid": app.AGENT_VQA_FORCE_REOBSERVE_INVALID,
         "temperature": app.VLN_RECHECK_TEMPERATURE,
+        "min_roi_coverage": app.VLN_TASK_MIN_ROI_COVERAGE,
+        "cost_weight": app.VLN_TASK_COST_WEIGHT,
+        "coverage_weight": app.VLN_TASK_COVERAGE_WEIGHT,
+        "cost_scale_s": app.VLN_TASK_COST_SCALE_S,
+        "min_utility": app.VLN_TASK_MIN_UTILITY,
         "entropy_table_path": app.VLN_ENTROPY_TABLE,
         "conformal_qhat": app.VLN_CONFORMAL_QHAT,
         "conformal_alpha": app.VLN_CONFORMAL_ALPHA,
@@ -207,6 +250,32 @@ def file_hash(path: Path) -> str:
     return h.hexdigest()
 
 
+def source_fingerprint() -> str:
+    """Hash the executable Agent-VQA path, including uncommitted source files."""
+    relpaths = (
+        "backend/agent_vqa.py", "backend/app.py", "backend/perception.py",
+        "backend/recheck.py", "backend/detectors/base.py",
+        "backend/detectors/changeos.py", "backend/vlm_analyzer.py",
+        "backend/llm_client.py", "backend/local_qwen_vl.py", "backend/ml_runtime.py",
+        "backend/config.py",
+        "scripts/benchmarks/bench_agent_vqa.py",
+    )
+    h = hashlib.sha256()
+    for rel in relpaths:
+        path = REPO_ROOT / rel
+        h.update(rel.encode("utf-8") + b"\0")
+        if path.is_file():
+            h.update(path.read_bytes())
+        h.update(b"\0")
+    return h.hexdigest()
+
+
+def episode_seed(base_seed: int, config: str, qid: str) -> int:
+    """Stable per-episode seed, independent of shard order and process count."""
+    payload = f"agent-vqa|{int(base_seed)}|{config}|{qid}".encode("utf-8")
+    return int.from_bytes(hashlib.sha256(payload).digest()[:8], "big") & 0x7FFFFFFF
+
+
 def load_completed_rows(path: Path) -> dict[tuple[str, str], dict]:
     """Load the latest durable row for each (config, qid) resume key."""
     rows: dict[tuple[str, str], dict] = {}
@@ -226,6 +295,10 @@ def load_completed_rows(path: Path) -> dict[tuple[str, str], dict]:
 
 def env_snapshot() -> dict:
     import importlib.metadata
+    detector_backend = os.environ.get("DETECTOR_BACKEND", "legacy")
+    changeos_weights = Path(os.environ.get(
+        "CHANGEOS_WEIGHTS", REPO_ROOT / "backend/outputs/changeos/changeos_r34.pt",
+    )).expanduser()
     info = {
         "timestamp": _dt.datetime.now().isoformat(timespec="seconds"),
         "dataset_mode": os.environ.get("DATASET_MODE", "xbd"),
@@ -233,10 +306,32 @@ def env_snapshot() -> dict:
         "python": ".".join(map(str, __import__("sys").version_info[:3])),
         "git_commit": git_commit(),
         "git_dirty": git_dirty(),
+        "source_fingerprint": source_fingerprint(),
         "llm_model": os.environ.get("LLM_MODEL", ""),
-        "vlm_model": os.environ.get("VLM_MODEL", ""),
+        "vlm_provider": os.environ.get("VLM_PROVIDER", "vlm"),
+        "vlm_model": (
+            os.environ.get("BASE_MODEL")
+            or os.environ.get("VLM_LOCAL_MODEL")
+            or os.environ.get("VLM_MODEL")
+            or "Qwen/Qwen2.5-VL-7B-Instruct"
+        ),
+        "vlm_top_p": float(os.environ.get("VLM_LOCAL_TOP_P", "0.9") or "0.9"),
+        "vlm_repetition_penalty": float(
+            os.environ.get("VLM_LOCAL_REPETITION_PENALTY", "1.1") or "1.1"
+        ),
         "agent_vqa_confidence_threshold": os.environ.get("AGENT_VQA_CONFIDENCE_THRESHOLD", "0.5"),
+        "detector_backend": detector_backend,
+        "damage_label_mode": os.environ.get("DAMAGE_LABEL_MODE", "four_class"),
     }
+    if detector_backend.strip().lower() in {"changeos", "changeos_r34", "binary_changeos"}:
+        info["perception_tool"] = {
+            "name": "ChangeOS",
+            "weights": str(changeos_weights),
+            "weights_sha256": file_hash(changeos_weights),
+            "frozen": True,
+            "policy_shared": True,
+            "evaluation_role": "fixed_external_perception_tool",
+        }
     info["packages"] = {}
     for pkg in ("numpy", "scipy", "torch", "torchvision", "ultralytics", "transformers"):
         try:
@@ -251,23 +346,42 @@ def score_episode(report: dict, item: dict) -> dict:
 
     在线控制器不读 GT; 所有 GT 比较只在此函数完成 (计划 7.4 / E4)。
     """
-    gt_answer = item.get("answer", "")
+    gt_answer_original = item.get("answer", "")
     ans = (report or {}).get("answer") or {}
-    pred = ans.get("answer", "")
+    pred_original = ans.get("answer", "")
+    binary_damage = (
+        os.getenv("DAMAGE_LABEL_MODE", "four_class").strip().lower() in {"binary", "damaged"}
+        and item.get("question_type") == "damage"
+    )
+
+    def _collapse_answer(value: str) -> str:
+        if not binary_damage:
+            return value
+        if value in {"无损伤", "没损伤", "未损伤", "no-damage"}:
+            return "无损伤"
+        if value in {"轻微损伤", "严重损伤", "完全损毁", "损伤", "damaged"}:
+            return "损伤"
+        return value
+
+    gt_answer = _collapse_answer(gt_answer_original)
+    pred = _collapse_answer(pred_original)
     abstain = bool(ans.get("abstain"))
     decision = ans.get("decision", "")
     correct = (not abstain) and bool(pred) and pred == gt_answer
     # 弃答是否"应该": GT 为否定类 (如 presence=否 / count=0) 且模型 abstain 视为合理保守
     abstain_should = abstain and gt_answer in {"否", "0"}
     traj = (report or {}).get("trajectory", [])
-    preds = [t.get("candidate_answer") for t in traj if t.get("candidate_answer")]
+    preds = [
+        _collapse_answer(t.get("candidate_answer"))
+        for t in traj if t.get("candidate_answer")
+    ]
     flipped = len(set(preds)) > 1
     reobserve_pairs = []
     for i, step in enumerate(traj[:-1]):
         if step.get("decision") != "reobserve":
             continue
-        before = step.get("candidate_answer") or ""
-        after = traj[i + 1].get("candidate_answer") or ""
+        before = _collapse_answer(step.get("candidate_answer") or "")
+        after = _collapse_answer(traj[i + 1].get("candidate_answer") or "")
         reobserve_pairs.append({
             "before": before,
             "after": after,
@@ -287,11 +401,20 @@ def score_episode(report: dict, item: dict) -> dict:
         dict(t.get("reobserve_params") or {}) for t in traj
         if t.get("decision") == "reobserve"
     ]
+    reobserve_executed = [
+        dict(t.get("reobserve_executed") or {}) for t in traj
+        if t.get("decision") == "reobserve"
+    ]
+    motion_rows = (
+        reobserve_executed
+        if reobserve_executed and all(bool(p) for p in reobserve_executed)
+        else reobserve_params
+    )
     horizontal_m = sum(
         (float(p.get("north_m", 0.0)) ** 2 + float(p.get("east_m", 0.0)) ** 2) ** 0.5
-        for p in reobserve_params
+        for p in motion_rows
     )
-    vertical_m = sum(abs(float(p.get("up_m", 0.0))) for p in reobserve_params)
+    vertical_m = sum(abs(float(p.get("up_m", 0.0))) for p in motion_rows)
     difficulty = item.get("difficulty", "")
     difficulty_band = difficulty.get("distance", "") if isinstance(difficulty, dict) else difficulty
     ans_evidence = ans.get("evidence") or {}
@@ -305,7 +428,9 @@ def score_episode(report: dict, item: dict) -> dict:
         "tile_id": item.get("tile_id", ""),
         "question": item.get("question", ""),
         "gt_answer": gt_answer,
+        "gt_answer_original": gt_answer_original,
         "pred_answer": pred,
+        "pred_answer_original": pred_original,
         "abstain": abstain,
         "decision": decision,
         "reason_code": ans.get("reason_code", ""),
@@ -321,6 +446,9 @@ def score_episode(report: dict, item: dict) -> dict:
         "n_reobserve_skips": n_reobserve_skips,
         "reobserve_horizontal_m": round(horizontal_m, 3),
         "reobserve_vertical_m": round(vertical_m, 3),
+        "reobserve_motion_source": (
+            "executed" if motion_rows is reobserve_executed else "requested_fallback"
+        ),
         "reobserve_flight_time_s": round(
             reobserve_flight_time_s(horizontal_m, vertical_m), 3,
         ),
@@ -338,6 +466,15 @@ def score_episode(report: dict, item: dict) -> dict:
         "wall_s": report.get("wall_s", 0.0) if report else 0.0,
         "trajectory": traj,
         "evidence": ans_evidence,
+        "generation_seeds": [
+            t.get("generation_seed") for t in traj
+            if t.get("generation_seed") is not None
+        ],
+        "generation_repeat": next(
+            (t.get("generation_repeat") for t in traj
+             if t.get("generation_seed") is not None),
+            None,
+        ),
     }
 
 
@@ -396,8 +533,14 @@ def aggregate(rows: list[dict]) -> dict:
     agg["by_difficulty"] = by_diff
     fail = {}
     invalid_schema = {}
+    policy_failure_reasons = {"out_of_coverage"}
     for r in rows:
-        if r.get("ok") and not r.get("correct"):
+        reason = str(r.get("reason_code") or "")
+        if reason in policy_failure_reasons:
+            # A policy can leave the available imagery footprint.  Keep that
+            # episode as a scored failure without invalidating the whole run.
+            key = reason
+        elif r.get("ok") and not r.get("correct"):
             if r.get("reason_code") == "invalid_output":
                 key = "invalid_output"
             else:
@@ -427,6 +570,18 @@ def md_table(per_config: dict) -> str:
     return "\n".join(lines)
 
 
+def _normalise_label_mode(mode: str) -> str:
+    m = str(mode or "").strip().lower()
+    return "binary" if m in {"binary", "damaged", "damage"} else "four_class"
+
+
+def _detector_label_mode(backend: str) -> str:
+    """检测后端输出的损伤标签空间：二分类 ChangeOS 或四分类其余后端。"""
+    if str(backend or "").strip().lower() in {"changeos", "changeos_r34", "binary_changeos"}:
+        return "binary"
+    return "four_class"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Agent-VQA 评测 (E1-E5 消融成绩单)")
     ap.add_argument("--testset", default=str(DEFAULT_TESTSET))
@@ -435,11 +590,15 @@ def main() -> int:
     ap.add_argument("--split", default="", help="只跑某 split train/val/test (空=全部)")
     ap.add_argument("--qtype", default="", help="只跑某题型 presence/damage/count/spatial (空=全部)")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--generation-seed", type=int, default=42000,
+                    help="VLM generation base seed; independent of --seed/action RNG")
+    ap.add_argument("--generation-repeat", type=int, default=0,
+                    help="repeat index included in each per-call generation seed")
     ap.add_argument("--frozen-manifest", default="",
                     help="冻结配置 JSON；校验题库 hash 并注入 T/qhat/阈值/熵表")
     ap.add_argument("--review-report", default="",
                     help="agent-vqa-review/2.0 审核报告；final 题库必须提供且每题 overall approved")
-    ap.add_argument("--matched-reference", default="A5_EXPECTED",
+    ap.add_argument("--matched-reference", default="T1_TASK",
                     help="同预算基线的参考配置（必须在 matched 配置前运行）")
     ap.add_argument("--matched-budget-frac", type=float, default=-1.0,
                     help="无参考结果时用于 smoke 的固定预算比例；正式评测保持 -1")
@@ -449,6 +608,9 @@ def main() -> int:
                     help="续跑: 跳过 episodes.jsonl 已有的 (config,qid)")
     ap.add_argument("--allow-crash-resume", action="store_true",
                     help="允许 final 题库在进程崩溃后续跑；只跳过已完成 (config,qid)，不重跑")
+    ap.add_argument("--allow-label-mismatch", action="store_true",
+                    help="覆盖题库 damage_label_mode 与检测后端标签空间的兼容性检查"
+                         "（仅在明确知道自己在做什么时使用；误用会产生一张看似正常的无效表）")
     ap.add_argument("--shard", default="",
                     help="分片并行: 'i/N' 只跑 items[i::N] (用于多 GPU 按题分片, "
                          "保持每片内 (config,qid) 配对完整)")
@@ -482,6 +644,35 @@ def main() -> int:
         print(f"[ERROR] 题库不存在: {testset_path}", file=sys.stderr)
         return 2
     testset = json.loads(testset_path.read_text(encoding="utf-8"))
+
+    # P0 fail-fast：二分类后端（ChangeOS）与四分类题库不兼容。damage 题虽在
+    # score_episode 里折叠了，presence/count/spatial 仍会系统性错配（题面问
+    # “严重或完全损毁”，检测只给“受损”），必须阻断，而不是跑出一张看似正常的无效表。
+    detector_backend = os.environ.get("DETECTOR_BACKEND", "legacy")
+    backend_label_mode = _detector_label_mode(detector_backend)
+    testset_label_mode = _normalise_label_mode(testset.get("damage_label_mode"))
+    env_label_mode = _normalise_label_mode(os.environ.get("DAMAGE_LABEL_MODE", "four_class"))
+    label_problems = []
+    if testset_label_mode != backend_label_mode:
+        label_problems.append(
+            f"题库 damage_label_mode={testset_label_mode!r} 与检测后端 "
+            f"{detector_backend!r} 的标签空间 {backend_label_mode!r} 不兼容"
+        )
+    if env_label_mode != testset_label_mode:
+        label_problems.append(
+            f"DAMAGE_LABEL_MODE={env_label_mode!r} 与题库 {testset_label_mode!r} 不一致"
+        )
+    if label_problems and not args.allow_label_mismatch:
+        for p in label_problems:
+            print(f"[ERROR] {p}", file=sys.stderr)
+        print(
+            "[ERROR] 二分类 ChangeOS 后端必须配套 --damage-label-mode binary 生成的题库，"
+            "并设置 DAMAGE_LABEL_MODE=binary（含 DETECTOR_BACKEND=changeos）；"
+            "确认无误可用 --allow-label-mismatch 覆盖。",
+            file=sys.stderr,
+        )
+        return 2
+
     if testset.get("eval_role") == "final":
         if args.resume and not args.allow_crash_resume:
             print(
@@ -505,6 +696,21 @@ def main() -> int:
     if args.frozen_manifest:
         frozen_path = Path(args.frozen_manifest)
         frozen = json.loads(frozen_path.read_text(encoding="utf-8"))
+        # P2 防护：冻结 manifest 里的 qhat / temperature 是在特定标签空间上拟合的；
+        # 二分类后端不得静默复用四分类 qhat（conformal 覆盖语义会被破坏）。
+        frozen_label_mode = _normalise_label_mode(frozen.get("label_mode"))
+        if (
+            frozen_label_mode
+            and frozen_label_mode != backend_label_mode
+            and not args.allow_label_mismatch
+        ):
+            print(
+                f"[ERROR] 冻结 manifest label_mode={frozen_label_mode!r} 与检测后端 "
+                f"{detector_backend!r} 的标签空间 {backend_label_mode!r} 不兼容；"
+                "请为 ChangeOS 重新拟合 binary qhat 并重新冻结。",
+                file=sys.stderr,
+            )
+            return 2
         if testset.get("eval_role") == "final":
             expected_hash = str(frozen.get("testset_sha256") or frozen.get("testset_sha256_16") or "")
             actual_hash = file_hash(testset_path)
@@ -563,6 +769,8 @@ def main() -> int:
     print("[bench] 正在导入 app (首次会加载/预热感知 + 本地 VLM, 可能耗时数分钟)...")
     t_import = time.time()
     import app  # noqa: E402
+    app.AGENT_VQA_GENERATION_BASE_SEED = int(args.generation_seed)
+    app.AGENT_VQA_GENERATION_REPEAT = int(args.generation_repeat)
     if frozen:
         app.VLN_ENTROPY_TABLE = str(frozen.get("entropy_table_path", app.VLN_ENTROPY_TABLE))
         app.VLN_CONFORMAL_QHAT = float(frozen.get("qhat", app.VLN_CONFORMAL_QHAT))
@@ -643,6 +851,11 @@ def main() -> int:
                 continue
             t0 = time.time()
             try:
+                action_seed = episode_seed(args.seed, cfg_name, qid)
+                # Each episode constructs a fresh RecheckController.  A constant
+                # seed would repeat the same first Bernoulli draw for every item,
+                # collapsing A1_RANDOM into an always/never policy.
+                app.VLN_RECHECK_RANDOM_SEED = action_seed
                 if matched_budget is not None:
                     app.AGENT_VQA_MAX_REOBSERVATIONS = int(matched_budget.get(qid, 0))
                 else:
@@ -659,6 +872,9 @@ def main() -> int:
                           "wall_s": round(time.time() - t0, 2)}
                 traceback.print_exc()
             row = score_episode(report, item)
+            row["action_seed"] = episode_seed(args.seed, cfg_name, qid)
+            row["answer_mode"] = base_effective["answer_mode"]
+            row["evidence_level"] = base_effective["evidence_level"]
             cfg_rows.append(row)
             raw_fp.write(json.dumps(row, ensure_ascii=False) + "\n")
             raw_fp.flush()
@@ -666,6 +882,11 @@ def main() -> int:
             print(f"  [{cfg_name}] {idx + 1}/{len(items)} {mark} "
                   f"pred={row['pred_answer']!r} gt={row['gt_answer']!r} "
                   f"steps={row['n_steps']} {row['wall_s']}s :: {item['question'][:24]}")
+        # 续跑读回的旧行可能缺字段，按本配置的实际运行开关补齐，保证同一配置
+        # 的所有行都带 answer_mode，报告端才能校验是否混跑。
+        for row in cfg_rows:
+            row.setdefault("answer_mode", base_effective["answer_mode"])
+            row.setdefault("evidence_level", base_effective["evidence_level"])
         per_config[cfg_name] = {
             "agg": aggregate(cfg_rows), "switches": cfg,
             "effective_switches": base_effective,
@@ -717,7 +938,13 @@ def main() -> int:
         "agent_vqa_answer_modes": {
             c: CONFIGS[c].get("answer_mode", "hybrid") for c in configs
         },
-        "vlm_system_prompt": "见 backend/vlm_analyzer.py:AGENT_VQA_SYSTEM_PROMPT",
+        "vlm_system_prompt": AGENT_VQA_SYSTEM_PROMPT,
+        "vlm_system_prompt_sha256": hashlib.sha256(
+            AGENT_VQA_SYSTEM_PROMPT.encode("utf-8")
+        ).hexdigest(),
+        "generation_seed_protocol": "sha256(base_seed,qid,repeat,step,call_role)",
+        "generation_base_seed": int(args.generation_seed),
+        "generation_repeat": int(args.generation_repeat),
     }
     (out_dir / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8")

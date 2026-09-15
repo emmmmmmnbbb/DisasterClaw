@@ -34,14 +34,23 @@ class LLMClient:
     def provider_option(self, key: str, default=None):
         return self._provider_cfg.get(key, default)
 
-    def chat(self, messages: list[dict], temperature: float = 0.3, max_tokens: int | None = None) -> str:
+    def chat(
+        self,
+        messages: list[dict],
+        temperature: float = 0.3,
+        max_tokens: int | None = None,
+        seed: int | None = None,
+    ) -> str:
         if self._api_type == "openai_compat":
-            return self._chat_openai_compat(messages, temperature, max_tokens)
+            return self._chat_openai_compat(messages, temperature, max_tokens, seed)
         if self._api_type == "local_qwen_vl":
-            return self._chat_local_qwen_vl(messages, temperature, max_tokens)
+            return self._chat_local_qwen_vl(messages, temperature, max_tokens, seed)
         raise NotImplementedError(f"api_type '{self._api_type}' 暂不支持")
 
-    def _chat_openai_compat(self, messages: list[dict], temperature: float, max_tokens: int | None) -> str:
+    def _chat_openai_compat(
+        self, messages: list[dict], temperature: float,
+        max_tokens: int | None, seed: int | None,
+    ) -> str:
         url = f"{self._base_url}/chat/completions"
         payload: dict = {
             "model": self._model,
@@ -51,6 +60,8 @@ class LLMClient:
         }
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
+        if seed is not None:
+            payload["seed"] = int(seed)
 
         req = urllib.request.Request(
             url,
@@ -73,12 +84,16 @@ class LLMClient:
         except urllib.error.URLError as exc:
             raise RuntimeError(f"[LLMClient] 无法连接到 {url}：{exc.reason}") from exc
 
-    def _chat_local_qwen_vl(self, messages: list[dict], temperature: float, max_tokens: int | None) -> str:
+    def _chat_local_qwen_vl(
+        self, messages: list[dict], temperature: float,
+        max_tokens: int | None, seed: int | None,
+    ) -> str:
         backend = get_local_qwen_vl_backend(self._provider_cfg)
         return backend.infer(
             messages=messages,
             max_new_tokens=max_tokens or 512,
             temperature=temperature,
+            seed=seed,
         )
 
 

@@ -118,9 +118,10 @@ def _expand_bbox(
 def crop_patch(
     image_path: str, bbox: tuple[float, float, float, float],
     image_w: int, image_h: int, out_size: int = CROP_SIZE,
+    margin: float = CONTEXT_MARGIN,
 ) -> Image.Image:
     """按 bbox（+上下文边距）从原图裁一块正方形 patch，resize 到 out_size。"""
-    x1, y1, x2, y2 = _expand_bbox(bbox, CONTEXT_MARGIN, image_w, image_h)
+    x1, y1, x2, y2 = _expand_bbox(bbox, margin, image_w, image_h)
     im = _load_rgb_tile(image_path)
     left, top = int(round(x1)), int(round(y1))
     right, bottom = max(left + 1, int(round(x2))), max(top + 1, int(round(y2)))
@@ -153,7 +154,8 @@ def _make_transform():
 class XbdChangeDataset(Dataset):  # type: ignore[misc]
     """读取 gen_xbd_change_dataset.py 产出的 JSONL，现场裁剪 pre/post 配对 patch。"""
 
-    def __init__(self, jsonl_path: str | Path, augment: bool = False):
+    def __init__(self, jsonl_path: str | Path, augment: bool = False,
+                 context_margin: float = CONTEXT_MARGIN):
         _require_torch()
         self.jsonl_path = Path(jsonl_path)
         self.records: list[dict] = []
@@ -163,6 +165,7 @@ class XbdChangeDataset(Dataset):  # type: ignore[misc]
                 if line:
                     self.records.append(json.loads(line))
         self.augment = augment
+        self.context_margin = context_margin
         self._transform = _make_transform()
 
     def __len__(self) -> int:
@@ -170,8 +173,10 @@ class XbdChangeDataset(Dataset):  # type: ignore[misc]
 
     def __getitem__(self, idx: int):
         rec = self.records[idx]
-        pre = crop_patch(rec["pre_image"], tuple(rec["bbox_pre"]), rec["image_width"], rec["image_height"])
-        post = crop_patch(rec["post_image"], tuple(rec["bbox_post"]), rec["image_width"], rec["image_height"])
+        pre = crop_patch(rec["pre_image"], tuple(rec["bbox_pre"]), rec["image_width"],
+                         rec["image_height"], margin=self.context_margin)
+        post = crop_patch(rec["post_image"], tuple(rec["bbox_post"]), rec["image_width"],
+                          rec["image_height"], margin=self.context_margin)
         if self.augment and random.random() < 0.5:
             pre = pre.transpose(Image.FLIP_LEFT_RIGHT)
             post = post.transpose(Image.FLIP_LEFT_RIGHT)
@@ -551,11 +556,13 @@ def train_main(args: argparse.Namespace) -> int:
             or audit.get("overlaps")
         ):
             raise ValueError(f"数据集不是严格事件级无泄漏切分: {manifest_path}")
-    train_ds = XbdChangeDataset(data_dir / "train.jsonl", augment=True)
+    train_ds = XbdChangeDataset(data_dir / "train.jsonl", augment=True,
+                                context_margin=args.context_margin)
     val_path = data_dir / "val.jsonl"
     if not val_path.exists():
         raise FileNotFoundError(f"缺少 val.jsonl: {val_path}（先跑 gen_xbd_change_dataset.py）")
-    val_ds = XbdChangeDataset(val_path, augment=False)
+    val_ds = XbdChangeDataset(val_path, augment=False,
+                              context_margin=args.context_margin)
     if args.limit:
         train_ds.records = train_ds.records[: args.limit]
         val_ds.records = val_ds.records[: max(1, args.limit // 4)]
@@ -680,6 +687,13 @@ def main() -> int:
         "--class-weighted",
         action="store_true",
         help="按训练集逐类频率倒数加权交叉熵，缓解 no-damage 占多数导致的塌缩（C2）。",
+    )
+    train_ap.add_argument(
+        "--context-margin",
+        type=float,
+        default=CONTEXT_MARGIN,
+        help="crop 时 bbox 四周各扩的比例（0.25=1.5×线性，0.5=2×，1.0=3×）。"
+             "消融实验用：minor/major 依赖建筑周围环境（水/泥浆/倒塌残骸）。",
     )
 
     args = ap.parse_args()

@@ -106,6 +106,7 @@ class VLMAnalyzer:
         system_prompt: str = AGENT_VQA_SYSTEM_PROMPT,
         max_tokens: int = 300,
         temperature: float = 0.1,
+        generation_seed: int | None = None,
     ) -> dict:
         """Agent-VQA 结构化问答接口 (计划 7.2)。
 
@@ -147,6 +148,7 @@ class VLMAnalyzer:
                     ],
                     temperature=temperature,
                     max_tokens=max_tokens,
+                    seed=generation_seed,
                 )
                 return {
                     "raw": text.strip(),
@@ -156,6 +158,7 @@ class VLMAnalyzer:
                     "prompt": user_prompt,
                     "temperature": temperature,
                     "max_tokens": max_tokens,
+                    "generation_seed": generation_seed,
                 }
             except Exception as exc:
                 last_error = exc

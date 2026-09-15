@@ -20,8 +20,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agent_vqa import (  # noqa: E402
-    AgentVqaConfig, AgentVqaController, QuestionSpec, TaskContext, VqaAnswer,
-    build_evidence_from_perception, parse_question, task_context_from_item,
+    AgentVqaConfig, AgentVqaController, EvidenceBundle, GeographicEvidenceMemory,
+    QuestionSpec, TaskContext, VqaAnswer,
+    bboxes_match, build_evidence_from_perception, derive_generation_seed,
+    choices_for_question_type, parse_question, task_context_from_item,
 )
 
 
@@ -42,12 +44,107 @@ def _det(cls, conf, bbox=None):
     return {"class_name": cls, "conf": conf, "bbox": bbox or [40, 40, 60, 60]}
 
 
-def _vlm_confident(img, result, spec, qid, evidence):
+def _geo_evidence(obs_id, objects, *, gsd=1.0):
+    return EvidenceBundle(
+        observation_id=obs_id, objects=objects, observation_gsd_m=gsd,
+        roi_coverage=1.0,
+        view_window={"west": 120.0, "south": 30.0, "east": 121.0, "north": 31.0},
+        roi_geo_bounds={"west": 120.4, "south": 30.4, "east": 120.6, "north": 30.6},
+    )
+
+
+def test_geographic_memory_deduplicates_and_fuses_resolution_weighted_probs() -> None:
+    spec = parse_question("标记区域内有多少栋受损建筑？")
+    memory = GeographicEvidenceMemory(match_radius_m=6.0)
+    first = _geo_evidence("wide", [{
+        "lat": 30.5, "lon": 120.5, "label": "无损伤建筑", "subtype": "no-damage",
+        "confidence": 0.6, "class_probs": {"no-damage": 0.6, "damaged": 0.4},
+        "bbox": [40, 40, 60, 60], "norm_xy": [0.5, 0.5],
+        "observation_id": "wide", "gsd_m": 1.5,
+    }], gsd=1.5)
+    second = _geo_evidence("fine", [{
+        "lat": 30.50001, "lon": 120.50001, "label": "受损建筑", "subtype": "damaged",
+        "confidence": 0.9, "class_probs": {"no-damage": 0.1, "damaged": 0.9},
+        "bbox": [41, 41, 61, 61], "norm_xy": [0.51, 0.51],
+        "observation_id": "fine", "gsd_m": 0.5,
+    }], gsd=0.5)
+    memory.update(spec, first)
+    fused = memory.update(spec, second)
+    assert fused.matching_count == 1
+    assert fused.target_subtype == "damaged"
+    assert fused.class_probs["damaged"] > 0.7
+    assert fused.history_observation_ids == ["wide", "fine"]
+    assert fused.objects[0]["n_sightings"] == 2
+
+
+def test_geographic_memory_does_not_overwrite_strong_fine_view() -> None:
+    spec = parse_question("标记区域内是否存在受损建筑？")
+    memory = GeographicEvidenceMemory(match_radius_m=6.0)
+    fine = _geo_evidence("fine", [{
+        "lat": 30.5, "lon": 120.5, "label": "受损建筑", "subtype": "damaged",
+        "confidence": 0.95, "class_probs": {"no-damage": 0.05, "damaged": 0.95},
+        "bbox": [40, 40, 60, 60], "norm_xy": [0.5, 0.5],
+        "observation_id": "fine", "gsd_m": 0.5,
+    }], gsd=0.5)
+    noisy = _geo_evidence("noisy", [{
+        "lat": 30.50001, "lon": 120.50001, "label": "无损伤建筑", "subtype": "no-damage",
+        "confidence": 0.55, "class_probs": {"no-damage": 0.55, "damaged": 0.45},
+        "bbox": [42, 42, 62, 62], "norm_xy": [0.52, 0.52],
+        "observation_id": "noisy", "gsd_m": 1.5,
+    }], gsd=1.5)
+    memory.update(spec, fine)
+    fused = memory.update(spec, noisy)
+    assert fused.target_subtype == "damaged"
+    assert fused.matching_count == 1
+
+
+def test_geographic_memory_keeps_distinct_buildings() -> None:
+    spec = parse_question("标记区域内有多少栋受损建筑？")
+    memory = GeographicEvidenceMemory(match_radius_m=6.0)
+    objects = []
+    for idx, lat in enumerate((30.5, 30.5001)):
+        objects.append({
+            "lat": lat, "lon": 120.5, "label": "受损建筑", "subtype": "damaged",
+            "confidence": 0.9, "class_probs": {"no-damage": 0.1, "damaged": 0.9},
+            "bbox": [10 + idx * 30, 10, 20 + idx * 30, 20],
+            "norm_xy": [0.4 + idx * 0.1, 0.5], "observation_id": "obs", "gsd_m": 0.5,
+        })
+    fused = memory.update(spec, _geo_evidence("obs", objects, gsd=0.5))
+    assert fused.matching_count == 2
+    assert len({obj["geographic_id"] for obj in fused.objects}) == 2
+
+
+def test_geographic_memory_does_not_answer_from_stale_full_roi_track() -> None:
+    """A coarse false positive absent from the next full-ROI view is historical only."""
+    spec = parse_question("最近的受损建筑位于标记区域中心哪个方向？")
+    memory = GeographicEvidenceMemory(match_radius_m=6.0)
+    stale = {
+        "lat": 30.50001, "lon": 120.50001, "label": "受损建筑",
+        "subtype": "damaged", "confidence": 0.95,
+        "class_probs": {"no-damage": 0.05, "damaged": 0.95},
+        "bbox": [49, 49, 51, 51], "norm_xy": [0.5, 0.5],
+        "observation_id": "wide", "gsd_m": 1.5,
+    }
+    current = {
+        "lat": 30.4997, "lon": 120.5, "label": "受损建筑",
+        "subtype": "damaged", "confidence": 0.8,
+        "class_probs": {"no-damage": 0.2, "damaged": 0.8},
+        "bbox": [49, 55, 51, 60], "norm_xy": [0.5, 0.575],
+        "observation_id": "fine", "gsd_m": 0.5,
+    }
+    memory.update(spec, _geo_evidence("wide", [stale], gsd=1.5))
+    fused = memory.update(spec, _geo_evidence("fine", [current], gsd=0.5))
+    assert fused.matching_count == 1
+    assert fused.target_geo == [current["lat"], current["lon"]]
+    assert any(not obj["visible_in_current"] for obj in fused.objects)
+
+
+def _vlm_confident(img, result, spec, qid, evidence, generation_context):
     """VLM 桩: 总是返回高置信回答。"""
     if spec.question_type == "presence":
         answer = "是"
     if spec.question_type == "damage":
-        answer = "完全损毁"
+        answer = choices_for_question_type("damage")[-1]
     elif spec.question_type == "count":
         answer = "1"
     elif spec.question_type == "spatial":
@@ -57,14 +154,14 @@ def _vlm_confident(img, result, spec, qid, evidence):
             '"evidence": {"source": "image", "norm_xy": [0.5, 0.5]}}')
 
 
-def _vlm_low_conf(img, result, spec, qid, evidence):
+def _vlm_low_conf(img, result, spec, qid, evidence, generation_context):
     """VLM 桩: 总是返回低置信 (触发 reobserve)。"""
     return ('{"answer": "是", "confidence": 0.3, "abstain": false, '
             '"decision": "answer", "reason_code": "sufficient_evidence", '
             '"evidence": {"source": "image", "norm_xy": [0.5, 0.5]}}')
 
 
-def _vlm_invalid(img, result, spec, qid, evidence):
+def _vlm_invalid(img, result, spec, qid, evidence, generation_context):
     """VLM 桩: 返回非 JSON (触发 invalid_output -> 规则回退)。"""
     return "我觉得有损坏"
 
@@ -120,7 +217,7 @@ def test_target_missing_continues_search_then_abstains() -> None:
 def test_low_confidence_triggers_reobserve() -> None:
     reobs_calls = []
     altitude = {"value": 30.0}
-    def reobserve_fn(result, spec):
+    def reobserve_fn(result, spec, evidence):
         reobs_calls.append(1)
         altitude["value"] -= 10.0
         return {"kind": "recheck",
@@ -146,7 +243,7 @@ def test_low_confidence_triggers_reobserve() -> None:
 def test_reobserve_policy_runs_without_matching_subtype() -> None:
     """题面要完全损毁、当前只有无损伤框时，仍应把观测交给策略 (计划 E4)。"""
     calls = []
-    def reobserve_fn(result, spec):
+    def reobserve_fn(result, spec, evidence):
         calls.append(spec.question_type)
         return {"kind": "recheck",
                 "params": {"north_m": 0.0, "east_m": 0.0, "up_m": -10.0},
@@ -165,7 +262,7 @@ def test_reobserve_policy_runs_without_matching_subtype() -> None:
 
 
 def test_reobserve_skip_is_recorded_and_answers() -> None:
-    def reobserve_fn(result, spec):
+    def reobserve_fn(result, spec, evidence):
         return {"kind": "skip", "reason": "把握足够或无可疑灾情目标，无需复核。",
                 "uncertainty": 0.12}
     ctl = AgentVqaController(
@@ -346,6 +443,47 @@ def test_damage_target_is_projected_and_associated_without_subtype_filter() -> N
     assert ev.match_method == "target_point_in_bbox"
 
 
+def test_damage_nearest_fallback_uses_metric_not_image_fraction_gate() -> None:
+    perception = _FakePerception(
+        [_det("无损伤建筑", 0.6, [545, 545, 555, 555])], pw=1024, ph=1024,
+        extras={
+            "window": {"west": 120.0, "east": 121.0, "south": 30.0, "north": 31.0},
+            "roi_norm_bbox": [0.1, 0.1, 0.9, 0.9],
+            "eff_gsd_m": 1.5,
+        },
+    )
+    spec = parse_question("标记建筑 b-17 的损伤状态是什么？")
+    # Target is 30 px from the predicted centre: old 8%-image threshold
+    # accepted it, while 15 m / 1.5 m-per-px correctly rejects it.
+    ctx = TaskContext(
+        target_ref_id="b-17", target_lat=31.0 - 550.0 / 1024.0,
+        target_lon=120.0 + 580.0 / 1024.0,
+    )
+    ev = build_evidence_from_perception(perception, spec, "obs", ctx)
+    assert ev.target_visible and not ev.target_matched
+
+
+def test_visible_unmatched_damage_target_can_reobserve_before_search() -> None:
+    perception = _FakePerception([], extras={
+        "window": {"west": 120.0, "east": 121.0, "south": 30.0, "north": 31.0},
+        "roi_norm_bbox": [0.1, 0.1, 0.9, 0.9], "eff_gsd_m": 1.5,
+    })
+    called = []
+    ctl = AgentVqaController(
+        config=AgentVqaConfig(max_search_steps=0, max_reobservations=1,
+                              answer_mode="deterministic"),
+        perceive_fn=lambda: perception,
+        reobserve_fn=lambda result, spec, evidence: called.append(evidence) or {
+            "kind": "recheck", "params": {"north_m": 1.0, "up_m": -10.0},
+        },
+    )
+    spec = parse_question("标记建筑 b-17 的损伤状态是什么？")
+    ctx = TaskContext(target_ref_id="b-17", target_lat=30.5, target_lon=120.5)
+    ctl.run(spec.raw, "q_visible_missing", task_context=ctx)
+    assert called and called[0].target_visible and not called[0].target_matched
+    assert ctl.trajectory[0].decision == "reobserve"
+
+
 def test_task_context_never_exposes_answer_or_damage_subtype() -> None:
     spec = parse_question("标记区域内标记建筑 b-17 的损伤等级是什么？")
     ctx = task_context_from_item({
@@ -387,8 +525,67 @@ def test_all_four_types_run() -> None:
     print("[OK] 四类问题在控制器层都能跑通")
 
 
+def test_bboxes_match_tolerates_float_precision() -> None:
+    """legacy 全精度 bbox 与 round(2) 的 target_bbox 应判定为同一框。"""
+    assert bboxes_match([10.123456, 20.987654, 30.5, 40.5], [10.12, 20.99, 30.5, 40.5])
+    assert not bboxes_match([10.123456, 20.987654, 30.5, 40.5], [10.12, 20.99, 30.5, 40.6])
+    assert not bboxes_match([1, 2, 3], [1, 2, 3, 4])
+    assert not bboxes_match(None, [1, 2, 3, 4])
+    assert not bboxes_match("bad", [1, 2, 3, 4])
+
+
+def test_generation_seed_is_keyed_and_logged() -> None:
+    seen = []
+
+    def seeded_vlm(img, result, spec, qid, evidence, generation_context):
+        seen.append(generation_context)
+        return _vlm_confident(img, result, spec, qid, evidence, generation_context)
+
+    cfg = AgentVqaConfig(
+        max_search_steps=0, max_reobservations=0,
+        generation_base_seed=20260913, generation_repeat=2,
+    )
+    ctl = _make_ctrl([_det("完全损毁建筑", 0.9)], vlm_fn=seeded_vlm, config=cfg)
+    ctl.run("当前视场是否存在完全损毁建筑？", "stable-qid")
+    expected = derive_generation_seed(20260913, "stable-qid", 2, 0, "candidate_answer")
+    assert len(seen) == 1 and seen[0].seed == expected
+    record = ctl.trajectory[0].to_dict()
+    assert record["generation_seed"] == expected
+    assert record["generation_repeat"] == 2
+    assert record["generation_call_role"] == "candidate_answer"
+
+
+def test_generation_seed_does_not_depend_on_execution_order() -> None:
+    keys = [
+        ("q-a", 0, 0, "candidate_answer"),
+        ("q-b", 0, 0, "candidate_answer"),
+        ("q-a", 1, 0, "candidate_answer"),
+        ("q-a", 0, 1, "candidate_answer"),
+    ]
+    forward = {key: derive_generation_seed(7, *key) for key in keys}
+    reverse = {key: derive_generation_seed(7, *key) for key in reversed(keys)}
+    assert forward == reverse
+    assert len(set(forward.values())) == len(keys)
+
+
+def test_deterministic_answer_does_not_log_generation_seed() -> None:
+    cfg = AgentVqaConfig(
+        answer_mode="deterministic", max_search_steps=0, max_reobservations=0,
+        generation_base_seed=20260913,
+    )
+    ctl = _make_ctrl([_det("完全损毁建筑", 0.9)], vlm_fn=_vlm_confident, config=cfg)
+    ctl.run("当前视场是否存在完全损毁建筑？", "rule-qid")
+    record = ctl.trajectory[0].to_dict()
+    assert record["generation_seed"] is None
+    assert record["generation_call_role"] == ""
+
+
 def _run_all() -> int:
     tests = [
+        test_bboxes_match_tolerates_float_precision,
+        test_generation_seed_is_keyed_and_logged,
+        test_generation_seed_does_not_depend_on_execution_order,
+        test_deterministic_answer_does_not_log_generation_seed,
         test_sufficient_evidence_answers,
         test_target_missing_continues_search_then_abstains,
         test_low_confidence_triggers_reobserve,

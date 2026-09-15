@@ -17,6 +17,7 @@ from PIL import Image
 
 # xBD 官方损伤标签顺序（create_submission.py: msk_dmg = preds[...,1:].argmax()+1）
 DAMAGE_SUBTYPES = ("no-damage", "minor-damage", "major-damage", "destroyed")
+BINARY_DAMAGE_SUBTYPES = ("no-damage", "damaged")
 
 SUBTYPE_TO_ZH = {
     "no-damage": "无损伤建筑",
@@ -33,7 +34,7 @@ class Detection:
     class_name: str                     # 中文损伤类，供 ground_with_yolo 匹配
     raw_class_name: str                 # xBD 英文 subtype
     conf: float                         # argmax 类的概率
-    class_probs: dict[str, float]       # 4 类，和为 1 —— 必填
+    class_probs: dict[str, float]       # 后端标签空间（2 类或 4 类），和为 1 —— 必填
     loc_conf: float = 0.0               # 建筑存在性置信度（定位分支）
     area_px: int = 0
     proposer: str = ""
@@ -41,8 +42,13 @@ class Detection:
 
     def to_dict(self) -> dict:
         return {
-            "class_id": DAMAGE_SUBTYPES.index(self.raw_class_name)
-            if self.raw_class_name in DAMAGE_SUBTYPES else 0,
+            "class_id": (
+                DAMAGE_SUBTYPES.index(self.raw_class_name)
+                if self.raw_class_name in DAMAGE_SUBTYPES
+                else BINARY_DAMAGE_SUBTYPES.index(self.raw_class_name)
+                if self.raw_class_name in BINARY_DAMAGE_SUBTYPES
+                else 0
+            ),
             "class_name": self.class_name,
             "raw_class_name": self.raw_class_name,
             "conf": round(float(self.conf), 6),

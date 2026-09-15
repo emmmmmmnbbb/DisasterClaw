@@ -105,33 +105,23 @@ def main():
         intervals[f'{a}_minus_{b}'] = {
             'delta_macro_f1': float(f1(cm[a].sum(axis=0)) - f1(cm[b].sum(axis=0))),
             'percentile_95': np.quantile(boots[a] - boots[b], [.025, .975]).tolist()}
-    episodes = []
-    for shard in range(2):
-        episodes += read(VQA / f'paper_cja_mech_final_shard{shard}of2/episodes.jsonl', True)
-    groups = defaultdict(list)
-    for r in episodes:
-        groups[r['config']].append(r)
-    summaries = {}
-    for cfg, eps in groups.items():
-        bytype = {}
-        for kind in sorted({r['question_type'] for r in eps}):
-            subset = [r for r in eps if r['question_type'] == kind]
-            bytype[kind] = {'n': len(subset), 'correct': sum(bool(r['correct']) for r in subset),
-                            'actions': sum(r['n_reobservations'] for r in subset)}
-        risk = []
-        for threshold in [0., .8, .9, .95, .99, 1.]:
-            accepted = [r for r in eps if not r['abstain'] and (r['confidence'] or 0) >= threshold]
-            risk.append({'threshold': threshold, 'n_accepted': len(accepted),
-                         'coverage': len(accepted) / len(eps),
-                         'risk': sum(not r['correct'] for r in accepted) / len(accepted) if accepted else None})
-        summaries[cfg] = {'by_question_type': bytype, 'posthoc_threshold_risk': risk}
+    # Online Agent-VQA summaries are intentionally not regenerated. The archived
+    # runs were invalidated by the target-grounding and evidence-routing defects
+    # (see review/invalidated_online_results.md), so this script must not read
+    # them back into a citable artifact. A replacement run has to be exported
+    # from its own audited directory instead of being reintroduced here.
+    online = {
+        'status': 'invalidated',
+        'reason': 'target projection and evidence routing defects; see review/invalidated_online_results.md',
+        'configs': sorted(ONLINE),
+    }
     result = {'bootstrap': {'method': 'paired ROI bootstrap stratified within the three observed events',
                            'n_resamples': 2000, 'seed': 20260905, 'n_rois': len(rois),
                            'event_roi_counts': {e: len(ids) for e, ids in sorted(event_rois.items())},
                            'fixed_allocation': True, 'exploratory': True, 'comparisons': intervals},
               'unmatched_buildings': missing, 'detection_effects': dict(detection_effects),
               'common_matched_sensitivity': {'n': int(common.sum()), 'selection': 'detected in all three recorded views', 'metrics': common_metrics},
-              'online': summaries, 'input_audit_sha256': hashlib.sha256((OUT / 'review/downloaded_results_audit.json').read_bytes()).hexdigest()}
+              'online': online, 'input_audit_sha256': hashlib.sha256((OUT / 'review/downloaded_results_audit.json').read_bytes()).hexdigest()}
     write('review/manuscript_analysis.json', json.dumps(result, indent=2))
 
     fov = AUDIT['final_fov_recomputed']

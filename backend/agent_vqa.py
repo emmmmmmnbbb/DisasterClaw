@@ -23,8 +23,11 @@ r"""backend/agent_vqa.py — Agent-VQA 结构化问答控制器 (D3).
 """
 from __future__ import annotations
 
+import hashlib
+import copy
 import json
 import math
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
@@ -41,7 +44,12 @@ REASON_CODES = (
 )
 EVIDENCE_SOURCES = ("image", "detector", "change_classifier", "semantic_map", "history")
 
-DAMAGE_CHOICES = ["无损伤", "轻微损伤", "严重损伤", "完全损毁"]
+DAMAGE_LABEL_MODE = os.getenv("DAMAGE_LABEL_MODE", "four_class").strip().lower()
+DAMAGE_CHOICES = (
+    ["无损伤", "损伤"]
+    if DAMAGE_LABEL_MODE in {"binary", "damaged"}
+    else ["无损伤", "轻微损伤", "严重损伤", "完全损毁"]
+)
 COUNT_CHOICES = ["0", "1", "2", "3+"]
 PRESENCE_CHOICES = ["否", "是"]
 BEARING_CHOICES = ["北", "东北", "东", "东南", "南", "西南", "西", "西北"]
@@ -49,17 +57,35 @@ BEARING_CHOICES = ["北", "东北", "东", "东南", "南", "西南", "西", "�
 SUBTYPE_TO_LEVEL = {
     "no-damage": "无损伤", "minor-damage": "轻微损伤",
     "major-damage": "严重损伤", "destroyed": "完全损毁",
+    "damaged": "损伤",
 }
 CLASS_TO_SUBTYPE = {
     "无损伤建筑": "no-damage", "轻微损伤建筑": "minor-damage",
     "严重损伤建筑": "major-damage", "完全损毁建筑": "destroyed",
+    "受损建筑": "damaged",
 }
-DAMAGED_SUBTYPES = ("minor-damage", "major-damage", "destroyed")
+DAMAGED_SUBTYPES = ("minor-damage", "major-damage", "destroyed", "damaged")
 SEVERE_SUBTYPES = ("major-damage", "destroyed")
 
 
 def _clamp01(v: float) -> float:
     return max(0.0, min(1.0, float(v)))
+
+
+def bboxes_match(a, b, ndigits: int = 2) -> bool:
+    """匹配两个 bbox（忽略浮点精度差异）。
+
+    EvidenceBundle.target_bbox 在 build_evidence_from_perception 里被 round 到
+    2 位小数，而 legacy U-Net 路径的检测框是全精度浮点；重观测控制器若用精确
+    ``==`` 比较会静默漏掉 damage 题的目标，导致复核永远不触发。全系统统一以
+    2 位小数为准，避免同一栋建筑因精度差被当成两栋。
+    """
+    try:
+        aa = [round(float(v), ndigits) for v in (a or [])]
+        bb = [round(float(v), ndigits) for v in (b or [])]
+    except (TypeError, ValueError):
+        return False
+    return len(aa) == 4 and aa == bb
 
 
 # ── 问题解析 (规则式, 无需 LLM) ──────────────────────────────────────────────
@@ -121,11 +147,12 @@ def task_context_from_item(item: Optional[dict], spec: QuestionSpec) -> TaskCont
 
 _PRESENCE_RE = re.compile(r"是否存在\s*(.+?)\s*[？?]")
 _DAMAGE_REF_RE = re.compile(r"标记建筑\s*([A-Za-z0-9_\-:]+)")
-_DAMAGE_RE = re.compile(r"(?:标记建筑|建筑)\s*\S*?\s*[的之]?\s*损伤等级")
+_DAMAGE_RE = re.compile(r"(?:标记建筑|建筑)\s*\S*?\s*[的之]?\s*损伤(?:等级|状态)")
 _COUNT_RE = re.compile(r"有多少栋\s*(.+?)\s*[？?]")
 _SPATIAL_RE = re.compile(r"最近\s*的\s*(.+?)\s*位于")
 
 _CLASS_PATTERNS = [
+    ("受损建筑", "damaged"),
     ("完全损毁建筑", "destroyed"),
     ("严重损伤建筑", "major-damage"),
     ("轻微损伤建筑", "minor-damage"),
@@ -136,6 +163,7 @@ _LEVEL_PATTERNS = [
     ("严重损伤", "major-damage"),
     ("轻微损伤", "minor-damage"),
     ("无损伤", "no-damage"),
+    ("损伤", "damaged"),
 ]
 
 
@@ -202,6 +230,7 @@ class EvidenceBundle:
     target_label: str = ""
     target_subtype: str = ""
     target_conf: float = 0.0
+    target_bbox: Optional[list[float]] = None
     norm_xy: Optional[list[float]] = None
     target_norm_xy: Optional[list[float]] = None
     roi_norm_bbox: Optional[list[float]] = None
@@ -217,12 +246,23 @@ class EvidenceBundle:
     scene_text: str = ""
     degraded: bool = False
     degraded_reason: str = ""
+    objects: list[dict] = field(default_factory=list)
+    view_window: Optional[dict[str, float]] = None
+    roi_geo_bounds: Optional[dict[str, float]] = None
+    observation_gsd_m: Optional[float] = None
+    roi_coverage: float = 0.0
+    geographic_id: str = ""
+    target_geo: Optional[list[float]] = None
+    selected_observation_id: str = ""
+    history_observation_ids: list[str] = field(default_factory=list)
+    fusion_reason: str = ""
 
     def to_dict(self) -> dict:
         return {
             "observation_id": self.observation_id, "source": self.source,
             "target_label": self.target_label, "target_subtype": self.target_subtype,
             "target_conf": round(self.target_conf, 4), "norm_xy": self.norm_xy,
+            "target_bbox": self.target_bbox,
             "target_norm_xy": self.target_norm_xy, "roi_norm_bbox": self.roi_norm_bbox,
             "target_ref_id": self.target_ref_id, "target_visible": self.target_visible,
             "target_matched": self.target_matched, "match_method": self.match_method,
@@ -231,6 +271,16 @@ class EvidenceBundle:
             "class_probs": self.class_probs, "detection_source": self.detection_source,
             "risk_level": self.risk_level, "scene_text": self.scene_text,
             "degraded": self.degraded, "degraded_reason": self.degraded_reason,
+            "objects": self.objects,
+            "view_window": self.view_window,
+            "roi_geo_bounds": self.roi_geo_bounds,
+            "observation_gsd_m": self.observation_gsd_m,
+            "roi_coverage": round(self.roi_coverage, 6),
+            "geographic_id": self.geographic_id,
+            "target_geo": self.target_geo,
+            "selected_observation_id": self.selected_observation_id,
+            "history_observation_ids": self.history_observation_ids,
+            "fusion_reason": self.fusion_reason,
         }
 
     def to_prompt_dict(self) -> dict:
@@ -241,12 +291,18 @@ class EvidenceBundle:
             "target_confidence": round(self.target_conf, 4),
             "matching_count": self.matching_count,
             "matched_detection_norm_xy": self.norm_xy,
+            "matched_detection_bbox": self.target_bbox,
             "question_target_norm_xy": self.target_norm_xy,
             "target_visible": self.target_visible,
             "target_matched": self.target_matched,
             "target_ref_id": self.target_ref_id,
             "roi_norm_bbox": self.roi_norm_bbox,
             "match_method": self.match_method,
+            "geographic_id": self.geographic_id,
+            "target_geo": self.target_geo,
+            "history_observation_ids": self.history_observation_ids,
+            "fusion_reason": self.fusion_reason,
+            "roi_coverage": round(self.roi_coverage, 6),
         }
 
 
@@ -261,6 +317,34 @@ def _geo_to_norm(window: Any, lat: float, lon: float) -> Optional[list[float]]:
         return [(lon - west) / (east - west), (north - lat) / (north - south)]
     except (KeyError, TypeError, ValueError, ZeroDivisionError):
         return None
+
+
+def _norm_to_geo(window: Any, nx: float, ny: float) -> Optional[list[float]]:
+    if not isinstance(window, dict):
+        return None
+    try:
+        west, east = float(window["west"]), float(window["east"])
+        south, north = float(window["south"]), float(window["north"])
+        if east <= west or north <= south:
+            return None
+        return [north - float(ny) * (north - south), west + float(nx) * (east - west)]
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _bbox_roi_coverage(roi_norm_bbox: Any) -> float:
+    if not isinstance(roi_norm_bbox, (list, tuple)) or len(roi_norm_bbox) != 4:
+        return 0.0
+    try:
+        left, top, right, bottom = map(float, roi_norm_bbox)
+    except (TypeError, ValueError):
+        return 0.0
+    area = max(0.0, right - left) * max(0.0, bottom - top)
+    if area <= 0.0:
+        return 0.0
+    iw = max(0.0, min(1.0, right) - max(0.0, left))
+    ih = max(0.0, min(1.0, bottom) - max(0.0, top))
+    return round(_clamp01(iw * ih / area), 6)
 
 
 def build_evidence_from_perception(perception_result: Any, spec: QuestionSpec,
@@ -335,7 +419,14 @@ def build_evidence_from_perception(perception_result: Any, spec: QuestionSpec,
                     cx, cy = (float(box[0]) + float(box[2])) * .5, (float(box[1]) + float(box[3])) * .5
                     return math.hypot(cx - tx, cy - ty)
                 candidate = min(matching, key=lambda d: (_target_distance(d), -float(d.get("conf", 0.0))))
-                if _target_distance(candidate) <= 0.08 * min(pw, ph):
+                try:
+                    # Metric gate stays physically constant as FOV changes.
+                    # The former 8%-of-image gate expanded to about 120 m at
+                    # cruise altitude and could bind a marked target to a neighbour.
+                    max_match_px = 15.0 / max(float(extras.get("eff_gsd_m")), 1e-6)
+                except (TypeError, ValueError):
+                    max_match_px = 0.02 * min(pw, ph)
+                if _target_distance(candidate) <= max_match_px:
                     best, match_method = candidate, "nearest_target_center"
         elif spec.question_type == "spatial":
             roi_center = ((float(roi_norm[0]) + float(roi_norm[2])) * .5,
@@ -352,6 +443,56 @@ def build_evidence_from_perception(perception_result: Any, spec: QuestionSpec,
     ev.target_norm_xy = None if target_norm is None else [round(float(target_norm[0]), 4), round(float(target_norm[1]), 4)]
     ev.target_visible = bool(target_norm and 0.0 <= target_norm[0] <= 1.0 and 0.0 <= target_norm[1] <= 1.0)
     ev.roi_norm_bbox = list(roi_norm) if isinstance(roi_norm, (list, tuple)) and len(roi_norm) == 4 else None
+    ev.roi_coverage = _bbox_roi_coverage(ev.roi_norm_bbox)
+    if isinstance(window, dict):
+        try:
+            ev.view_window = {k: float(window[k]) for k in ("west", "south", "east", "north")}
+        except (KeyError, TypeError, ValueError):
+            ev.view_window = None
+    ev.roi_geo_bounds = copy.deepcopy(task_context.roi_bounds)
+    try:
+        ev.observation_gsd_m = float(extras.get("eff_gsd_m"))
+    except (TypeError, ValueError):
+        ev.observation_gsd_m = None
+
+    # Preserve every detector object in the task ROI with an online geographic
+    # projection. These are predictions only; no annotation geometry is used.
+    pw = float(getattr(perception_result, "patch_width", 0) or 0)
+    ph = float(getattr(perception_result, "patch_height", 0) or 0)
+    for d in dets:
+        label = str(d.get("class_name") or "")
+        subtype = CLASS_TO_SUBTYPE.get(label, "")
+        box = d.get("bbox") or d.get("bbox_xyxy")
+        if not subtype or not box or pw <= 0 or ph <= 0:
+            continue
+        cx = (float(box[0]) + float(box[2])) * 0.5 / pw
+        cy = (float(box[1]) + float(box[3])) * 0.5 / ph
+        if spec.question_type != "damage" and ev.roi_norm_bbox:
+            if not (float(ev.roi_norm_bbox[0]) <= cx <= float(ev.roi_norm_bbox[2])
+                    and float(ev.roi_norm_bbox[1]) <= cy <= float(ev.roi_norm_bbox[3])):
+                continue
+        geo = _norm_to_geo(window, cx, cy)
+        obj = {
+            "label": label, "subtype": subtype,
+            "confidence": round(float(d.get("conf", 0.0)), 6),
+            "class_probs": copy.deepcopy(d.get("class_probs")),
+            "bbox": [round(float(v), 2) for v in box],
+            "norm_xy": [round(cx, 6), round(cy, 6)],
+            "observation_id": observation_id,
+            "gsd_m": ev.observation_gsd_m,
+        }
+        if geo:
+            obj["lat"], obj["lon"] = round(geo[0], 8), round(geo[1], 8)
+        corner_a = _norm_to_geo(window, float(box[0]) / pw, float(box[1]) / ph)
+        corner_b = _norm_to_geo(window, float(box[2]) / pw, float(box[3]) / ph)
+        if corner_a and corner_b:
+            obj["geo_bbox"] = {
+                "west": min(corner_a[1], corner_b[1]),
+                "south": min(corner_a[0], corner_b[0]),
+                "east": max(corner_a[1], corner_b[1]),
+                "north": max(corner_a[0], corner_b[0]),
+            }
+        ev.objects.append(obj)
     if perception_result is not None:
         ev.risk_level = getattr(perception_result, "risk_level", "") or ""
         ev.scene_text = getattr(perception_result, "scene_text", "") or ""
@@ -368,6 +509,8 @@ def build_evidence_from_perception(perception_result: Any, spec: QuestionSpec,
         ev.target_matched = True
         ev.match_method = match_method
         bbox = best.get("bbox") or best.get("bbox_xyxy")
+        if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+            ev.target_bbox = [round(float(v), 2) for v in bbox]
         pw = getattr(perception_result, "patch_width", 0) if perception_result else 0
         ph = getattr(perception_result, "patch_height", 0) if perception_result else 0
         if bbox and pw > 0 and ph > 0:
@@ -378,7 +521,268 @@ def build_evidence_from_perception(perception_result: Any, spec: QuestionSpec,
             if target_norm is not None:
                 ev.match_distance_px = round(math.hypot(cx * pw - target_norm[0] * pw,
                                                         cy * ph - target_norm[1] * ph), 2)
+        if spec.question_type == "damage" and ev.target_ref_id:
+            ev.geographic_id = f"ref:{ev.target_ref_id}"
+        else:
+            geo = _norm_to_geo(window, cx, cy)
+            if geo:
+                ev.geographic_id = f"geo:{geo[0]:.6f}:{geo[1]:.6f}"
+                ev.target_geo = [float(geo[0]), float(geo[1])]
+    ev.selected_observation_id = observation_id
+    ev.history_observation_ids = [observation_id]
+    ev.fusion_reason = "current_observation"
     return ev
+
+
+def _geo_distance_m(a: dict, b: dict) -> float:
+    """Local tangent-plane distance for short-range online association."""
+    try:
+        lat1, lon1 = float(a["lat"]), float(a["lon"])
+        lat2, lon2 = float(b["lat"]), float(b["lon"])
+    except (KeyError, TypeError, ValueError):
+        return float("inf")
+    mean_lat = math.radians((lat1 + lat2) * 0.5)
+    north = (lat2 - lat1) * 111_000.0
+    east = (lon2 - lon1) * 111_000.0 * math.cos(mean_lat)
+    return math.hypot(north, east)
+
+
+def _geo_bbox_iou(a: Any, b: Any) -> float:
+    if not isinstance(a, dict) or not isinstance(b, dict):
+        return 0.0
+    try:
+        iw = max(0.0, min(float(a["east"]), float(b["east"]))
+                 - max(float(a["west"]), float(b["west"])))
+        ih = max(0.0, min(float(a["north"]), float(b["north"]))
+                 - max(float(a["south"]), float(b["south"])))
+        inter = iw * ih
+        area_a = max(0.0, float(a["east"]) - float(a["west"])) * max(
+            0.0, float(a["north"]) - float(a["south"])
+        )
+        area_b = max(0.0, float(b["east"]) - float(b["west"])) * max(
+            0.0, float(b["north"]) - float(b["south"])
+        )
+        return inter / max(area_a + area_b - inter, 1e-18)
+    except (KeyError, TypeError, ValueError):
+        return 0.0
+
+
+class GeographicEvidenceMemory:
+    """Online-only cross-view evidence fusion keyed by predicted geography.
+
+    The tracker never reads xBD polygons or labels. Damage questions use the
+    operator-visible target ref; scene questions associate predicted building
+    centres within a fixed metric radius. Every sighting is retained and class
+    probabilities are resolution-weighted, so a new crop cannot silently erase
+    a sound wider-view observation.
+    """
+
+    def __init__(self, match_radius_m: float = 6.0):
+        self.match_radius_m = float(match_radius_m)
+        self.reset()
+
+    def reset(self) -> None:
+        self._tracks: list[dict] = []
+        self._damage_tracks: dict[str, dict] = {}
+        self._observation_ids: list[str] = []
+        self._coverage_by_observation: dict[str, float] = {}
+
+    @staticmethod
+    def _new_geo_id(obj: dict, ordinal: int) -> str:
+        if "lat" in obj and "lon" in obj:
+            token = f"{float(obj['lat']):.6f}|{float(obj['lon']):.6f}".encode("utf-8")
+            return "geo:" + hashlib.sha256(token).hexdigest()[:12]
+        return f"observation:{obj.get('observation_id', '')}:{ordinal}"
+
+    def _associate(self, obj: dict) -> Optional[dict]:
+        candidates = [
+            track for track in self._tracks
+            if (
+                _geo_distance_m(track["centroid"], obj) <= self.match_radius_m
+                or max(
+                    (_geo_bbox_iou(s.get("geo_bbox"), obj.get("geo_bbox"))
+                     for s in track["sightings"]),
+                    default=0.0,
+                ) >= 0.2
+            )
+        ]
+        if not candidates:
+            return None
+        return min(candidates, key=lambda track: _geo_distance_m(track["centroid"], obj))
+
+    @staticmethod
+    def _add_sighting(track: dict, obj: dict) -> None:
+        obs_id = str(obj.get("observation_id") or "")
+        existing = [s for s in track["sightings"] if s.get("observation_id") == obs_id]
+        if existing:
+            if float(obj.get("confidence", 0.0)) <= float(existing[0].get("confidence", 0.0)):
+                return
+            track["sightings"].remove(existing[0])
+        track["sightings"].append(copy.deepcopy(obj))
+        geo_sightings = [s for s in track["sightings"] if "lat" in s and "lon" in s]
+        if geo_sightings:
+            track["centroid"] = {
+                "lat": sum(float(s["lat"]) for s in geo_sightings) / len(geo_sightings),
+                "lon": sum(float(s["lon"]) for s in geo_sightings) / len(geo_sightings),
+            }
+
+    @staticmethod
+    def _fuse_track(track: dict) -> dict:
+        sightings = track["sightings"]
+        weighted: dict[str, float] = {}
+        total_weight = 0.0
+        for sighting in sightings:
+            probs = sighting.get("class_probs")
+            if not isinstance(probs, dict) or not probs:
+                continue
+            try:
+                gsd = float(sighting.get("gsd_m") or 1.0)
+            except (TypeError, ValueError):
+                gsd = 1.0
+            weight = 1.0 / max(gsd, 0.05)
+            norm = sum(max(0.0, float(v)) for v in probs.values()) or 1.0
+            for name, value in probs.items():
+                weighted[str(name)] = weighted.get(str(name), 0.0) + weight * max(0.0, float(value)) / norm
+            total_weight += weight
+        fused_probs = (
+            {name: value / total_weight for name, value in weighted.items()}
+            if total_weight > 0.0 else None
+        )
+        if fused_probs:
+            subtype, confidence = max(fused_probs.items(), key=lambda kv: float(kv[1]))
+        else:
+            selected = max(
+                sightings,
+                key=lambda s: float(s.get("confidence", 0.0)) / max(float(s.get("gsd_m") or 1.0), 0.05),
+            )
+            subtype = str(selected.get("subtype") or "")
+            confidence = float(selected.get("confidence", 0.0))
+        selected = min(
+            sightings,
+            key=lambda s: (float(s.get("gsd_m") or float("inf")), -float(s.get("confidence", 0.0))),
+        )
+        label_by_subtype = {
+            "no-damage": "无损伤建筑", "minor-damage": "轻微损伤建筑",
+            "major-damage": "严重损伤建筑", "destroyed": "完全损毁建筑",
+            "damaged": "受损建筑",
+        }
+        return {
+            **copy.deepcopy(selected),
+            "geographic_id": track["id"],
+            "subtype": subtype,
+            "label": label_by_subtype.get(subtype, str(selected.get("label") or "")),
+            "confidence": round(float(confidence), 6),
+            "class_probs": None if fused_probs is None else {
+                k: round(float(v), 8) for k, v in fused_probs.items()
+            },
+            "history_observation_ids": list(dict.fromkeys(
+                str(s.get("observation_id") or "") for s in sightings
+            )),
+            "n_sightings": len(sightings),
+        }
+
+    def update(self, spec: QuestionSpec, current: EvidenceBundle) -> EvidenceBundle:
+        obs_id = current.observation_id
+        if obs_id not in self._observation_ids:
+            self._observation_ids.append(obs_id)
+        self._coverage_by_observation[obs_id] = current.roi_coverage
+
+        if spec.question_type == "damage":
+            selected_objects = [
+                obj for obj in current.objects
+                if bboxes_match(obj.get("bbox"), current.target_bbox)
+            ]
+            if selected_objects and current.target_ref_id:
+                key = f"ref:{current.target_ref_id}"
+                track = self._damage_tracks.setdefault(key, {
+                    "id": key, "centroid": selected_objects[0], "sightings": [],
+                })
+                self._add_sighting(track, selected_objects[0])
+            tracks = list(self._damage_tracks.values())
+        else:
+            for obj in current.objects:
+                track = self._associate(obj)
+                if track is None:
+                    track = {
+                        "id": self._new_geo_id(obj, len(self._tracks)),
+                        "centroid": obj, "sightings": [],
+                    }
+                    self._tracks.append(track)
+                self._add_sighting(track, obj)
+            tracks = self._tracks
+
+        fused_objects = []
+        for track in tracks:
+            if not track["sightings"]:
+                continue
+            obj = self._fuse_track(track)
+            # A history track remains useful for probability fusion only while
+            # the current full-ROI observation still detects that building.
+            # Otherwise a coarse-view false positive can survive every finer
+            # observation and incorrectly win nearest/count queries forever.
+            obj["visible_in_current"] = any(
+                str(s.get("observation_id") or "") == obs_id
+                for s in track["sightings"]
+            )
+            fused_objects.append(obj)
+        wanted = set(spec.target_subtypes or ((spec.target_subtype,) if spec.target_subtype else ()))
+        relevant = [
+            obj for obj in fused_objects
+            if obj.get("visible_in_current")
+            and (not wanted or obj.get("subtype") in wanted)
+        ]
+        fused = copy.deepcopy(current)
+        fused.objects = fused_objects
+        fused.history_observation_ids = list(self._observation_ids)
+        fused.roi_coverage = max(self._coverage_by_observation.values(), default=current.roi_coverage)
+        fused.source = "history" if len(self._observation_ids) > 1 else current.source
+        fused.fusion_reason = (
+            "resolution_weighted_probabilities_and_geographic_deduplication"
+            if len(self._observation_ids) > 1
+            else "current_observation"
+        )
+        fused.matching_count = len(relevant) if spec.question_type != "damage" else int(bool(relevant))
+
+        selected = None
+        if relevant:
+            if spec.question_type == "spatial" and current.roi_geo_bounds:
+                bounds = current.roi_geo_bounds
+                center = {
+                    "lat": (float(bounds["south"]) + float(bounds["north"])) * 0.5,
+                    "lon": (float(bounds["west"]) + float(bounds["east"])) * 0.5,
+                }
+                selected = min(relevant, key=lambda obj: _geo_distance_m(center, obj))
+            else:
+                selected = max(relevant, key=lambda obj: float(obj.get("confidence", 0.0)))
+
+        if selected is None:
+            fused.target_label = ""
+            fused.target_subtype = ""
+            fused.target_conf = 0.0
+            fused.target_bbox = None
+            fused.norm_xy = None
+            fused.class_probs = None
+            fused.target_matched = False
+            fused.geographic_id = ""
+            fused.target_geo = None
+            fused.selected_observation_id = obs_id
+            return fused
+
+        fused.target_label = str(selected.get("label") or "")
+        fused.target_subtype = str(selected.get("subtype") or "")
+        fused.target_conf = float(selected.get("confidence", 0.0))
+        fused.target_bbox = copy.deepcopy(selected.get("bbox"))
+        fused.norm_xy = copy.deepcopy(selected.get("norm_xy"))
+        fused.class_probs = copy.deepcopy(selected.get("class_probs"))
+        fused.target_matched = True
+        fused.geographic_id = str(selected.get("geographic_id") or "")
+        fused.selected_observation_id = str(selected.get("observation_id") or obs_id)
+        if "lat" in selected and "lon" in selected:
+            fused.target_geo = [float(selected["lat"]), float(selected["lon"])]
+            projected = _geo_to_norm(fused.view_window, fused.target_geo[0], fused.target_geo[1])
+            if projected is not None:
+                fused.norm_xy = [round(float(projected[0]), 6), round(float(projected[1]), 6)]
+        return fused
 
 
 # ── 结构化回答 + schema 校验 ──────────────────────────────────────────────────
@@ -536,13 +940,41 @@ class AgentVqaConfig:
     allow_target_leak: bool = False        # oracle 时才允许从 item 读目标坐标
     evidence_level: str = "struct"         # raw | struct | state
     answer_mode: str = "vlm"                # vlm | deterministic | hybrid
+    generation_base_seed: Optional[int] = None
+    generation_repeat: int = 0
+    geo_match_radius_m: float = 6.0
+    force_reobserve_on_invalid_output: bool = False
+
+
+@dataclass(frozen=True)
+class GenerationContext:
+    """Stable identity and RNG seed for one model-generation call."""
+    qid: str
+    repeat: int
+    step: int
+    call_role: str
+    seed: Optional[int]
+
+
+def derive_generation_seed(
+    base_seed: Optional[int], qid: str, repeat: int, step: int, call_role: str,
+) -> Optional[int]:
+    if base_seed is None:
+        return None
+    payload = (
+        f"agent-vqa-generation|{int(base_seed)}|{qid}|{int(repeat)}|"
+        f"{int(step)}|{call_role}"
+    ).encode("utf-8")
+    return int.from_bytes(hashlib.sha256(payload).digest()[:8], "big") & 0x7FFFFFFF
 
 
 # 依赖注入类型 (均为可调用, 便于测试用桩替换)
-VlmAnswerFn = Callable[[str, Any, QuestionSpec, str, EvidenceBundle], str]
+VlmAnswerFn = Callable[
+    [str, Any, QuestionSpec, str, EvidenceBundle, GenerationContext], str
+]
 PerceiveFn = Callable[[], Any]                                  # () -> PerceptionResult
 SearchFn = Callable[[QuestionSpec, int, Any], Optional[dict]]    # (spec, step, perception) -> params | None
-ReobserveFn = Callable[[Any, QuestionSpec], Optional[dict]]     # -> {kind, params, reason} | None
+ReobserveFn = Callable[[Any, QuestionSpec, EvidenceBundle], Optional[dict]]
 
 
 @dataclass
@@ -566,10 +998,15 @@ class StepRecord:
     reobserve_kind: str = ""
     reobserve_reason: str = ""
     reobserve_params: dict = field(default_factory=dict)
+    reobserve_executed: dict = field(default_factory=dict)
     entropy_table_loaded: bool = False
     entropy_fallback_used: bool = False
     motion_mode: str = ""
     uncertainty: Optional[float] = None
+    policy_metrics: dict = field(default_factory=dict)
+    generation_seed: Optional[int] = None
+    generation_repeat: int = 0
+    generation_call_role: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -584,10 +1021,15 @@ class StepRecord:
             "reobserve_kind": self.reobserve_kind,
             "reobserve_reason": self.reobserve_reason,
             "reobserve_params": self.reobserve_params,
+            "reobserve_executed": self.reobserve_executed,
             "entropy_table_loaded": self.entropy_table_loaded,
             "entropy_fallback_used": self.entropy_fallback_used,
             "motion_mode": self.motion_mode,
             "uncertainty": self.uncertainty,
+            "policy_metrics": self.policy_metrics,
+            "generation_seed": self.generation_seed,
+            "generation_repeat": self.generation_repeat,
+            "generation_call_role": self.generation_call_role,
         }
 
 
@@ -620,6 +1062,7 @@ class AgentVqaController:
         self._cancelled = is_cancelled_fn or (lambda: False)
         self.trajectory: list[StepRecord] = []
         self.answer_history: list[VqaAnswer] = []
+        self.evidence_memory = GeographicEvidenceMemory(self.config.geo_match_radius_m)
         self.fallback_used = False
         self.degraded_reason = ""
 
@@ -637,6 +1080,7 @@ class AgentVqaController:
         """
         spec = parse_question(question)
         task_context = task_context or task_context_from_item(item, spec)
+        self.evidence_memory.reset()
         qid = question_id or f"q_{len(self.answer_history)}"
         if spec.question_type == "invalid_question":
             return self._final(qid, spec, "", 0.0, decision="abstain",
@@ -668,10 +1112,25 @@ class AgentVqaController:
             # executes motion synchronously, so reading position later would
             # incorrectly attach the post-action altitude to the pre-action image.
             observation_position = self._pos()
-            ev = build_evidence_from_perception(result, spec, obs_id, task_context)
+            current_ev = build_evidence_from_perception(result, spec, obs_id, task_context)
+            ev = self.evidence_memory.update(spec, current_ev)
 
             # 2) 生成候选答案 (VLM 不可用时规则回退)
-            ans = self._candidate_answer(qid, spec, ev, result)
+            generation_context = GenerationContext(
+                qid=qid,
+                repeat=int(self.config.generation_repeat),
+                step=step,
+                call_role="candidate_answer",
+                seed=derive_generation_seed(
+                    self.config.generation_base_seed, qid,
+                    self.config.generation_repeat, step, "candidate_answer",
+                ),
+            )
+            ans = self._candidate_answer(qid, spec, ev, result, generation_context)
+            generation_attempted = (
+                (self.config.answer_mode or "hybrid").strip().lower() != "deterministic"
+                and self._vlm is not None
+            )
             self.answer_history.append(ans)
             last_answer = ans
 
@@ -684,8 +1143,18 @@ class AgentVqaController:
             # 不得要求当前帧已经匹配到题面 subtype：A3 的科学点正是
             # “当前 argmax 不是目标类、但 class_probs 熵高 → 下降再看”。
             reobserve_outcome = None
-            if decision == "answer" and reobs_budget > 0 and self._reobserve is not None:
-                reobserve_outcome = self._safe_reobserve(result, spec)
+            inspect_visible_unmatched_damage = (
+                spec.question_type == "damage"
+                and current_ev.target_visible
+                and not current_ev.target_matched
+            )
+            if ((decision == "answer" or inspect_visible_unmatched_damage
+                 or (decision == "abstain" and reason == "invalid_output"
+                     and self.config.force_reobserve_on_invalid_output))
+                    and reobs_budget > 0 and self._reobserve is not None):
+                # The action gate must inspect what is visible in the current
+                # frame; the answer may use accumulated cross-view evidence.
+                reobserve_outcome = self._safe_reobserve(result, spec, current_ev)
                 if reobserve_outcome is None:
                     decision, reason, action = "abstain", "execution_error", "stop"
                 elif reobserve_outcome.get("kind") == "recheck":
@@ -693,7 +1162,8 @@ class AgentVqaController:
 
             self._record(qid, obs_id, spec, ans, ev, decision, reason, action,
                           search_budget, reobs_budget, reobserve_outcome,
-                          observation_position=observation_position)
+                          observation_position=observation_position,
+                          generation_context=(generation_context if generation_attempted else None))
             if on_step is not None and self.trajectory:
                 try:
                     on_step(self.trajectory[-1].to_dict())
@@ -736,7 +1206,8 @@ class AgentVqaController:
                                        None, "budget_exhausted", "stop")
 
     # ── 内部: 候选答案 ────────────────────────────────────────────────────────
-    def _candidate_answer(self, qid, spec, ev, result) -> VqaAnswer:
+    def _candidate_answer(self, qid, spec, ev, result,
+                          generation_context: GenerationContext) -> VqaAnswer:
         mode = (self.config.answer_mode or "hybrid").strip().lower()
         if mode == "deterministic":
             return self._rule_fallback(qid, spec, ev)
@@ -748,7 +1219,7 @@ class AgentVqaController:
             return self._rule_fallback(qid, spec, ev)
         try:
             img = self._img(result)
-            text = self._vlm(img, result, spec, qid, ev)
+            text = self._vlm(img, result, spec, qid, ev, generation_context)
         except Exception as exc:
             self.fallback_used = True
             self.degraded_reason = f"vlm_error:{exc}"
@@ -840,9 +1311,9 @@ class AgentVqaController:
             self.degraded_reason = f"search_error:{exc}"
             return None
 
-    def _safe_reobserve(self, result, spec) -> Optional[dict]:
+    def _safe_reobserve(self, result, spec, evidence) -> Optional[dict]:
         try:
-            return self._reobserve(result, spec)
+            return self._reobserve(result, spec, evidence)
         except Exception as exc:
             self.degraded_reason = f"reobserve_error:{exc}"
             return None
@@ -850,14 +1321,15 @@ class AgentVqaController:
     # ── 内部: 记录与收尾 ──────────────────────────────────────────────────────
     def _record(self, qid, obs_id, spec, ans, ev, decision, reason, action,
                  search_budget, reobs_budget, reobserve_outcome=None,
-                 observation_position=None):
+                 observation_position=None, generation_context=None):
         outcome = reobserve_outcome or {}
         unc = outcome.get("uncertainty")
         self.trajectory.append(StepRecord(
             question_id=qid, observation_id=obs_id,
             position=observation_position or self._pos(),
             question_type=spec.question_type, candidate_answer=ans.answer,
-            confidence=ans.confidence, evidence_ids=[obs_id],
+            confidence=ans.confidence,
+            evidence_ids=(list(ev.history_observation_ids) if ev else [obs_id]),
             decision=decision, reason_code=reason, action=action,
             budget_before=search_budget + reobs_budget,
             budget_after=search_budget + reobs_budget - (1 if decision in ("continue_search", "reobserve") else 0),
@@ -866,10 +1338,15 @@ class AgentVqaController:
             reobserve_kind=str(outcome.get("kind") or ""),
             reobserve_reason=str(outcome.get("reason") or ""),
             reobserve_params=dict(outcome.get("params") or {}),
+            reobserve_executed=dict(outcome.get("executed") or {}),
             entropy_table_loaded=bool(outcome.get("entropy_table_loaded")),
             entropy_fallback_used=bool(outcome.get("entropy_fallback_used")),
             motion_mode=str(outcome.get("motion_mode") or ""),
             uncertainty=None if unc is None else float(unc),
+            policy_metrics=dict(outcome.get("policy_metrics") or {}),
+            generation_seed=(generation_context.seed if generation_context else None),
+            generation_repeat=(generation_context.repeat if generation_context else 0),
+            generation_call_role=(generation_context.call_role if generation_context else ""),
         ))
 
     def _final(self, qid, spec, answer, conf, decision, reason, action) -> VqaAnswer:

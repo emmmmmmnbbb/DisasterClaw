@@ -28,6 +28,7 @@ from typing import Any, Optional
 from PIL import Image
 
 import fov_ladder
+from ml_runtime import MODEL_LOAD_LOCK
 import xbd_store
 from xbd_map import geo_to_pixel
 
@@ -105,7 +106,9 @@ PERCEPTION_MAX_PATCH_PX = int(os.getenv("PERCEPTION_MAX_PATCH_PX", "1024"))
 VLN_CHANGE_PERCEPTION = os.getenv("VLN_CHANGE_PERCEPTION", "0").strip().lower() in {
     "1", "true", "yes", "on",
 }
-_BUILDING_CLASS_NAMES_ZH = {"无损伤建筑", "轻微损伤建筑", "严重损伤建筑", "完全损毁建筑"}
+_BUILDING_CLASS_NAMES_ZH = {
+    "无损伤建筑", "轻微损伤建筑", "严重损伤建筑", "完全损毁建筑", "受损建筑",
+}
 # YOLO 中文标签 → change_perception.CLASS_NAMES 的英文 4 类，双向都要用到。
 _ZH_TO_CHANGE_CLASS = {
     "无损伤建筑": "no-damage",
@@ -162,7 +165,9 @@ def _get_detector():
             _DETECTOR = get_detector(DETECTOR_BACKEND, device=PERCEPTION_DEVICE)
     return _DETECTOR
 
-_EVIDENCE_ZH = {"轻微损伤建筑", "严重损伤建筑", "完全损毁建筑", "水池/积水区域"}
+_EVIDENCE_ZH = {
+    "轻微损伤建筑", "严重损伤建筑", "完全损毁建筑", "受损建筑", "水池/积水区域",
+}
 
 # 检测器 raw class_name → 中文标签。兼容两套权重：
 #   - RescueNet（低空斜拍）：type_* 索引名
@@ -483,10 +488,11 @@ class DisasterPerception:
                 )
                 self._localizer = None
             logger.info("[Perception] loading SegFormer: %s", SEGFORMER_MODEL)
-            self._segformer = SegFormerTool(
-                model_name=SEGFORMER_MODEL,
-                device=PERCEPTION_DEVICE if PERCEPTION_DEVICE else "cuda",
-            )
+            with MODEL_LOAD_LOCK:
+                self._segformer = SegFormerTool(
+                    model_name=SEGFORMER_MODEL,
+                    device=PERCEPTION_DEVICE if PERCEPTION_DEVICE else "cuda",
+                )
             self._descriptor = SceneDescriptor()
             self._ready = True
             self._last_error = None
@@ -588,7 +594,9 @@ class DisasterPerception:
         patch_path = _art_path(patch_id)
         patch.save(patch_path, "PNG")
 
-        # pre 时相：同一地理窗口，但**保持原生 GSD**，不随高度降质。
+        # pre 时相使用同一地理窗口。ChangeOS 是固定 1024×1024 双时相模型，
+        # 两个输入在这里直接以相同尺寸渲染，避免 post 1024→原生大图→1024 的
+        # 冗余重采样；legacy crop/classifier 路径仍保留原生 pre 分辨率。
         #
         # 这一点是有意的科学选择：灾前影像是地面站已归档的卫星产品，其分辨率与
         # UAV 当前高度无关。若让 pre 也随高度降质，则「降高」会同时恢复 pre 通道的
@@ -599,10 +607,14 @@ class DisasterPerception:
         need_pre = _BACKEND_ACTIVE or BUILDING_PROPOSER == "unet" or VLN_CHANGE_PERCEPTION
         if need_pre:
             try:
-                pre_px = int(min(4096, max(
-                    fov_ladder.SENSOR_PX,
-                    round(meta.span_m / fov_ladder.NATIVE_GSD_M),
-                )))
+                pre_px = (
+                    fov_ladder.SENSOR_PX
+                    if DETECTOR_BACKEND == "changeos"
+                    else int(min(4096, max(
+                        fov_ladder.SENSOR_PX,
+                        round(meta.span_m / fov_ladder.NATIVE_GSD_M),
+                    )))
+                )
                 pre_img, pre_meta = mo.render_for_alt(
                     center_lat=lat, center_lon=lon, alt_m=alt_c,
                     stage="pre", out_px=pre_px, enforce_roi=False,
@@ -623,7 +635,10 @@ class DisasterPerception:
             "observation_model": "mosaic_fov",
             "gsd_ladder": False,
             "pre_scale": pre_scale,
-            "pre_gsd_m": fov_ladder.NATIVE_GSD_M,
+            "pre_gsd_m": (
+                meta.eff_gsd_m if DETECTOR_BACKEND == "changeos"
+                else fov_ladder.NATIVE_GSD_M
+            ),
         }
         return (
             patch_path, patch.width, patch.height, radius_m,
@@ -885,9 +900,9 @@ class DisasterPerception:
     ) -> dict:
         """DETECTOR_BACKEND != legacy 时的双时相损伤检测。
 
-        pre 保持原生 GSD、post 随高度降质（见 _render_uav_view 的说明），
-        因此把 post 上采样到 pre 尺寸喂给 siamese，再把返回框从 pre 坐标
-        缩放回 post 视场（1024）坐标。detections 字段与 legacy 路径对齐，
+        输入先对齐到相同像素尺寸，再喂给双时相后端；返回框缩放回 post
+        视场坐标。ChangeOS 路径的 pre/post 都是 1024×1024，因此比例为 1。
+        detections 字段与 legacy 路径对齐，
         供 agent_vqa.build_evidence_from_perception 直接消费。
         """
         det = _get_detector()
@@ -961,9 +976,13 @@ class DisasterPerception:
             "proposer": DETECTOR_BACKEND,
             "pipeline": {
                 "n_proposals": len(out),
-                "n_crops": len(out),
+                # External dense-map backends consume the complete paired FOV;
+                # their instances are derived after inference, without a
+                # proposal/bbox crop classifier stage.
+                "n_crops": 0,
                 "n_classifier": n_classifier,
                 "n_evidence": n_evidence,
+                "inference_mode": "full_fov_pair",
             },
         }
 
@@ -1267,13 +1286,16 @@ class DisasterPerception:
         out_dir = PERCEPTION_OUTPUT_DIR
         base = patch_path.stem
         out_prefix = str(_art_path(base, "_seg").with_suffix(""))
-        result = self._segformer.segment(
-            image=str(patch_path),
-            return_mask=True,
-            return_overlay=True,
-            output_path=out_prefix,
-            colormap="high_contrast",
-        )
+        # Qwen and SegFormer loaders both use transformers' temporary global
+        # torch dtype. Wait for model construction before FP32 preprocessing.
+        with MODEL_LOAD_LOCK:
+            result = self._segformer.segment(
+                image=str(patch_path),
+                return_mask=True,
+                return_overlay=True,
+                output_path=out_prefix,
+                colormap="high_contrast",
+            )
 
         raw_stats = result.get("stats", {}) or {}
         named_stats: dict[str, int] = {}
@@ -1327,10 +1349,11 @@ class DisasterPerception:
         seg_stats: dict[str, int],
     ) -> tuple[str, str, int, int, int, int]:
         intact = class_counts.get("无损伤建筑", 0)
+        binary_damaged = class_counts.get("受损建筑", 0)
         minor = class_counts.get("轻微损伤建筑", 0)
         major = class_counts.get("严重损伤建筑", 0)
         destroyed = class_counts.get("完全损毁建筑", 0)
-        damaged_total = minor + major + destroyed
+        damaged_total = binary_damaged + minor + major + destroyed
         vehicles = class_counts.get("车辆", 0)
 
         water_px_ann = class_counts.get("水池/积水区域", 0)  # YOLO 像素数？其实是数量
@@ -1340,7 +1363,7 @@ class DisasterPerception:
 
         if destroyed >= 1 or major >= 3:
             risk_level = "high"
-        elif major >= 1 or damaged_total >= 3 or water_px_ann >= 2:
+        elif binary_damaged >= 1 or major >= 1 or damaged_total >= 3 or water_px_ann >= 2:
             risk_level = "moderate"
         elif minor >= 1 or (water_px_ann >= 1 and intact >= 1):
             risk_level = "low"
@@ -1350,6 +1373,8 @@ class DisasterPerception:
         bits: list[str] = []
         if damaged_total > 0:
             parts = []
+            if binary_damaged:
+                parts.append(f"损伤 {binary_damaged}")
             if destroyed:
                 parts.append(f"完全损毁 {destroyed}")
             if major:
@@ -1495,11 +1520,13 @@ class DisasterPerception:
                 "seg_ms": int(seg_ms),
                 "desc_ms": int(desc_ms),
                 "total_ms": int(crop_ms + det_ms + seg_ms + desc_ms),
-                "building_proposer": BUILDING_PROPOSER,
+                "building_proposer": DETECTOR_BACKEND if _BACKEND_ACTIVE else BUILDING_PROPOSER,
                 "change_perception_used": bool(
-                    (BUILDING_PROPOSER == "unet" or VLN_CHANGE_PERCEPTION)
+                    not _BACKEND_ACTIVE
+                    and (BUILDING_PROPOSER == "unet" or VLN_CHANGE_PERCEPTION)
                     and pre_patch_path is not None
                 ),
+                "detector_backend": DETECTOR_BACKEND if _BACKEND_ACTIVE else "legacy",
                 **gsd_meta,
                 "pipeline": detection.get("pipeline") or {},
             },

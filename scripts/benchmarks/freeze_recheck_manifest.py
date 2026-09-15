@@ -70,6 +70,11 @@ def main() -> int:
         "frozen_at": datetime.now(timezone.utc).isoformat(),
         "git_commit": git_commit(),
         "backend": args.backend,
+        "label_mode": (
+            "binary"
+            if str(args.backend).strip().lower() in {"changeos", "changeos_r34", "binary_changeos"}
+            else "four_class"
+        ),
         "leaky": bool(args.leaky),
         "temperature": float(fit["temperature"]),
         "qhat": float(fit["conformal_qhat_alpha01"]),

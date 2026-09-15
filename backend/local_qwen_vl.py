@@ -10,6 +10,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from ml_runtime import MODEL_LOAD_LOCK
+
 
 _BACKEND_LOCK = threading.Lock()
 _BACKEND_CACHE: dict[tuple, "LocalQwenVLBackend"] = {}
@@ -81,6 +83,7 @@ class LocalQwenVLBackend:
         self.device = "cpu"
         self._torch = None
         self._load_lock = threading.Lock()
+        self._infer_lock = threading.Lock()
 
     @property
     def is_loaded(self) -> bool:
@@ -106,30 +109,31 @@ class LocalQwenVLBackend:
             self.device = self._resolve_device(torch)
             dtype = self._resolve_dtype(torch)
 
-            self.processor = AutoProcessor.from_pretrained(self.model_id, trust_remote_code=True)
+            with MODEL_LOAD_LOCK:
+                self.processor = AutoProcessor.from_pretrained(self.model_id, trust_remote_code=True)
 
-            load_kwargs: dict[str, Any] = {
-                "trust_remote_code": True,
-                "low_cpu_mem_usage": True,
-            }
-            if dtype is not None:
-                load_kwargs["torch_dtype"] = dtype
+                load_kwargs: dict[str, Any] = {
+                    "trust_remote_code": True,
+                    "low_cpu_mem_usage": True,
+                }
+                if dtype is not None:
+                    load_kwargs["torch_dtype"] = dtype
 
-            if self.device.startswith("cuda"):
-                load_kwargs["device_map"] = {"": self.device}
+                if self.device.startswith("cuda"):
+                    load_kwargs["device_map"] = {"": self.device}
 
-            model = AutoModelForImageTextToText.from_pretrained(self.model_id, **load_kwargs)
-            if not self.device.startswith("cuda"):
-                model = model.to(self.device)
+                model = AutoModelForImageTextToText.from_pretrained(self.model_id, **load_kwargs)
+                if not self.device.startswith("cuda"):
+                    model = model.to(self.device)
 
-            if self.checkpoint and Path(self.checkpoint).exists():
-                try:
-                    from peft import PeftModel
-                except ImportError as exc:
-                    raise RuntimeError("加载 LoRA checkpoint 需要安装 peft") from exc
-                model = PeftModel.from_pretrained(model, self.checkpoint).merge_and_unload()
+                if self.checkpoint and Path(self.checkpoint).exists():
+                    try:
+                        from peft import PeftModel
+                    except ImportError as exc:
+                        raise RuntimeError("加载 LoRA checkpoint 需要安装 peft") from exc
+                    model = PeftModel.from_pretrained(model, self.checkpoint).merge_and_unload()
 
-            self.model = model.eval()
+                self.model = model.eval()
 
     def unload(self) -> None:
         if self.model is None:
@@ -141,7 +145,13 @@ class LocalQwenVLBackend:
             self._torch.cuda.empty_cache()
         gc.collect()
 
-    def infer(self, messages: list[dict], max_new_tokens: int = 512, temperature: float = 0.3) -> str:
+    def infer(
+        self,
+        messages: list[dict],
+        max_new_tokens: int = 512,
+        temperature: float = 0.3,
+        seed: int | None = None,
+    ) -> str:
         if not self.is_loaded:
             self.load()
         assert self.processor is not None and self.model is not None and self._torch is not None
@@ -160,16 +170,33 @@ class LocalQwenVLBackend:
             return_tensors="pt",
         ).to(self.device)
 
-        with self._torch.no_grad():
-            output_ids = self.model.generate(
-                **inputs,
-                max_new_tokens=max_new_tokens,
-                do_sample=temperature > 0,
-                temperature=temperature,
-                top_p=self.top_p,
-                repetition_penalty=self.repetition_penalty,
-                eos_token_id=self.processor.tokenizer.eos_token_id,
-            )
+        cuda_devices: list[int] = []
+        if str(self.device).startswith("cuda"):
+            try:
+                cuda_devices = [int(str(self.device).split(":", 1)[1])]
+            except (IndexError, ValueError):
+                cuda_devices = [0]
+
+        # Transformers sampling reads the process-wide torch RNG. Lock and fork
+        # its state so concurrent calls cannot perturb each other, and so the
+        # caller's RNG state is restored after this generation.
+        with self._infer_lock:
+            with self._torch.random.fork_rng(devices=cuda_devices, enabled=seed is not None):
+                if seed is not None:
+                    self._torch.manual_seed(int(seed))
+                    for device_index in cuda_devices:
+                        with self._torch.cuda.device(device_index):
+                            self._torch.cuda.manual_seed(int(seed))
+                with self._torch.no_grad():
+                    output_ids = self.model.generate(
+                        **inputs,
+                        max_new_tokens=max_new_tokens,
+                        do_sample=temperature > 0,
+                        temperature=temperature,
+                        top_p=self.top_p,
+                        repetition_penalty=self.repetition_penalty,
+                        eos_token_id=self.processor.tokenizer.eos_token_id,
+                    )
 
         new_ids = output_ids[:, inputs.input_ids.shape[1]:]
         text = self.processor.batch_decode(new_ids, skip_special_tokens=True)[0]

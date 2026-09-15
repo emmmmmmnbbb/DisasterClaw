@@ -1,5 +1,11 @@
 # 补实验执行记录（匹配预算 + 不动重问）
 
+> **已失效，禁止引用其数值。** 本文件记录的两个实验都在目标投影/证据传递缺陷
+> 修复前运行，其输出目录已于 2026-09-12 删除，结果不得作为论文数值或策略结论。
+> 详见 `review/invalidated_online_results.md`。下面保留的是流程与命令，可复用的
+> 只有接口约定（尤其是 final 题集必须显式传 `--testset` 与 `--frozen-manifest`）；
+> 重跑必须落到新的 out-dir，不得复用此处文件名。
+
 日期：2026-09-06。GPU 空闲后按此执行。**只新增子目录，绝不覆盖任何原始结果；不改 backend/ 与 scripts/ 源码。** 两个实验均需本地 Qwen2.5-VL-7B-Instruct（已在 `~/.cache/huggingface`），需空闲 GPU。
 
 前置环境：`/home/lc/miniconda3/envs/disasterclaw/bin/python`；`.env` 已配 `BASE_MODEL=Qwen/Qwen2.5-VL-7B-Instruct`（本地加载）。

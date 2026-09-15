@@ -69,6 +69,7 @@ EVIDENCE_CLASSES = {
     "轻微损伤建筑",
     "严重损伤建筑",
     "完全损毁建筑",
+    "受损建筑",
     "水池/积水区域",
 }
 
@@ -83,22 +84,30 @@ def _clamp(v: float, lo: float, hi: float) -> float:
 def best_evidence(
     detections: Optional[list[dict]],
 ) -> tuple[float, str, Optional[list], Optional[dict]]:
-    """受灾相关检测里 conf 最高的 (conf, class_name, bbox, class_probs)；无则 (0.0, '', None, None)。
+    """Return the detection used by the reobservation controller.
 
-    class_probs 是 perception.py 在 `VLN_CHANGE_PERCEPTION=1` 时才会附加的字段
-    （4 类损伤的校准 softmax），没开该开关时恒为 None。
+    Four-class backends retain the historical rule: use the highest-confidence
+    damaged object and ignore intact buildings.  A binary detector must also be
+    allowed to reconsider an uncertain ``no-damage`` prediction, so binary
+    detections are ranked by entropy instead.  Otherwise a 0.51/0.49 negative
+    prediction could never trigger the mechanism intended to resolve it.
     """
     best_conf, best_cls, best_bbox, best_probs = 0.0, "", None, None
+    best_rank = -1.0
     for det in detections or []:
         cls = det.get("class_name", "")
-        if cls not in EVIDENCE_CLASSES:
+        probs = det.get("class_probs")
+        is_binary = isinstance(probs, dict) and set(probs) == {"no-damage", "damaged"}
+        if cls not in EVIDENCE_CLASSES and not (is_binary and cls == "无损伤建筑"):
             continue
         conf = float(det.get("conf", 0.0))
-        if conf >= best_conf:
+        rank = entropy_uncertainty(probs) if is_binary else conf
+        if rank > best_rank or (rank == best_rank and conf >= best_conf):
+            best_rank = rank
             best_conf = conf
             best_cls = cls
             best_bbox = det.get("bbox") or det.get("bbox_xyxy")
-            best_probs = det.get("class_probs")
+            best_probs = probs
     return best_conf, best_cls, best_bbox, best_probs
 
 
@@ -119,6 +128,78 @@ def entropy_uncertainty(class_probs: dict[str, float]) -> float:
         if p_norm > 0.0:
             h -= p_norm * math.log(p_norm)
     return round(_clamp(h / math.log(k), 0.0, 1.0), 3)
+
+
+def count_bucket_uncertainty(detections: Optional[list[dict]]) -> float:
+    """Entropy of the task answer distribution over ``0/1/2/3+``.
+
+    Each binary ChangeOS building contributes a Bernoulli damaged probability.
+    Dynamic programming caps the count state at three, matching the benchmark's
+    answer vocabulary. This avoids zooming because one of many buildings has
+    high entropy when the aggregate answer is already certainly ``3+``.
+    """
+    damaged_probs: list[float] = []
+    for det in detections or []:
+        probs = det.get("class_probs")
+        if not isinstance(probs, dict) or set(probs) != {"no-damage", "damaged"}:
+            continue
+        total = max(0.0, float(probs.get("no-damage", 0.0))) + max(
+            0.0, float(probs.get("damaged", 0.0))
+        )
+        if total <= 0.0:
+            continue
+        damaged_probs.append(_clamp(float(probs.get("damaged", 0.0)) / total, 0.0, 1.0))
+    if not damaged_probs:
+        return 0.0
+    buckets = [1.0, 0.0, 0.0, 0.0]
+    for p in damaged_probs:
+        nxt = [0.0, 0.0, 0.0, 0.0]
+        for count, mass in enumerate(buckets):
+            nxt[count] += mass * (1.0 - p)
+            nxt[min(3, count + 1)] += mass * p
+        buckets = nxt
+    return entropy_uncertainty({str(i): p for i, p in enumerate(buckets)})
+
+
+def spatial_bearing_uncertainty(
+    target_geo: Optional[list[float]],
+    roi_bounds: Optional[dict[str, float]],
+    observation_gsd_m: Optional[float],
+    *,
+    localization_sigma_factor: float = 3.0,
+    min_sigma_m: float = 2.0,
+) -> float:
+    """Uncertainty that localization noise crosses an eight-bearing boundary.
+
+    The target range and bearing are measured from the registered ROI centre.
+    A conservative position sigma is derived from current GSD. The returned
+    ratio exceeds 0.5 when angular localization error is larger than the margin
+    to the nearest 45-degree class boundary.
+    """
+    if not isinstance(target_geo, (list, tuple)) or len(target_geo) != 2:
+        return 1.0
+    if not isinstance(roi_bounds, dict):
+        return 1.0
+    try:
+        lat, lon = float(target_geo[0]), float(target_geo[1])
+        center_lat = (float(roi_bounds["south"]) + float(roi_bounds["north"])) * 0.5
+        center_lon = (float(roi_bounds["west"]) + float(roi_bounds["east"])) * 0.5
+        gsd = float(observation_gsd_m or 0.0)
+    except (KeyError, TypeError, ValueError):
+        return 1.0
+    north = (lat - center_lat) * 111_000.0
+    east = (lon - center_lon) * 111_000.0 * math.cos(math.radians(center_lat))
+    radius = math.hypot(north, east)
+    sigma_m = max(float(min_sigma_m), float(localization_sigma_factor) * max(gsd, 0.0))
+    if radius <= 1e-6:
+        return 1.0
+    bearing = math.degrees(math.atan2(east, north)) % 360.0
+    boundary_margin = min(
+        abs((bearing - boundary + 180.0) % 360.0 - 180.0)
+        for boundary in (22.5 + 45.0 * i for i in range(8))
+    )
+    angular_sigma = math.degrees(math.atan2(sigma_m, radius))
+    return round(_clamp(angular_sigma / max(angular_sigma + boundary_margin, 1e-9), 0.0, 1.0), 3)
 
 
 def uncertainty_score(
@@ -168,6 +249,145 @@ def reobserve_flight_time_s(horizontal_m: float, vertical_m: float) -> float:
     return float(horizontal_m) / HORIZONTAL_SPEED_MPS + float(vertical_m) / VERTICAL_SPEED_MPS
 
 
+def predicted_roi_coverage(
+    roi_norm_bbox: Optional[list[float]],
+    *,
+    next_center_norm: tuple[float, float] = (0.5, 0.5),
+    next_span_ratio: float = 1.0,
+) -> float:
+    """Fraction of the task ROI retained by a proposed next observation.
+
+    Coordinates are expressed in the current observation.  A descent scales the
+    next square footprint by ``next_span_ratio``; recentering moves its centre.
+    The denominator is the complete requested ROI, including any portion already
+    outside the current image, so edge truncation is visible in the score.
+    """
+    if not isinstance(roi_norm_bbox, (list, tuple)) or len(roi_norm_bbox) != 4:
+        return 0.0
+    try:
+        left, top, right, bottom = map(float, roi_norm_bbox)
+    except (TypeError, ValueError):
+        return 0.0
+    area = max(0.0, right - left) * max(0.0, bottom - top)
+    if area <= 0.0:
+        return 0.0
+    ratio = _clamp(float(next_span_ratio), 0.0, 1.0)
+    cx, cy = map(float, next_center_norm)
+    half = ratio * 0.5
+    win_left, win_top, win_right, win_bottom = cx - half, cy - half, cx + half, cy + half
+    inter_w = max(0.0, min(right, win_right) - max(left, win_left))
+    inter_h = max(0.0, min(bottom, win_bottom) - max(top, win_top))
+    return round(_clamp((inter_w * inter_h) / area, 0.0, 1.0), 6)
+
+
+@dataclass(frozen=True)
+class TaskRecheckDecision:
+    allow: bool
+    motion_mode: str
+    utility: float
+    uncertainty: float
+    detail_gain: float
+    predicted_roi_coverage: float
+    coverage_loss: float
+    estimated_flight_time_s: float
+    reason: str
+
+    def to_dict(self) -> dict:
+        return {
+            "allow": self.allow,
+            "motion_mode": self.motion_mode,
+            "utility": round(self.utility, 6),
+            "uncertainty": round(self.uncertainty, 6),
+            "detail_gain": round(self.detail_gain, 6),
+            "predicted_roi_coverage": round(self.predicted_roi_coverage, 6),
+            "coverage_loss": round(self.coverage_loss, 6),
+            "estimated_flight_time_s": round(self.estimated_flight_time_s, 6),
+            "reason": self.reason,
+        }
+
+
+def task_conditioned_recheck_decision(
+    *,
+    question_type: str,
+    uncertainty: float,
+    alt: float,
+    descend_step_m: float,
+    alt_min_m: float,
+    roi_norm_bbox: Optional[list[float]],
+    target_visible: bool,
+    target_matched: bool,
+    recenter_horizontal_m: float = 0.0,
+    uncertainty_trigger: float = 0.5,
+    min_roi_coverage: float = 0.98,
+    cost_weight: float = 0.05,
+    coverage_weight: float = 1.0,
+    cost_scale_s: float = 60.0,
+    min_utility: float = 0.05,
+) -> TaskRecheckDecision:
+    """Question-aware, label-free gate for a candidate reobservation.
+
+    Damage questions may centre on their marked building. Count and spatial
+    questions keep the current geographic centre and descend only when the full
+    task ROI remains visible. Presence positives are already answerable; target
+    absence is handled by the search branch instead of a local damage-entropy
+    zoom. Parameters are selected on development data and frozen before final.
+    """
+    qtype = str(question_type or "")
+    unc = _clamp(float(uncertainty), 0.0, 1.0)
+    alt_after = max(float(alt_min_m), float(alt) - float(descend_step_m))
+    ratio = _clamp(alt_after / max(float(alt), 1e-6), 0.0, 1.0)
+    detail_gain = max(0.0, 1.0 - ratio)
+
+    if qtype == "presence":
+        return TaskRecheckDecision(
+            False, "hold", 0.0, unc, detail_gain, 1.0, 0.0, 0.0,
+            "presence evidence is answered at the wide view; missing targets use search",
+        )
+    if qtype == "damage" and not target_visible:
+        return TaskRecheckDecision(
+            False, "hold", 0.0, unc, detail_gain, 1.0, 0.0, 0.0,
+            "marked damage target is outside the current view",
+        )
+    if qtype not in {"damage", "count", "spatial"}:
+        return TaskRecheckDecision(
+            False, "hold", 0.0, unc, detail_gain, 0.0, 1.0, 0.0,
+            "unsupported question type",
+        )
+
+    contextual = qtype in {"count", "spatial"}
+    motion_mode = "descend_only" if contextual else "descend_center"
+    coverage = (
+        predicted_roi_coverage(
+            roi_norm_bbox, next_center_norm=(0.5, 0.5), next_span_ratio=ratio,
+        )
+        if contextual else 1.0
+    )
+    coverage_loss = 1.0 - coverage
+    vertical_m = max(0.0, float(alt) - alt_after)
+    horizontal_m = 0.0 if contextual else max(0.0, float(recenter_horizontal_m))
+    flight_time = reobserve_flight_time_s(horizontal_m, vertical_m)
+    utility = (
+        unc * detail_gain
+        - float(cost_weight) * (flight_time / max(float(cost_scale_s), 1e-6))
+        - float(coverage_weight) * coverage_loss
+    )
+
+    reasons = []
+    if detail_gain <= 0.0:
+        reasons.append("altitude floor reached")
+    if unc < float(uncertainty_trigger):
+        reasons.append("task uncertainty below trigger")
+    if contextual and coverage < float(min_roi_coverage):
+        reasons.append("predicted ROI coverage below minimum")
+    if utility < float(min_utility):
+        reasons.append("expected utility below minimum")
+    allow = not reasons
+    return TaskRecheckDecision(
+        allow, motion_mode, utility, unc, detail_gain, coverage, coverage_loss,
+        flight_time, "; ".join(reasons) if reasons else "positive task-conditioned utility",
+    )
+
+
 def info_gain_descend(
     entropy_now: float,
     alt: float,
@@ -212,7 +432,17 @@ def fit_conformal_qhat(
     class_order: Optional[list[str]] = None,
 ) -> float:
     """Fit APS qhat on (class_probs, true_label) rows from the val partition."""
-    names = class_order or ["no-damage", "minor-damage", "major-damage", "destroyed"]
+    if class_order:
+        names = list(class_order)
+    else:
+        observed = {str(name) for probs, label in rows for name in probs} | {
+            str(label) for _, label in rows
+        }
+        names = (
+            ["no-damage", "damaged"]
+            if observed and observed <= {"no-damage", "damaged"}
+            else ["no-damage", "minor-damage", "major-damage", "destroyed"]
+        )
     name_to_i = {n: i for i, n in enumerate(names)}
     scores: list[float] = []
     rng = random.Random(0)
@@ -236,7 +466,12 @@ def conformal_predict_set(
     class_order: Optional[list[str]] = None,
 ) -> list[str]:
     """Smallest APS set whose cumulative prob reaches qhat."""
-    names = class_order or ["no-damage", "minor-damage", "major-damage", "destroyed"]
+    if class_order:
+        names = list(class_order)
+    elif set(class_probs) == {"no-damage", "damaged"}:
+        names = ["no-damage", "damaged"]
+    else:
+        names = ["no-damage", "minor-damage", "major-damage", "destroyed"]
     items = [(n, max(0.0, float(class_probs.get(n, 0.0)))) for n in names]
     total = sum(p for _, p in items) or 1.0
     items = [(n, p / total) for n, p in items]
@@ -278,7 +513,7 @@ class RecheckConfig:
     entropy_table_path: str = ""          # info_gain 正式策略必须提供新 FOV 熵表
     conformal_qhat: float = 0.9           # APS 分位数（由 val 拟合）
     conformal_alpha: float = 0.1          # 目标误覆盖率
-    motion_mode: str = "descend_center"   # hold | center_only | descend_only | descend_center
+    motion_mode: str = "descend_center"   # hold | no_op | center_only | descend_only | descend_center | wide_roi
 
 
 @dataclass
@@ -309,14 +544,16 @@ class RecheckController:
 
     def __init__(self, config: Optional[RecheckConfig] = None):
         self.config = config or RecheckConfig()
-        valid_motion_modes = {"hold", "center_only", "descend_only", "descend_center"}
+        valid_motion_modes = {
+            "hold", "no_op", "center_only", "descend_only", "descend_center", "wide_roi",
+        }
         if self.config.motion_mode not in valid_motion_modes:
             raise ValueError(
                 f"invalid motion_mode {self.config.motion_mode!r}; "
                 f"expected one of {sorted(valid_motion_modes)}"
             )
         # key=量化位置 → {count, unc0, label}
-        self._state: dict[tuple[int, int], dict] = {}
+        self._state: dict[tuple, dict] = {}
         self.resolved_log: list[dict] = []  # 供报告/评测：每次定论的不确定性下降
         self.trigger_count = 0  # 本 episode 新触发复核的位置数（按量化位置/闭环计）
         self._rng = random.Random(self.config.random_seed)  # trigger_mode="random" 专用
@@ -331,7 +568,9 @@ class RecheckController:
             # stop the run rather than silently changing A5 into a height heuristic.
             self._entropy_table = ExpectedEntropyTable.load(path)
 
-    def _key(self, lat: float, lon: float) -> tuple[int, int]:
+    def _key(self, lat: float, lon: float, track_id: str = "") -> tuple:
+        if track_id:
+            return ("track", str(track_id))
         # 用经纬度的粗量化做去重（episode 内百米级，误差无所谓）。
         scale = self.config.cell_m / 111_000.0  # 约略：1 度纬度 ≈ 111km
         return (int(round(lat / scale)), int(round(lon / scale)))
@@ -389,6 +628,7 @@ class RecheckController:
         patch_height: int,
         degraded: bool = False,
         allow_recheck: bool = True,
+        track_id: str = "",
     ) -> RecheckOutcome:
         """评估当前观测：跳过 / 触发复核机动 / 定论。
 
@@ -412,7 +652,7 @@ class RecheckController:
             temperature=cfg.entropy_temperature,
         )
 
-        key = self._key(lat, lon)
+        key = self._key(lat, lon, track_id=track_id)
         rec = self._state.get(key)
 
         # ── 1) 把握足够 / 无可疑目标 ────────────────────────────────
@@ -479,7 +719,7 @@ class RecheckController:
         north_m, east_m = 0.0, 0.0
         offset = None
         allow_center = cfg.motion_mode in {"center_only", "descend_center"}
-        allow_descend = cfg.motion_mode in {"descend_only", "descend_center"}
+        allow_descend = cfg.motion_mode in {"descend_only", "descend_center", "wide_roi"}
         if not allow_descend:
             up_m = 0.0
         if allow_center and not degraded and bbox and patch_width > 0 and patch_height > 0 and patch_radius_m > 0:

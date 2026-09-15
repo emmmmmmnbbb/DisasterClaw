@@ -1,18 +1,25 @@
 """backend/detectors — 可切换的双时相建筑损伤检测后端 (计划 §3.4)。
 
 `DETECTOR_BACKEND` 默认 `legacy_unet`，保持既有可复现产物不变；
-切到 `xview2_first` 得到 SOTA 参照上界（**leaky，见该模块 docstring**）。
+也可切到 ChangeOS 或 xView2 后端。各后端的训练状态和实验角色由
+``describe()`` 显式报告。
 """
 from __future__ import annotations
 
 import os
 
-from .base import DAMAGE_SUBTYPES, SUBTYPE_TO_ZH, Detection, DetectorBackend
+from .base import (
+    BINARY_DAMAGE_SUBTYPES,
+    DAMAGE_SUBTYPES,
+    SUBTYPE_TO_ZH,
+    Detection,
+    DetectorBackend,
+)
 
 DETECTOR_BACKEND = os.getenv("DETECTOR_BACKEND", "legacy_unet").strip().lower()
 
 __all__ = [
-    "DAMAGE_SUBTYPES", "SUBTYPE_TO_ZH", "Detection", "DetectorBackend",
+    "BINARY_DAMAGE_SUBTYPES", "DAMAGE_SUBTYPES", "SUBTYPE_TO_ZH", "Detection", "DetectorBackend",
     "DETECTOR_BACKEND", "get_detector",
 ]
 
@@ -43,4 +50,14 @@ def get_detector(name: str | None = None, **kwargs):
 
         kwargs.setdefault("device", os.getenv("PERCEPTION_DEVICE", "cuda"))
         return XView2EventDisjointDetector(**kwargs)
+    if key in {"changeos", "changeos_r34", "binary_changeos"}:
+        from .changeos import ChangeOSDetector
+
+        kwargs.setdefault("device", os.getenv("PERCEPTION_DEVICE", "cuda"))
+        kwargs.setdefault("weights", os.getenv("CHANGEOS_WEIGHTS", "") or None)
+        kwargs.setdefault("input_size", int(os.getenv("CHANGEOS_INPUT_SIZE", "1024")))
+        kwargs.setdefault("loc_threshold", float(os.getenv("CHANGEOS_LOC_THRESHOLD", "0.5")))
+        kwargs.setdefault("damage_threshold", float(os.getenv("CHANGEOS_DAMAGE_THRESHOLD", "0.5")))
+        kwargs.setdefault("temperature", float(os.getenv("CHANGEOS_TEMPERATURE", "1.0")))
+        return ChangeOSDetector(**kwargs)
     raise ValueError(f"unknown DETECTOR_BACKEND: {key!r}")

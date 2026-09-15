@@ -1,12 +1,17 @@
 \section{Platform-enabled evaluation and results}
-\subsection{Controllable views produce a measurable perception response}
+\subsection{Historical four-class perception diagnostic}
+The results in this subsection use the archived \texttt{xview2\_first} four-class
+pipeline. They are retained only as historical diagnostics and are not part of,
+or directly comparable to, the frozen binary ChangeOS evidence chain used by the
+current main experiment.
+
 The platform generates three observations of the same geographic target scope while varying its footprint and effective GSD. The evaluation retains the same 3,753 building identities across 44 ROIs. Table~\ref{tab:fov} reports the reconstructed final evaluation population. Moving from cruise to floor increases macro-F1 from 0.6118 to 0.6542 and accuracy from 0.7250 to 0.7423; Brier score and NLL also decrease. The observation control therefore produces a measurable response in the implemented perception pipeline.
 
 \begin{table}[htbp]
 \centering\small
 \caption{Building-level results at three simulated camera states on the same 3,753 evaluation buildings. Lower Brier score and NLL are better.}
 \label{tab:fov}
-\input{tables/fov}
+\input{tables/historical/xview2_first_fov}
 \end{table}
 
 Across cruise and floor, 383 buildings change predicted class. Of these, 191 change from incorrect to correct and 126 from correct to incorrect; 66 change between incorrect classes. The net accuracy gain is 65/3,753, or 1.73 percentage points. Thus, a narrower footprint does not act as a uniformly beneficial treatment. It creates both correction opportunities and harmful changes that an allocation rule must distinguish.
@@ -22,14 +27,14 @@ Localization contributes to this endpoint. The cruise, intermediate, and floor r
 
 These results validate the platform's use for a controlled observation-allocation study. They do not validate the assumed altitude against the original sensor, and they do not show that a physical revisit would reproduce the same change.
 
-\subsection{Budgeted allocation on paired observations}
+\subsection{Historical four-class allocation diagnostic}
 At $b=0.25$, each active rule selects 938 buildings (Table~\ref{tab:allocation}). Calibrated entropy obtains macro-F1 0.6433, compared with 0.6241 for random allocation and 0.6118 without reobservation. It produces 53 net additional correct predictions, versus 19 for the recorded random allocation. Uncertainty-based ranking can therefore identify useful reobservations in this observed building population under a common selection budget.
 
 \begin{table}[htbp]
 \centering\footnotesize
 \caption{Offline allocation at $b=0.25$. All active rules select 938 floor-view predictions and are scored with the same calibrated vectors. Net correct counts corrections minus harms. The label-informed row uses evaluation labels.}
 \label{tab:allocation}
-\input{tables/allocation}
+\input{tables/historical/xview2_first_allocation}
 \end{table}
 
 Raw entropy is numerically strongest among deployable rules at this budget, with macro-F1 0.6448. Expected entropy reduction reaches 0.6308 and APS set size reaches 0.6367. The experiment therefore does not establish an advantage for calibrating the ranking score or for replacing uncertainty with the fitted entropy-reduction proxy. The label-informed diagnostic performs better at intermediate budgets by selecting corrections and postponing harmful cases, but it uses evaluation labels and is not deployable.
