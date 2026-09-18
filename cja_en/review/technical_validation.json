@@ -1,17 +1,30 @@
 {
   "scope": "technical consistency only; submission readiness remains incomplete",
-  "errors": [],
-  "pdf_pages": 28,
-  "pdf_sha256": "8a9844a75533f12e7798ac0d8d3b2daa1661d80f03ed8f15c2b83fac95f484a8",
-  "latex_warnings": [],
+  "errors": [
+    "Unresolved LaTeX diagnostic",
+    "Unresolved or duplicated reference in PDF text",
+    "Original source fingerprint changed; inspect user edits before proceeding"
+  ],
+  "pdf_pages": 26,
+  "pdf_sha256": "953d19aef3d88b65d8c9d7959f77da8b58ba7dda6b985696a5ab305337a03a45",
+  "latex_warnings": [
+    "Overfull \\hbox (3.58133pt too wide) in paragraph at lines 16--17",
+    "Overfull \\hbox (13.95993pt too wide) in paragraph at lines 13--14",
+    "Overfull \\hbox (5.74419pt too wide) in paragraph at lines 52--53",
+    "Overfull \\hbox (8.35014pt too wide) in paragraph at lines 4--5",
+    "Overfull \\hbox (26.79564pt too wide) in paragraph at lines 4--5",
+    "Overfull \\hbox (6.11034pt too wide) in paragraph at lines 8--9",
+    "Overfull \\hbox (13.25409pt too wide) in paragraph at lines 8--9"
+  ],
   "bibtex_warnings": [
     "Warning--empty pages in curtis2024tampura",
-    "Warning--empty pages in ovadia2019can",
-    "Warning--empty pages in romano2020adaptive"
+    "Warning--empty pages in ovadia2019can"
   ],
-  "citations": 18,
-  "bib_entries": 18,
-  "unused_bib_entries": [],
+  "citations": 22,
+  "bib_entries": 23,
+  "unused_bib_entries": [
+    "romano2020adaptive"
+  ],
   "missing_citations": [],
   "missing_references": [],
   "duplicate_labels": [],
@@ -20,13 +33,43 @@
   "changed_original_sources": [
     "backend/agent_vqa.py",
     "backend/app.py",
+    "backend/change_perception.py",
+    "backend/detectors/__init__.py",
+    "backend/detectors/base.py",
+    "backend/llm_client.py",
+    "backend/local_qwen_vl.py",
+    "backend/perception.py",
+    "backend/recheck.py",
     "backend/tests/test_agent_vqa.py",
     "backend/tests/test_agent_vqa_app.py",
+    "backend/tests/test_detectors.py",
+    "backend/tests/test_recheck.py",
+    "backend/vlm_analyzer.py",
+    "scripts/benchmarks/bench_agent_vqa.py",
+    "scripts/benchmarks/eval_detector_backends.py",
+    "scripts/benchmarks/freeze_recheck_manifest.py",
     "scripts/benchmarks/gen_agent_vqa_testset_v2.py",
-    "scripts/benchmarks/review_agent_vqa_testset.py"
+    "scripts/benchmarks/report_agent_vqa.py",
+    "scripts/benchmarks/review_agent_vqa_testset.py",
+    "scripts/benchmarks/test_agent_vqa_benchmark.py"
   ],
   "run_files_checked": 2,
-  "unexpected_changed_original_sources": [],
+  "unexpected_changed_original_sources": [
+    "backend/change_perception.py",
+    "backend/detectors/__init__.py",
+    "backend/detectors/base.py",
+    "backend/llm_client.py",
+    "backend/local_qwen_vl.py",
+    "backend/perception.py",
+    "backend/recheck.py",
+    "backend/tests/test_detectors.py",
+    "backend/tests/test_recheck.py",
+    "backend/vlm_analyzer.py",
+    "scripts/benchmarks/eval_detector_backends.py",
+    "scripts/benchmarks/freeze_recheck_manifest.py",
+    "scripts/benchmarks/report_agent_vqa.py",
+    "scripts/benchmarks/test_agent_vqa_benchmark.py"
+  ],
   "changed_run_inputs": [],
   "visual_qa_matches_current_pdf": false
 }

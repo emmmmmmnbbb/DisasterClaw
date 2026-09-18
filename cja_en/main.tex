@@ -15,17 +15,15 @@
 \begin{document}
 \begin{frontmatter}
 \title{DisasterClaw: A georeferenced simulation and agent framework for budgeted UAV disaster inspection}
-\author{Author names to be confirmed}
-\affiliation{organization={Affiliations and corresponding-author details to be confirmed}}
+\author{Anonymous authors}
+\affiliation{organization={Anonymous submission}}
 \begin{abstract}
-Aerial disaster inspection requires deciding whether another observation will help answer the current question, not merely whether it will sharpen a damage prediction. We present DisasterClaw, a georeferenced imagery-grounded simulation and agent framework that links movement, rendered observations, binary building-damage perception, and terminal question answering in traceable episodes. A development-set camera-ladder diagnostic shows that a narrower footprint both corrects and harms building predictions. We then evaluate seven frozen online policies on 160 human-reviewed questions from 44 regions in three disaster events, with three generation repeats (3,360 episodes). The task-conditioned policy attains 75.00\% accuracy, compared with 72.29\% for no reobservation, while executing 161 rather than 923 reobservations for the always-reobserve policy. Its observed gain over no reobservation is 2.71 percentage points, but the prespecified ROI-cluster, multiplicity-adjusted interval spans $-2.04$ to $+7.50$ points; this experiment does not establish a stable advantage over holding. The result supports a platform and measurement contribution: view changes have task-dependent benefits and harms, and additional observations are not automatically useful. Conclusions are limited to rendered orthographic imagery, simplified motion, a fixed ChangeOS backbone with prior xBD exposure, and three evaluation events.
+Aerial disaster inspection requires deciding whether another observation will help answer the current question, not merely whether it will sharpen a damage prediction. We present DisasterClaw, a georeferenced imagery-grounded simulation and agent framework that links movement, rendered observations, binary building-damage perception, and terminal question answering in traceable episodes. A development-set camera-ladder diagnostic shows that a narrower footprint can both correct and harm building predictions. We then evaluate seven frozen online policies on 160 questions independently reviewed by two annotators from 44 regions in three disaster events, with three generation repeats (3,360 episodes). The task-conditioned policy attains 75.00\% accuracy, compared with 72.29\% for no reobservation, while executing 161 reobservations compared with 923 for the always-reobserve policy. Its observed gain over no reobservation is 2.71 percentage points, but the prespecified ROI-cluster, multiplicity-adjusted interval spans $-2.04$ to $+7.50$ points; the experiment therefore does not establish a stable advantage over holding. The results support a platform and measurement contribution: the value of an additional observation depends on the task, and view changes can produce both beneficial and harmful answer transitions. Conclusions are limited to rendered orthographic imagery, simplified motion, a fixed ChangeOS backbone with prior xBD exposure, and three evaluation events.
 \end{abstract}
 \begin{keyword}
 UAV disaster inspection \sep Embodied AI \sep Simulation platform \sep Active perception \sep Budgeted reobservation \sep Vision-language agents
 \end{keyword}
 \end{frontmatter}
-
-\noindent\begin{minipage}{\linewidth}\textbf{Review status.} This is an author-review draft, not a submission-ready release. The main online results use the frozen three-event ChangeOS protocol and audited episode records; older four-class and navigation diagnostics are segregated in the appendix. Author details, release packaging, and the remaining provenance items in Appendix~\ref{app:provenance} require confirmation.\end{minipage}
 
 \input{sections/01_introduction}
 \input{sections/02_related_work}

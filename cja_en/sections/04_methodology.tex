@@ -35,10 +35,3 @@ The task-conditioned policy (T1\_TASK) estimates whether an executable next view
 where $u_q$ is task-specific uncertainty, $\widehat{T}_{\mathrm{move}}$ is a configured-speed motion-time estimate in seconds, and $\widehat{C}_{\mathrm{ROI}}$ is predicted ROI coverage after the candidate action. This is a fixed heuristic, not a learned or calibrated estimate of expected task accuracy. The frozen gate requires $u_q\geq0.5$ and $U_q\geq0.05$; count and spatial tasks additionally require predicted coverage of at least 0.98. A damage question may center on a visible marked target and descend. Count and spatial questions retain the geographic center and descend only if the task ROI remains covered. Presence positives are answered from the wide view, while missing evidence uses the search path. All thresholds were chosen before the final run using development evidence.
 
 The four primary comparators are A0\_HOLD (search allowed, no reobservation), A1\_RANDOM (independent seeded random trigger), A2\_ALWAYS (request whenever feasible), and A3U\_RAW\_ENTROPY (binary raw-entropy trigger). A3\_ENTROPY and A4\_CONFORMAL are supplemental. Each active policy has the same exogenous cap of two reobservations per episode, and all configurations permit up to six search steps. A0\_HOLD has a zero reobservation cap. The cap is shared, but realized action counts differ because policy requests and feasibility differ; the seven outcomes are operating points, not a randomized budget sweep.
-
-\begin{figure}[htbp]
-\centering
-\input{figures/console_composite}
-\caption{Operator console displaying georeferenced scene, simulated vehicle state, task, perception evidence, decisions, and episode log. The screenshots document implemented functions; they are not quantitative evidence.}
-\label{fig:console}
-\end{figure}
