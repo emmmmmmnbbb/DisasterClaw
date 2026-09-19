@@ -1,6 +1,6 @@
 {
-  "date": "2026-09-11",
-  "pdf_sha256": "e863ab49c8f8170a7136fcab48bc57bfc3818167b3ac051a769daad4e5f13c20",
+  "date": "2026-09-18",
+  "pdf_sha256": "e465a620f32e62444307751c46b8c766539c506feea4d984b34fbff9cb46092f",
   "pages_reviewed": [
     1,
     2,
@@ -31,16 +31,19 @@
     27,
     28,
     29,
-    30
+    30,
+    31
   ],
-  "method": "Poppler pdftoppm at 120 dpi; all 30 pages visually inspected with view_image, with the final Figure 1 page re-rendered after its last connector edit",
+  "method": "All 31 pages inspected as PDFKit-rendered contact sheets; pages 8, 9, 10, 12, 13, 14 and 15 inspected individually from Poppler 120-dpi renders. Page 14 re-rendered and checked after the final indicator-glyph correction; other page layouts unchanged.",
   "findings": {
     "clipping_or_overlap": false,
     "missing_figures": false,
     "unreadable_glyphs": false,
     "broken_tables": false,
     "unresolved_references": false,
-    "intentional_console_placeholders": true
+    "intentional_console_placeholders": false,
+    "source_figure_small_text": true,
+    "source_figure_metadata_pending": true
   },
-  "scope": "Layout review of author-review draft; two Figure 4 screenshot placeholders, author queries, and future-work TODOs intentionally remain. Not submission certification."
+  "scope": "Author-review draft, not submission certification. No newly introduced clipping, broken tables or unresolved references observed. Supplied figure panels retain small source labels/interface text and a minor source artifact near the Fig. 2 georeference arrow; original images were preserved. Tile/qid/legend provenance, console-module provenance, independent review records, author declarations and journal-specific formatting remain pending."
 }

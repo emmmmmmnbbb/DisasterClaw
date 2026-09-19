@@ -1,12 +1,12 @@
-\section{The DisasterClaw simulation platform}
+\section{The DisasterClaw platform}
 \label{sec:platform}
-\subsection{Scope and system organization}
+\subsection{Design objectives and system architecture}
 DisasterClaw is an imagery-based simulation and evaluation framework for single-UAV disaster inspection. Its purpose is to turn georeferenced disaster records into closed-loop episodes in which an agent changes its map position or observation footprint, receives a new image, and is scored on a disaster task. The implementation has four connected layers (Fig.~\ref{fig:overview}): a task interface, a disaster-response agent, a simulated geospatial world, and an instrumentation layer. The operator-facing path uses a React/Vite console connected to a Flask/Socket.IO service. Quantitative experiments use a headless runner that calls the same environment and controller modules without rendering the user interface.
 
 \begin{figure}[htbp]
 \centering
-\resizebox{.96\linewidth}{!}{\input{figures/overview}}
-\caption{DisasterClaw system organization. The operator console and headless benchmark connect the disaster-response agent to the same perception/model services and georeferenced environment. The recorder retains intermediate model traces, environment transitions, budgets, and task outcomes.}
+\includegraphics[width=\linewidth]{figure-paper/Fig_DisasterClaw_Refined_NoOverlap.png}
+\caption{Data-to-episode workflow in DisasterClaw. Paired xBD imagery and building annotations provide a geographic scene and reference evidence; map anchoring makes observations depend on vehicle state; task generation, checks, and review produce a frozen benchmark; the platform records closed-loop inspection episodes. Image panels illustrate these stages rather than documenting one final-test trajectory.}
 \label{fig:overview}
 \end{figure}
 
@@ -19,14 +19,23 @@ Table~\ref{tab:platform} states what each layer implements and the boundary atta
 \input{tables/platform}
 \end{table}
 
-\subsection{Georeferenced disaster-scene construction}
+The design has three objectives: retain the geographic relationship between source imagery and inspection targets, expose a controllable observation through a common agent interface, and preserve the evidence needed to reconstruct task outcomes. The benchmark is constructed from the same registered source records, but its reference annotations are kept separate from agent observations. This separates world construction, answer construction, and policy execution.
+
+\subsection{Map-anchored disaster-world construction}
 The scene layer reads paired pre- and post-disaster tiles, building polygons, damage labels, and geographic metadata derived from xBD. Pixel-to-geographic and geographic-to-pixel affine transforms place each image on its recorded ground footprint. When a tile becomes active, its center defines the local world anchor. Robot, target, and report coordinates remain available as latitude, longitude, and altitude, while local north and east offsets are recomputed relative to that anchor.
 
 The interactive map can place the active disaster image over a satellite or street basemap, display the tile boundary, and color annotated buildings for operator reference. These annotation overlays are not passed to the evaluated agent as visual input. In rendered observations, georeferenced disaster tiles supply task evidence and the surrounding basemap supplies spatial context when a wider footprint extends beyond the available disaster tile. Reference answers and building-level scores remain restricted to the annotated target ROI, so contextual background is not treated as disaster ground truth.
 
 The evaluated scene population contains three disaster events and 44 target ROIs. This is the experimental subset, not a claim that the software can reproduce every disaster represented by the source dataset. Missing tiles, sparse geographic coverage, affine-registration error, and differences in acquisition date all constrain the resulting environment.
 
-\subsection{Observation renderer and camera ladder}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{figure-paper/Fig2_MapAnchored_Integration.png}
+\caption{Geographic embedding of disaster records. Image footprints and building polygons are placed in a shared map coordinate system, allowing the environment to associate observations and target locations with geographic state. The supplied visualization illustrates registration and overlays; its colors and markers are not a verified final-task answer key. Basemap context outside the annotated ROI does not supply disaster ground truth.}
+\label{fig:map-anchored}
+\end{figure}
+
+\subsection{Controllable observation model}
 The simulated sensor is nadir-facing, with horizontal field of view $\theta$ and fixed output width $W$. For vehicle height $h$, the ground-footprint width $L$ and effective ground sampling distance $g$ are
 \begin{equation}
  L(h)=2h\tan(\theta/2),\qquad g(h)=\frac{L(h)}{W}.
@@ -45,14 +54,21 @@ For paired damage perception, the post-disaster channel is sampled at the curren
 
 Changing height only crops and resamples existing orthographic imagery. The renderer does not create sub-source detail, oblique views, three-dimensional parallax, self-occlusion, atmospheric effects, motion blur, or a new acquisition time. At the floor, further descent cannot add information under the adopted source model.
 
-\subsection{Vehicle state and action execution}
+\subsection{Agent--environment interaction interface}
 The world model stores a single UAV with geographic position, altitude, heading, speed, flight status, and task state. It also stores targets, reports, the active disaster tile, map bounds, and timestamps. Motion is implemented by straight-line interpolation in a locally anchored horizontal frame. A position update is converted between geographic coordinates and local north--east offsets, and altitude is recorded as the vertical state.
 
 The task planner and closed-loop agent share a finite set of environment tools: fly to a geographic coordinate, move by a relative horizontal or vertical offset, hover, run disaster detection, mark a target, and produce a report. The inspection controller additionally uses answer, abstain, and stop as episode decisions. A reobservation maps to one or more movement primitives, such as centering on evidence and descending by one camera-ladder state, followed by a new render and perception pass.
 
 This action model supports repeatable studies of where the sensor is pointed and how often another observation is requested. It omits rigid-body attitude dynamics, acceleration limits, wind, terrain following, collision checking, communications, and battery discharge. Executed action count is therefore the principal online cost in this paper. Any time estimate obtained from configured speeds remains a simulator quantity rather than measured endurance.
 
-\subsection{Interactive operation and experiment instrumentation}
+\subsection{Instrumentation and benchmark execution}
 The console exposes disaster selection, a georeferenced situation map, manual flight controls, language-task submission, perception displays, agent state, and event logs. An operator can activate a disaster tile, select a target location, issue an inspection task, observe the planned or closed-loop actions, and inspect the returned damage evidence. The operator console supports qualitative inspection of the same scene state, perception evidence, decisions, actions, budgets, and event logs used by the headless benchmark. The interface is intended for monitoring and diagnosis; all quantitative results in this study are produced by the frozen headless protocol.
 
 The headless benchmark initializes a question and vehicle state, invokes the same observation and action modules, and writes the evolving answer, evidence, controller decision, movement, budget, and terminal outcome. Frozen question identifiers allow policies to be compared on paired tasks. The implementation also supports a fixed-view mode that holds the environment state constant while repeating answer generation. The final benchmark binds generation seeds to question, repeat, step, and call role, making environmental changes and subsequent generation calls separately traceable. Policies may still make different numbers of later calls, so whole-policy comparisons are not pure action-only effects.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=\linewidth]{figure-paper/Fig4_ClosedLoop_Platform.png}
+\caption{Representative console, perception displays, and closed-loop instrumentation. This supplied composite shows general platform interfaces, including legacy YOLO/SegFormer and VLN controls; it is not a single synchronized episode or a screenshot of the frozen ChangeOS experiment. The displayed 30 m setting is an interface example, not a height used in the camera-ladder evaluation. Quantitative results use the headless protocol described in Section~\ref{sec:setup}.}
+\label{fig:console}
+\end{figure}

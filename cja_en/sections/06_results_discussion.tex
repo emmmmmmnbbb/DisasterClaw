@@ -51,6 +51,24 @@ The episode traces show concrete instances in both directions. In the first gene
 \subsection{RQ4 and RQ5: Task dependence, bottlenecks, and scope of the gain}
 Task-type outcomes reveal uneven effects. For T1\_TASK versus A0\_HOLD, damage accuracy is 75.76\% versus 66.67\% and count accuracy is 78.29\% versus 75.97\%. Presence is identical at 93.18\%; spatial accuracy is lower for T1, 41.38\% versus 43.68\%. These are descriptive, correlated subgroup summaries, not four additional adjusted tests. They are consistent with the design premise that a wide context can already suffice for presence while a more detailed target view may help damage, but the spatial result limits any universal benefit claim.
 
+\begin{table}[htbp]
+\centering\small
+\caption{Task evidence requirements and descriptive final accuracy. A0 and T1 use the same questions and three repeats. The evidence requirements follow the task definitions; they are not experimentally isolated causes of the accuracy differences.}
+\label{tab:task-evidence}
+\begin{tabularx}{\linewidth}{@{}lXrr@{}}
+\toprule
+Task & Evidence requirement & A0 (\%) & T1 (\%) \\
+\midrule
+Presence & Regional coverage and positive evidence & 93.18 & 93.18 \\
+Damage & Target identity and local damage detail & 66.67 & 75.76 \\
+Count & ROI coverage and consistent object aggregation & 75.97 & 78.29 \\
+Spatial & Reference geometry and nearest-target identity & 43.68 & 41.38 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Table~\ref{tab:task-evidence} connects these outcomes to benchmark construction. Narrowing a view allocates more source pixels to a building, but it can remove other buildings needed for a count or the context needed to identify the nearest damaged target. The benchmark therefore exposes competing requirements for detail and coverage rather than ranking every narrower view as better. The platform's joint record of ROI coverage, predicted objects, actions, and answers makes such trade-offs inspectable; it does not by itself resolve their causal contributions.
+
 Event outcomes are also heterogeneous. T1\_TASK versus A0\_HOLD is 54.86\% versus 58.33\% in Hurricane Michael, 84.31\% versus 77.12\% in the Moore tornado, and 83.06\% versus 79.23\% in Nepal flooding. The pooled numerical gain is not reproduced in every event, and three events cannot support an unseen-disaster generalization claim. Accuracy across T1's three generation repeats is 75.00\%, 74.38\%, and 75.63\%; repeat stability does not remove ROI or event uncertainty.
 
 Development diagnostics provide limited bottleneck evidence without forming an additive oracle decomposition. A deterministic answerer using predicted structured evidence reaches 66.87\% on an earlier development run. Full-ROI ground-truth evidence with a deterministic rule answerer reconstructs 160/160 development reference answers, checking the question/label pipeline rather than online performance. Their source fingerprints and interventions differ, and current-visible GT with Qwen, full-task GT with Qwen, and a full-coverage always-floor reference remain unmeasured. The final T1/A0 comparison therefore isolates neither the perception error nor the language-generation error as a unique cause.

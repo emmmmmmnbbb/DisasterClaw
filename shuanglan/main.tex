@@ -1,4 +1,11 @@
-\documentclass[preprint,12pt,a4paper]{elsarticle}
+\documentclass[final,5p,times,twocolumn]{elsarticle}
+
+% Reuse the cja_en manuscript verbatim; this file changes only the page layout.
+\makeatletter
+\def\input@path{{../cja_en/}}
+\makeatother
+\graphicspath{{../cja_en/}}
+
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage{lmodern}
@@ -6,6 +13,10 @@
 \usepackage{xcolor,tikz,pgfplots}
 \usetikzlibrary{arrows.meta,positioning,fit,shapes.geometric,calc}
 \pgfplotsset{compat=1.18}
+\usepackage{etoolbox}
+% Compact table typography for the narrow two-column measure.
+\AtBeginEnvironment{tabular}{\scriptsize\setlength{\tabcolsep}{2pt}}
+\AtBeginEnvironment{tabularx}{\scriptsize\setlength{\tabcolsep}{2pt}}
 \usepackage[hidelinks]{hyperref}
 \usepackage{xurl}
 \usepackage{microtype}
@@ -13,7 +24,9 @@
 \usepackage[section]{placeins}
 \setlength{\belowcaptionskip}{6pt}
 \newcommand{\authorquery}[1]{\par\smallskip\noindent\textcolor{red!65!black}{\textbf{Author query:} #1}\par\smallskip}
+
 \journal{Chinese Journal of Aeronautics}
+
 \begin{document}
 \begin{frontmatter}
 \title{DisasterClaw: A georeferenced platform and task benchmark for closed-loop UAV disaster inspection}
@@ -43,6 +56,6 @@ UAV disaster inspection \sep Georeferenced simulation \sep Task benchmark \sep A
 \input{appendix/reproducibility}
 \begingroup\small
 \bibliographystyle{elsarticle-num}
-\bibliography{references}
+\bibliography{../cja_en/references}
 \endgroup
 \end{document}

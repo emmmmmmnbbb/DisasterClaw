@@ -1,21 +1,11 @@
 {
   "scope": "technical consistency only; submission readiness remains incomplete",
   "errors": [
-    "Unresolved LaTeX diagnostic",
-    "Unresolved or duplicated reference in PDF text",
     "Original source fingerprint changed; inspect user edits before proceeding"
   ],
-  "pdf_pages": 26,
-  "pdf_sha256": "953d19aef3d88b65d8c9d7959f77da8b58ba7dda6b985696a5ab305337a03a45",
-  "latex_warnings": [
-    "Overfull \\hbox (3.58133pt too wide) in paragraph at lines 16--17",
-    "Overfull \\hbox (13.95993pt too wide) in paragraph at lines 13--14",
-    "Overfull \\hbox (5.74419pt too wide) in paragraph at lines 52--53",
-    "Overfull \\hbox (8.35014pt too wide) in paragraph at lines 4--5",
-    "Overfull \\hbox (26.79564pt too wide) in paragraph at lines 4--5",
-    "Overfull \\hbox (6.11034pt too wide) in paragraph at lines 8--9",
-    "Overfull \\hbox (13.25409pt too wide) in paragraph at lines 8--9"
-  ],
+  "pdf_pages": 31,
+  "pdf_sha256": "e465a620f32e62444307751c46b8c766539c506feea4d984b34fbff9cb46092f",
+  "latex_warnings": [],
   "bibtex_warnings": [
     "Warning--empty pages in curtis2024tampura",
     "Warning--empty pages in ovadia2019can"
@@ -71,5 +61,5 @@
     "scripts/benchmarks/test_agent_vqa_benchmark.py"
   ],
   "changed_run_inputs": [],
-  "visual_qa_matches_current_pdf": false
+  "visual_qa_matches_current_pdf": true
 }

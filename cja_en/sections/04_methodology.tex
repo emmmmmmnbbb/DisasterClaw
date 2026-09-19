@@ -1,4 +1,4 @@
-\section{Closed-loop inspection and observation rules}
+\section{Task-conditioned active observation}
 \label{sec:agent}
 \subsection{Task, state, and evidence}
 Each inspection episode has a question $q$, a geographic region of interest (ROI), a task type (presence, damage, count, or spatial relation), and a reference answer $y_q$. At step $t$, the simplified vehicle state $s_t=(x_t,y_t,h_t)$ determines a rendered image $I_t=\mathcal{R}(\mathcal{M},s_t)$ from scene $\mathcal{M}$. The agent also receives structured evidence $z_t$ from the fixed perception backend and registered environment state. It may search, request a task-appropriate reobservation, answer, abstain, or stop. A reobservation is counted only when a movement executes and a new view is rendered; a repeated answer on an unchanged view is not an observation action.
@@ -24,7 +24,7 @@ The raw-entropy policy uses the uncalibrated binary probabilities, whereas calib
 
 The online evidence memory matches predicted objects by geographic proximity and combines observations across views, preserving the history of observation IDs and ROI coverage. This avoids treating each new crop as an unrelated scene or automatically discarding earlier wide-view evidence. Answer generation uses a locally loaded Qwen2.5-VL-7B-Instruct model with the task image and selected structured state; the evaluated configurations use the same hybrid answer path. The model's output is normalized to the task's answer vocabulary before scoring. A deterministic rule answerer and pure-VLM paths exist as development diagnostics, but are not pooled into the seven-policy final comparison.
 
-\subsection{Task-conditioned gate and comparators}
+\subsection{Task-conditioned observation gate}
 The task-conditioned policy (T1\_TASK) estimates whether an executable next view is worth its cost. In its implemented rule, the candidate utility is
 \begin{equation}
  U_q= u_q(1-h_{t+1}/h_t)
@@ -34,4 +34,5 @@ The task-conditioned policy (T1\_TASK) estimates whether an executable next view
 \end{equation}
 where $u_q$ is task-specific uncertainty, $\widehat{T}_{\mathrm{move}}$ is a configured-speed motion-time estimate in seconds, and $\widehat{C}_{\mathrm{ROI}}$ is predicted ROI coverage after the candidate action. This is a fixed heuristic, not a learned or calibrated estimate of expected task accuracy. The frozen gate requires $u_q\geq0.5$ and $U_q\geq0.05$; count and spatial tasks additionally require predicted coverage of at least 0.98. A damage question may center on a visible marked target and descend. Count and spatial questions retain the geographic center and descend only if the task ROI remains covered. Presence positives are answered from the wide view, while missing evidence uses the search path. All thresholds were chosen before the final run using development evidence.
 
+\subsection{Comparator policies and action budgets}
 The four primary comparators are A0\_HOLD (search allowed, no reobservation), A1\_RANDOM (independent seeded random trigger), A2\_ALWAYS (request whenever feasible), and A3U\_RAW\_ENTROPY (binary raw-entropy trigger). A3\_ENTROPY and A4\_CONFORMAL are supplemental. Each active policy has the same exogenous cap of two reobservations per episode, and all configurations permit up to six search steps. A0\_HOLD has a zero reobservation cap. The cap is shared, but realized action counts differ because policy requests and feasibility differ; the seven outcomes are operating points, not a randomized budget sweep.

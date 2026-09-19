@@ -1,6 +1,6 @@
-Draft highlights; journal requirement and character limits remain to be verified.
+Draft highlights; journal-specific requirements remain to be verified.
 
-- DisasterClaw converts georeferenced disaster imagery into closed-loop UAV inspection episodes.
-- The agent links language tasks, damage evidence, finite flight actions, and renewed observations.
-- A fixed-field-of-view camera ladder enables controlled multi-scale reobservation.
-- Paired experiments separate perception changes, task outcomes, and Qwen answer variability.
+- DisasterClaw turns disaster imagery into a map-anchored inspection environment.
+- Annotations and geometry ground four task families with deterministic answers.
+- Automated checks and dual review produce 160 tasks over 44 geographic regions.
+- Traceable episodes expose task-dependent trade-offs between detail and coverage.

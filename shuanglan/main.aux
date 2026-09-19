@@ -1,0 +1,128 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
+\citation{anderson2018vision}
+\citation{liu2023aerialvln,lee2025citynav}
+\citation{gao2026openfly}
+\citation{shah2023lmnav}
+\citation{zhang2025citynavagent,gao2024stmr,li2026aerialclaw}
+\citation{zhao2025cityeqa}
+\citation{yao2024aeroverse}
+\citation{guo2026bedi}
+\citation{wang2024openuav}
+\@writefile{toc}{\contentsline {section}{\numberline {2}Related work}{2}{section.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Aerial embodied agents and simulation platforms}{2}{subsection.2.1}\protected@file@percent }
+\citation{gupta2019xbd}
+\citation{liu2024rescueadi}
+\citation{thinkgeo2025}
+\citation{wang2025disasterm3}
+\citation{bajcsy1988active}
+\citation{curtis2024tampura}
+\citation{guo2017calibration,ovadia2019can}
+\citation{geifman2019selectivenet,ren2023knowno}
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Disaster interpretation from remote-sensing imagery}{3}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Active perception, uncertainty, and task value}{3}{subsection.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3}The DisasterClaw platform}{3}{section.3}\protected@file@percent }
+\newlabel{sec:platform}{{3}{3}{The DisasterClaw platform}{section.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.1}Design objectives and system architecture}{3}{subsection.3.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Data-to-episode workflow in DisasterClaw. Paired xBD imagery and building annotations provide a geographic scene and reference evidence; map anchoring makes observations depend on vehicle state; task generation, checks, and review produce a frozen benchmark; the platform records closed-loop inspection episodes. Image panels illustrate these stages rather than documenting one final-test trajectory.}}{3}{figure.1}\protected@file@percent }
+\newlabel{fig:overview}{{1}{3}{Data-to-episode workflow in DisasterClaw. Paired xBD imagery and building annotations provide a geographic scene and reference evidence; map anchoring makes observations depend on vehicle state; task generation, checks, and review produce a frozen benchmark; the platform records closed-loop inspection episodes. Image panels illustrate these stages rather than documenting one final-test trajectory}{figure.1}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Implemented DisasterClaw capabilities and their evaluation boundaries.}}{4}{table.1}\protected@file@percent }
+\newlabel{tab:platform}{{1}{4}{Implemented DisasterClaw capabilities and their evaluation boundaries}{table.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Map-anchored disaster-world construction}{4}{subsection.3.2}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Geographic embedding of disaster records. Image footprints and building polygons are placed in a shared map coordinate system, allowing the environment to associate observations and target locations with geographic state. The supplied visualization illustrates registration and overlays; its colors and markers are not a verified final-task answer key. Basemap context outside the annotated ROI does not supply disaster ground truth.}}{4}{figure.2}\protected@file@percent }
+\newlabel{fig:map-anchored}{{2}{4}{Geographic embedding of disaster records. Image footprints and building polygons are placed in a shared map coordinate system, allowing the environment to associate observations and target locations with geographic state. The supplied visualization illustrates registration and overlays; its colors and markers are not a verified final-task answer key. Basemap context outside the annotated ROI does not supply disaster ground truth}{figure.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.3}Controllable observation model}{4}{subsection.3.3}\protected@file@percent }
+\newlabel{eq:geometry}{{1}{5}{Controllable observation model}{equation.1}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Observation construction from one georeferenced scene. Each state is rendered to $1024\times 1024$ pixels. Descending narrows the ground footprint and assigns more existing source pixels to the target ROI; the floor state reaches, but cannot exceed, the assumed source resolution.}}{5}{figure.3}\protected@file@percent }
+\newlabel{fig:ladder}{{3}{5}{Observation construction from one georeferenced scene. Each state is rendered to $1024\times 1024$ pixels. Descending narrows the ground footprint and assigns more existing source pixels to the target ROI; the floor state reaches, but cannot exceed, the assumed source resolution}{figure.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.4}Agent--environment interaction interface}{5}{subsection.3.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {3.5}Instrumentation and benchmark execution}{5}{subsection.3.5}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Representative console, perception displays, and closed-loop instrumentation. This supplied composite shows general platform interfaces, including legacy YOLO/SegFormer and VLN controls; it is not a single synchronized episode or a screenshot of the frozen ChangeOS experiment. The displayed 30 m setting is an interface example, not a height used in the camera-ladder evaluation. Quantitative results use the headless protocol described in Section~\ref {sec:setup}.}}{6}{figure.4}\protected@file@percent }
+\newlabel{fig:console}{{4}{6}{Representative console, perception displays, and closed-loop instrumentation. This supplied composite shows general platform interfaces, including legacy YOLO/SegFormer and VLN controls; it is not a single synchronized episode or a screenshot of the frozen ChangeOS experiment. The displayed 30 m setting is an interface example, not a height used in the camera-ladder evaluation. Quantitative results use the headless protocol described in Section~\ref {sec:setup}}{figure.4}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}DisasterClaw benchmark construction}{6}{section.4}\protected@file@percent }
+\newlabel{sec:benchmark}{{4}{6}{DisasterClaw benchmark construction}{section.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Final benchmark and execution scope. Repeated policy runs do not increase the number of independent questions or source regions.}}{6}{table.2}\protected@file@percent }
+\newlabel{tab:benchmark-summary}{{2}{6}{Final benchmark and execution scope. Repeated policy runs do not increase the number of independent questions or source regions}{table.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Source records and candidate ROI selection}{6}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Event split and geographic ROI construction}{6}{subsection.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Programmatic task and answer generation}{6}{subsection.4.3}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {5}{\ignorespaces Illustrative spatial evidence for the four task families. Presence concerns existence within a region, damage concerns a designated building, count concerns region-wide aggregation, and spatial questions concern a target's direction relative to a geographic reference. These supplied panels illustrate task construction; they do not provide verified question--answer pairs from the frozen 160-question set. Colored polygons and markers are construction overlays, not ground-truth inputs to the agent.}}{7}{figure.5}\protected@file@percent }
+\newlabel{fig:benchmark-tasks}{{5}{7}{Illustrative spatial evidence for the four task families. Presence concerns existence within a region, damage concerns a designated building, count concerns region-wide aggregation, and spatial questions concern a target's direction relative to a geographic reference. These supplied panels illustrate task construction; they do not provide verified question--answer pairs from the frozen 160-question set. Colored polygons and markers are construction overlays, not ground-truth inputs to the agent}{figure.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Automated quality control}{7}{subsection.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.5}Dual review and benchmark freezing}{7}{subsection.4.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5}Task-conditioned active observation}{7}{section.5}\protected@file@percent }
+\newlabel{sec:agent}{{5}{7}{Task-conditioned active observation}{section.5}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Task, state, and evidence}{7}{subsection.5.1}\protected@file@percent }
+\@writefile{lof}{\contentsline {figure}{\numberline {6}{\ignorespaces Closed-loop inspection state machine. Feasibility and budget checks distinguish a requested reobservation from an executed view change. The unchanged-view branch is available for diagnosis but is not counted as reobservation.}}{7}{figure.6}\protected@file@percent }
+\newlabel{fig:agent-loop}{{6}{7}{Closed-loop inspection state machine. Feasibility and budget checks distinguish a requested reobservation from an executed view change. The unchanged-view branch is available for diagnosis but is not counted as reobservation}{figure.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Fixed binary perception and cross-view memory}{7}{subsection.5.2}\protected@file@percent }
+\newlabel{eq:entropy}{{2}{8}{Fixed binary perception and cross-view memory}{equation.2}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Task-conditioned observation gate}{8}{subsection.5.3}\protected@file@percent }
+\newlabel{eq:taskutility}{{3}{8}{Task-conditioned observation gate}{equation.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Comparator policies and action budgets}{8}{subsection.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}Experimental protocol}{8}{section.6}\protected@file@percent }
+\newlabel{sec:setup}{{6}{8}{Experimental protocol}{section.6}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.1}Development diagnostics and frozen final tasks}{8}{subsection.6.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {6.2}Online execution and endpoints}{8}{subsection.6.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7}Results and discussion}{9}{section.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}RQ1: A narrower observation changes both detection and correctness}{9}{subsection.7.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}RQ2 and RQ3: Frozen online policies and task answers}{9}{subsection.7.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Frozen final-set online policies. Each row contains the same 160 questions under three generation repeats (480 question-repeat episodes); repeats are not independent questions. Wall time is measured software episode runtime, not flight duration. A3 and A4 are supplemental comparisons.}}{9}{table.3}\protected@file@percent }
+\newlabel{tab:final-policies}{{3}{9}{Frozen final-set online policies. Each row contains the same 160 questions under three generation repeats (480 question-repeat episodes); repeats are not independent questions. Wall time is measured software episode runtime, not flight duration. A3 and A4 are supplemental comparisons}{table.3}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Prespecified T1\_TASK paired accuracy contrasts. Differences are percentage points; 98.75\% ROI-cluster percentile intervals adjust for the four primary comparisons. All questions and repeats from a sampled ROI remain together.}}{9}{table.4}\protected@file@percent }
+\newlabel{tab:final-contrasts}{{4}{9}{Prespecified T1\_TASK paired accuracy contrasts. Differences are percentage points; 98.75\% ROI-cluster percentile intervals adjust for the four primary comparisons. All questions and repeats from a sampled ROI remain together}{table.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}RQ4 and RQ5: Task dependence, bottlenecks, and scope of the gain}{10}{subsection.7.3}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Task evidence requirements and descriptive final accuracy. A0 and T1 use the same questions and three repeats. The evidence requirements follow the task definitions; they are not experimentally isolated causes of the accuracy differences.}}{10}{table.5}\protected@file@percent }
+\newlabel{tab:task-evidence}{{5}{10}{Task evidence requirements and descriptive final accuracy. A0 and T1 use the same questions and three repeats. The evidence requirements follow the task definitions; they are not experimentally isolated causes of the accuracy differences}{table.5}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {8}Limitations and deployment boundary}{10}{section.8}\protected@file@percent }
+\newlabel{sec:limitations}{{8}{10}{Limitations and deployment boundary}{section.8}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {9}Conclusion}{11}{section.9}\protected@file@percent }
+\@writefile{toc}{\let\numberline\tmptocnumberline}
+\@writefile{toc}{\contentsline {section}{\numberline {Appendix~A}Reproducibility and provenance}{11}{appendix.A}\protected@file@percent }
+\newlabel{app:provenance}{{Appendix~A}{11}{Reproducibility and provenance}{appendix.A}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {Appendix~A.1}Frozen final identities and audit boundary}{11}{subsection.A.1}\protected@file@percent }
+\bibstyle{elsarticle-num}
+\bibdata{../cja_en/references}
+\@writefile{toc}{\contentsline {section}{\numberline {Appendix~B}Historical diagnostics outside the main evidence chain}{12}{appendix.B}\protected@file@percent }
+\newlabel{app:historical}{{Appendix~B}{12}{Historical diagnostics outside the main evidence chain}{appendix.B}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {Appendix~B.1}Archived four-class camera and allocation study}{12}{subsection.B.1}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {B.1}{\ignorespaces Historical four-class building-level camera diagnostic on the same 3,753 evaluation buildings. Not comparable to the binary ChangeOS final question endpoint.}}{12}{table.A.1}\protected@file@percent }
+\newlabel{tab:fov}{{B.1}{12}{Historical four-class building-level camera diagnostic on the same 3,753 evaluation buildings. Not comparable to the binary ChangeOS final question endpoint}{table.A.1}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {B.2}{\ignorespaces Historical four-class offline allocation at a 0.25 building-selection fraction. The label-informed row uses evaluation labels and is not deployable.}}{12}{table.A.2}\protected@file@percent }
+\newlabel{tab:allocation}{{B.2}{12}{Historical four-class offline allocation at a 0.25 building-selection fraction. The label-informed row uses evaluation labels and is not deployable}{table.A.2}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {B.3}{\ignorespaces Historical four-class matched-only sensitivity analysis.}}{12}{table.A.3}\protected@file@percent }
+\newlabel{tab:matched}{{B.3}{12}{Historical four-class matched-only sensitivity analysis}{table.A.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {Appendix~B.2}Archived VLN switch diagnostic}{12}{subsection.B.2}\protected@file@percent }
+\bibcite{anderson2018vision}{{1}{}{{}}{{}}}
+\bibcite{liu2023aerialvln}{{2}{}{{}}{{}}}
+\bibcite{lee2025citynav}{{3}{}{{}}{{}}}
+\bibcite{gao2026openfly}{{4}{}{{}}{{}}}
+\bibcite{shah2023lmnav}{{5}{}{{}}{{}}}
+\bibcite{zhang2025citynavagent}{{6}{}{{}}{{}}}
+\bibcite{gao2024stmr}{{7}{}{{}}{{}}}
+\bibcite{li2026aerialclaw}{{8}{}{{}}{{}}}
+\bibcite{zhao2025cityeqa}{{9}{}{{}}{{}}}
+\bibcite{yao2024aeroverse}{{10}{}{{}}{{}}}
+\bibcite{guo2026bedi}{{11}{}{{}}{{}}}
+\@writefile{lof}{\contentsline {figure}{\numberline {B.7}{\ignorespaces Historical offline four-class allocation sweep. Selected floor predictions replace cruise predictions; this is not a common-budget online policy curve.}}{13}{figure.7}\protected@file@percent }
+\newlabel{fig:budget-curve}{{B.7}{13}{Historical offline four-class allocation sweep. Selected floor predictions replace cruise predictions; this is not a common-budget online policy curve}{figure.7}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {B.4}{\ignorespaces Historical four-class exploratory paired ROI-bootstrap differences at the 0.25 offline allocation fraction.}}{13}{table.A.4}\protected@file@percent }
+\newlabel{tab:cluster}{{B.4}{13}{Historical four-class exploratory paired ROI-bootstrap differences at the 0.25 offline allocation fraction}{table.A.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {B.5}{\ignorespaces Archived VLN switch diagnostic. SR is strict success within 25 m of the specified target; semSR accepts a matching damage-class building within 25 m. Recheck triggers were zero in all four configurations.}}{13}{table.A.5}\protected@file@percent }
+\newlabel{tab:vln-ablation}{{B.5}{13}{Archived VLN switch diagnostic. SR is strict success within 25 m of the specified target; semSR accepts a matching damage-class building within 25 m. Recheck triggers were zero in all four configurations}{table.A.5}{}}
+\bibcite{wang2024openuav}{{12}{}{{}}{{}}}
+\bibcite{gupta2019xbd}{{13}{}{{}}{{}}}
+\bibcite{liu2024rescueadi}{{14}{}{{}}{{}}}
+\bibcite{thinkgeo2025}{{15}{}{{}}{{}}}
+\bibcite{wang2025disasterm3}{{16}{}{{}}{{}}}
+\bibcite{bajcsy1988active}{{17}{}{{}}{{}}}
+\bibcite{curtis2024tampura}{{18}{}{{}}{{}}}
+\bibcite{guo2017calibration}{{19}{}{{}}{{}}}
+\bibcite{ovadia2019can}{{20}{}{{}}{{}}}
+\bibcite{geifman2019selectivenet}{{21}{}{{}}{{}}}
+\bibcite{ren2023knowno}{{22}{}{{}}{{}}}
+\providecommand\NAT@force@numbers{}\NAT@force@numbers
+\gdef \@abspage@last{14}
