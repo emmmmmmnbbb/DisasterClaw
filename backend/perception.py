@@ -86,8 +86,14 @@ PERCEPTION_SAVE_IMAGES = os.getenv("PERCEPTION_SAVE_IMAGES", "1").strip().lower(
 }
 
 
+def _ensure_output_dir() -> None:
+    """Recreate the artifact directory if it is removed during a run."""
+    PERCEPTION_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
 def _art_path(stem: str, suffix: str = "", ext: str = "png") -> Path:
     """图片产物路径。save_images=0 时用固定名覆盖（磁盘有界），否则按 stem 唯一。"""
+    _ensure_output_dir()
     if PERCEPTION_SAVE_IMAGES:
         return PERCEPTION_OUTPUT_DIR / f"{stem}{suffix}.{ext}"
     return PERCEPTION_OUTPUT_DIR / f"_latest{suffix}.{ext}"
@@ -964,6 +970,12 @@ class DisasterPerception:
         for d in out:
             cls = d["class_name"]
             class_counts[cls] = class_counts.get(cls, 0) + 1
+        class_counts_four: dict[str, int] = {}
+        for d in out:
+            probs = (d.get("extras") or {}).get("four_class_probs")
+            if isinstance(probs, dict) and probs:
+                subtype = max(probs.items(), key=lambda kv: float(kv[1]))[0]
+                class_counts_four[subtype] = class_counts_four.get(subtype, 0) + 1
         n_classifier = sum(1 for d in out if d.get("class_probs"))
         n_evidence = sum(1 for d in out if d.get("class_name") in _EVIDENCE_ZH)
 
@@ -971,6 +983,7 @@ class DisasterPerception:
             "detections": out,
             "num_objects": len(out),
             "class_counts": class_counts,
+            "class_counts_four": class_counts_four,
             "visualization": vis_path if vis_ok else None,
             "json_file": json_path if Path(json_path).exists() else None,
             "proposer": DETECTOR_BACKEND,
@@ -1340,8 +1353,14 @@ class DisasterPerception:
         for d in kept:
             cls = d["class_name"]
             class_counts[cls] = class_counts.get(cls, 0) + 1
+        class_counts_four: dict[str, int] = {}
+        for d in kept:
+            probs = (d.get("extras") or {}).get("four_class_probs")
+            if isinstance(probs, dict) and probs:
+                subtype = max(probs.items(), key=lambda kv: float(kv[1]))[0]
+                class_counts_four[subtype] = class_counts_four.get(subtype, 0) + 1
         return {**detection, "detections": kept, "num_objects": len(kept),
-                "class_counts": class_counts}
+                "class_counts": class_counts, "class_counts_four": class_counts_four}
 
     @staticmethod
     def _summarise_risk(

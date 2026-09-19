@@ -53,7 +53,7 @@ from agent_vqa import (
     TaskContext,
     bboxes_match,
     build_evidence_from_perception,
-    parse_question,
+    parse_question_with_llm,
     parse_vlm_json_output,
     task_context_from_item,
 )
@@ -747,6 +747,7 @@ def _execute_detect_disaster(params: dict, source: str) -> dict:
         "detection": {
             "num_objects": result.detection.get("num_objects", 0),
             "class_counts": det_counts,
+            "class_counts_four": result.detection.get("class_counts_four", {}),
             "detections": result.detection.get("detections", [])[:50],
         },
         "segmentation": {
@@ -2415,9 +2416,11 @@ def run_agent_vqa_episode(question: str, source: str = "ai", item: dict | None =
         return {"ok": False, "error": "busy", "question": question}
 
     task_started_ns = time.time_ns()
-    spec = parse_question(question)
     report: dict | None = None
     try:
+        # Runtime semantic routing is LLM-only.  The controller receives the
+        # structured spec so it does not silently re-run the legacy regex parser.
+        spec = parse_question_with_llm(question)
         state.is_executing = True
         state._stop_event.clear()
         state._sync_world_from_adapter()
@@ -2445,7 +2448,8 @@ def run_agent_vqa_episode(question: str, source: str = "ai", item: dict | None =
             socketio.emit("agent_query_update", rec)
         explicit_qid = str((item or {}).get("id") or f"agentvqa_{task_started_ns}")
         ans = ctl.run(question, question_id=explicit_qid,
-                      task_context=task_context, on_step=_on_step)
+                      task_context=task_context, on_step=_on_step,
+                      question_spec=spec)
         # 执行最终动作
         last = ctl.trajectory[-1] if ctl.trajectory else None
         if last:

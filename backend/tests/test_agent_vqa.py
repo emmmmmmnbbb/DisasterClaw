@@ -98,6 +98,56 @@ def test_geographic_memory_does_not_overwrite_strong_fine_view() -> None:
     assert fused.matching_count == 1
 
 
+def test_detailed_changeos_labels_survive_history_fusion() -> None:
+    """Four-class ChangeOS probabilities must remain available after fusion."""
+    spec = QuestionSpec(
+        "count",
+        "视野内有多少完全损毁的建筑？",
+        target_subtypes=("destroyed",),
+    )
+    result = _FakePerception(
+        [
+            {
+                "class_name": "受损建筑",
+                "confidence": 0.91,
+                "bbox": [10, 10, 30, 30],
+                "class_probs": {"受损建筑": 0.91, "无损伤建筑": 0.09},
+                "extras": {
+                    "four_class_probs": {
+                        "no-damage": 0.05,
+                        "minor-damage": 0.03,
+                        "major-damage": 0.02,
+                        "destroyed": 0.90,
+                    }
+                },
+            },
+            {
+                "class_name": "受损建筑",
+                "confidence": 0.84,
+                "bbox": [60, 60, 80, 80],
+                "class_probs": {"受损建筑": 0.84, "无损伤建筑": 0.16},
+                "extras": {
+                    "four_class_probs": {
+                        "no-damage": 0.10,
+                        "minor-damage": 0.05,
+                        "major-damage": 0.75,
+                        "destroyed": 0.10,
+                    }
+                },
+            },
+        ],
+        pw=100,
+        ph=100,
+    )
+
+    current = build_evidence_from_perception(result, spec, "obs")
+    fused = GeographicEvidenceMemory().update(spec, current)
+
+    assert current.matching_count == 1
+    assert fused.matching_count == 1
+    assert fused.target_subtype == "destroyed"
+
+
 def test_geographic_memory_keeps_distinct_buildings() -> None:
     spec = parse_question("标记区域内有多少栋受损建筑？")
     memory = GeographicEvidenceMemory(match_radius_m=6.0)
@@ -582,6 +632,11 @@ def test_deterministic_answer_does_not_log_generation_seed() -> None:
 
 def _run_all() -> int:
     tests = [
+        test_geographic_memory_deduplicates_and_fuses_resolution_weighted_probs,
+        test_geographic_memory_does_not_overwrite_strong_fine_view,
+        test_detailed_changeos_labels_survive_history_fusion,
+        test_geographic_memory_keeps_distinct_buildings,
+        test_geographic_memory_does_not_answer_from_stale_full_roi_track,
         test_bboxes_match_tolerates_float_precision,
         test_generation_seed_is_keyed_and_logged,
         test_generation_seed_does_not_depend_on_execution_order,

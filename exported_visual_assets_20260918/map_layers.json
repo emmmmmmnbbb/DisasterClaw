@@ -1,0 +1,20 @@
+{
+  "tile_bounds": {
+    "west": 83.37580039953292,
+    "south": 26.710484891154138,
+    "east": 83.38074481196169,
+    "north": 26.714925311463904
+  },
+  "roi_bounds": {
+    "west": 83.3758004,
+    "south": 26.7104849,
+    "east": 83.3807448,
+    "north": 26.7149253
+  },
+  "uav_start": {
+    "lat": 26.7152832,
+    "lon": 83.3791303,
+    "alt": 1330.22
+  },
+  "basemap": "locally cached Esri World Imagery z18"
+}

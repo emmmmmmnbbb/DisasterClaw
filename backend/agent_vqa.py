@@ -32,6 +32,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
+from llm_client import get_client
+
 # ── schema 常量 (封闭集合) ───────────────────────────────────────────────────
 
 QUESTION_TYPES = ("presence", "damage", "count", "spatial")
@@ -220,6 +222,91 @@ def parse_question(question: str) -> QuestionSpec:
     return QuestionSpec("invalid_question", q)
 
 
+# Runtime semantic routing is performed by the configured language model.  The
+# rule parser above is retained for deterministic unit tests and as a small
+# compatibility helper, but the platform entrypoint does not use it to decide
+# the question type.  Keeping the output closed-set prevents the model from
+# inventing actions or answer vocabularies.
+QUESTION_SEMANTIC_SYSTEM_PROMPT = (
+    "你是 DisasterClaw 的问题语义解析器。只解析用户问题，不回答问题，也不规划飞行。"
+    "必须只输出一个 JSON 对象，不要 Markdown，不要解释。字段："
+    "question_type（presence|damage|count|spatial|invalid_question）、"
+    "target_phrase（问题中被询问的建筑类别短语）、"
+    "target_subtypes（数组，只能包含 no-damage、minor-damage、major-damage、destroyed、damaged）、"
+    "target_subtype（单个类别或空字符串）、ref_id（标记建筑 ID 或空字符串）、"
+    "needs_target_location（布尔值）。"
+    "presence 表示是否存在，count 表示数量，damage 表示某个标记建筑的损伤状态，"
+    "spatial 表示目标相对区域中心的方向。"
+    "视野内损毁的建筑的数量？应解析为 count，target_subtypes=[destroyed]。"
+    "视野内受损建筑的数量？应解析为 count，target_subtypes=[damaged]。"
+    "无法判断题型时使用 invalid_question。"
+)
+
+
+def _extract_json_object(text: str) -> dict:
+    raw = (text or "").strip()
+    fenced = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", raw, re.IGNORECASE)
+    candidate = fenced.group(1) if fenced else raw
+    if not fenced:
+        match = re.search(r"\{[\s\S]*\}", raw)
+        candidate = match.group(0) if match else raw
+    value = json.loads(candidate)
+    if not isinstance(value, dict):
+        raise ValueError("semantic parser output is not an object")
+    return value
+
+
+def parse_question_with_llm(question: str, client=None) -> QuestionSpec:
+    """Use the configured planner LLM as the platform's semantic router.
+
+    The model is constrained to a closed schema, while normalization only
+    rejects malformed/out-of-vocabulary fields.  No regex interpretation is
+    used on the runtime path.
+    """
+    q = (question or "").strip()
+    if not q:
+        return QuestionSpec("invalid_question", q)
+    llm = client or get_client(module="planner")
+    raw = llm.chat(
+        [
+            {"role": "system", "content": QUESTION_SEMANTIC_SYSTEM_PROMPT},
+            {"role": "user", "content": q},
+        ],
+        temperature=0.0,
+        max_tokens=220,
+    )
+    data = _extract_json_object(raw)
+    qtype = str(data.get("question_type") or "invalid_question").strip()
+    if qtype not in QUESTION_TYPES and qtype != "invalid_question":
+        qtype = "invalid_question"
+    allowed = set(DAMAGED_SUBTYPES) | {"no-damage"}
+    raw_subtypes = data.get("target_subtypes")
+    if not isinstance(raw_subtypes, list):
+        raw_subtypes = []
+    subtypes = tuple(str(x).strip() for x in raw_subtypes if str(x).strip() in allowed)
+    subtype = str(data.get("target_subtype") or "").strip()
+    if subtype not in allowed:
+        subtype = ""
+    if subtype and subtype not in subtypes:
+        subtypes = (subtype, *subtypes)
+    phrase = str(data.get("target_phrase") or "").strip()
+    ref_id = str(data.get("ref_id") or "").strip()
+    needs_location = bool(data.get("needs_target_location", False))
+    if qtype in {"damage", "spatial"}:
+        needs_location = True
+    if qtype == "invalid_question":
+        return QuestionSpec("invalid_question", q)
+    return QuestionSpec(
+        qtype,
+        q,
+        target_phrase=phrase,
+        target_subtype=subtype,
+        target_subtypes=subtypes,
+        ref_id=ref_id,
+        needs_target_location=needs_location,
+    )
+
+
 # ── 证据束 ──────────────────────────────────────────────────────────────────
 
 @dataclass
@@ -360,6 +447,34 @@ def build_evidence_from_perception(perception_result: Any, spec: QuestionSpec,
     target_subtypes = tuple(s for s in spec.target_subtypes if s)
     if not target_subtypes and spec.target_subtype:
         target_subtypes = (spec.target_subtype,)
+
+    def effective_subtype(det: dict) -> str:
+        """Prefer ChangeOS's retained four-class probabilities for detailed queries.
+
+        ChangeOS can expose a binary hard label while retaining the original
+        four-class probabilities in ``extras.four_class_probs``.  A question
+        about destroyed/major/minor damage must use that richer prediction;
+        generic ``damaged`` questions continue to use the binary label.
+        """
+        binary_subtype = CLASS_TO_SUBTYPE.get(str(det.get("class_name") or ""), "")
+        probs4 = (det.get("extras") or {}).get("four_class_probs")
+        detailed = {"no-damage", "minor-damage", "major-damage", "destroyed"}
+        asks_detailed = bool(set(target_subtypes) & detailed - {"no-damage"})
+        if isinstance(probs4, dict) and (asks_detailed or spec.question_type == "damage"):
+            valid = {k: float(v) for k, v in probs4.items() if k in detailed}
+            if valid:
+                return max(valid.items(), key=lambda kv: kv[1])[0]
+        return binary_subtype
+
+    def effective_confidence(det: dict, subtype: str) -> float:
+        probs4 = (det.get("extras") or {}).get("four_class_probs")
+        if isinstance(probs4, dict) and subtype in probs4:
+            try:
+                return float(probs4[subtype])
+            except (TypeError, ValueError):
+                pass
+        return float(det.get("conf", 0.0))
+
     extras = getattr(perception_result, "extras", {}) or {} if perception_result else {}
     roi_norm = extras.get("roi_norm_bbox")
     window = extras.get("window")
@@ -370,7 +485,7 @@ def build_evidence_from_perception(perception_result: Any, spec: QuestionSpec,
     matching = []
     for d in dets:
         cls = d.get("class_name", "")
-        sub = CLASS_TO_SUBTYPE.get(cls, "")
+        sub = effective_subtype(d)
         if spec.question_type == "damage" and not sub:
             continue
         if spec.question_type != "damage" and target_subtypes and sub not in target_subtypes:
@@ -435,7 +550,7 @@ def build_evidence_from_perception(perception_result: Any, spec: QuestionSpec,
                                                 -float(d.get("conf", 0.0))))
             match_method = "nearest_roi_center"
         else:
-            best = max(matching, key=lambda d: float(d.get("conf", 0.0)))
+            best = max(matching, key=lambda d: effective_confidence(d, effective_subtype(d)))
             match_method = "highest_confidence"
     ev = EvidenceBundle(observation_id=observation_id)
     ev.matching_count = len(matching) if spec.question_type != "damage" else int(best is not None)
@@ -461,7 +576,7 @@ def build_evidence_from_perception(perception_result: Any, spec: QuestionSpec,
     ph = float(getattr(perception_result, "patch_height", 0) or 0)
     for d in dets:
         label = str(d.get("class_name") or "")
-        subtype = CLASS_TO_SUBTYPE.get(label, "")
+        subtype = effective_subtype(d)
         box = d.get("bbox") or d.get("bbox_xyxy")
         if not subtype or not box or pw <= 0 or ph <= 0:
             continue
@@ -472,10 +587,19 @@ def build_evidence_from_perception(perception_result: Any, spec: QuestionSpec,
                     and float(ev.roi_norm_bbox[1]) <= cy <= float(ev.roi_norm_bbox[3])):
                 continue
         geo = _norm_to_geo(window, cx, cy)
+        four_class_probs = (d.get("extras") or {}).get("four_class_probs")
+        object_probs = (
+            four_class_probs
+            if isinstance(four_class_probs, dict)
+            and (spec.question_type == "damage" or bool(set(target_subtypes) & {
+                "minor-damage", "major-damage", "destroyed",
+            }))
+            else d.get("class_probs")
+        )
         obj = {
             "label": label, "subtype": subtype,
-            "confidence": round(float(d.get("conf", 0.0)), 6),
-            "class_probs": copy.deepcopy(d.get("class_probs")),
+            "confidence": round(effective_confidence(d, subtype), 6),
+            "class_probs": copy.deepcopy(object_probs),
             "bbox": [round(float(v), 2) for v in box],
             "norm_xy": [round(cx, 6), round(cy, 6)],
             "observation_id": observation_id,
@@ -499,12 +623,16 @@ def build_evidence_from_perception(perception_result: Any, spec: QuestionSpec,
         ev.degraded = bool(getattr(perception_result, "degraded", False))
         ev.degraded_reason = getattr(perception_result, "degraded_reason", "") or ""
     if best is not None:
-        best_conf = float(best.get("conf", 0.0))
+        best_subtype = effective_subtype(best)
+        best_conf = effective_confidence(best, best_subtype)
         ev.source = "detector"
         ev.target_label = best.get("class_name", "")
-        ev.target_subtype = CLASS_TO_SUBTYPE.get(ev.target_label, "")
+        ev.target_subtype = best_subtype
         ev.target_conf = best_conf
-        ev.class_probs = best.get("class_probs")
+        ev.class_probs = (
+            (best.get("extras") or {}).get("four_class_probs")
+            or best.get("class_probs")
+        )
         ev.detection_source = "detector"
         ev.target_matched = True
         ev.match_method = match_method
@@ -1069,7 +1197,8 @@ class AgentVqaController:
     def run(self, question: str, question_id: str = "",
              item: Optional[dict] = None,
              task_context: Optional[TaskContext] = None,
-             on_step: Optional[Callable[[dict], None]] = None) -> VqaAnswer:
+             on_step: Optional[Callable[[dict], None]] = None,
+             question_spec: Optional[QuestionSpec] = None) -> VqaAnswer:
         """运行单回合 Agent-VQA (计划 5.4 终止条件)。
 
         非 oracle 运行只读取白名单化 task_context。为兼容现有调用，传入 item 时
@@ -1078,7 +1207,7 @@ class AgentVqaController:
         on_step: 每完成一次"感知→候选答案→决策"后以该步 trajectory dict 调用一次，
         供前端 socket 实时广播（不阻塞闭环）。默认 None。
         """
-        spec = parse_question(question)
+        spec = question_spec or parse_question(question)
         task_context = task_context or task_context_from_item(item, spec)
         self.evidence_memory.reset()
         qid = question_id or f"q_{len(self.answer_history)}"

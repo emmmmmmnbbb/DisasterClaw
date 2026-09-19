@@ -1,0 +1,268 @@
+{
+  "source": "backend/data/benchmarks/agent_vqa_final_candidate_20260915_binary_human_reviewed_validated.json",
+  "items": {
+    "presence": {
+      "id": "nepal-flooding_00000484_post_disaster__presence_0018_3165",
+      "scene_id": "nepal-flooding_00000484_post_disaster",
+      "tile_id": "nepal-flooding_00000484_post_disaster",
+      "disaster": "nepal-flooding",
+      "split": "holdout",
+      "question_type": "presence",
+      "question": "标记区域内是否存在受损建筑？",
+      "choices": [
+        "否",
+        "是"
+      ],
+      "answer": "是",
+      "start": {
+        "lat": 26.7152832,
+        "lon": 83.3791303,
+        "alt": 1330.22
+      },
+      "roi": {
+        "tile_id": "nepal-flooding_00000484_post_disaster",
+        "center": {
+          "lat": 26.7127051,
+          "lon": 83.3782726
+        },
+        "bounds": {
+          "west": 83.3758004,
+          "south": 26.7104849,
+          "east": 83.3807448,
+          "north": 26.7149253
+        }
+      },
+      "target": {
+        "lat": 26.7147054,
+        "lon": 83.3800534,
+        "subtype": "minor-damage"
+      },
+      "observation_model": "mosaic_fov_roi_scoped",
+      "difficulty": {
+        "distance": "hard",
+        "clutter": 84,
+        "edge_truncation": 0.0
+      },
+      "review": {
+        "auto_review": {
+          "status": "pending",
+          "errors": []
+        },
+        "human_review": {
+          "status": "approved",
+          "author_checked": true,
+          "reviewer": "lc",
+          "reviewed_at": "",
+          "note": ""
+        },
+        "adjudication": {
+          "status": "not_required",
+          "note": ""
+        },
+        "ambiguity_flags": [
+          "ambiguous_neighbour"
+        ]
+      }
+    },
+    "damage": {
+      "id": "nepal-flooding_00000484_post_disaster__damage_0019_4689",
+      "scene_id": "nepal-flooding_00000484_post_disaster",
+      "tile_id": "nepal-flooding_00000484_post_disaster",
+      "disaster": "nepal-flooding",
+      "split": "holdout",
+      "question_type": "damage",
+      "question": "标记区域内标记建筑 49b31d02-6bdc-403d-9a65-a819e99a79d7 的损伤状态是什么？",
+      "choices": [
+        "无损伤",
+        "损伤"
+      ],
+      "answer": "损伤",
+      "start": {
+        "lat": 26.7096588,
+        "lon": 83.3760793,
+        "alt": 1330.22
+      },
+      "roi": {
+        "tile_id": "nepal-flooding_00000484_post_disaster",
+        "center": {
+          "lat": 26.7127051,
+          "lon": 83.3782726
+        },
+        "bounds": {
+          "west": 83.3758004,
+          "south": 26.7104849,
+          "east": 83.3807448,
+          "north": 26.7149253
+        }
+      },
+      "target": {
+        "lat": 26.7134546,
+        "lon": 83.3765729,
+        "subtype": "minor-damage",
+        "ref_id": "49b31d02-6bdc-403d-9a65-a819e99a79d7",
+        "marker": "roi_crosshair"
+      },
+      "observation_model": "mosaic_fov_roi_scoped",
+      "difficulty": {
+        "distance": "medium",
+        "target_pixels": 7,
+        "clutter": 84,
+        "edge_truncation": 0.0
+      },
+      "review": {
+        "auto_review": {
+          "status": "pending",
+          "errors": []
+        },
+        "human_review": {
+          "status": "approved",
+          "author_checked": true,
+          "reviewer": "lc",
+          "reviewed_at": "",
+          "note": ""
+        },
+        "adjudication": {
+          "status": "not_required",
+          "note": ""
+        },
+        "ambiguity_flags": [
+          "ambiguous_neighbour"
+        ]
+      }
+    },
+    "count": {
+      "id": "nepal-flooding_00000484_post_disaster__count_0020_2971",
+      "scene_id": "nepal-flooding_00000484_post_disaster",
+      "tile_id": "nepal-flooding_00000484_post_disaster",
+      "disaster": "nepal-flooding",
+      "split": "holdout",
+      "question_type": "count",
+      "question": "标记区域内有多少栋受损建筑？",
+      "choices": [
+        "0",
+        "1",
+        "2",
+        "3+"
+      ],
+      "answer": "3+",
+      "start": {
+        "lat": 26.7159541,
+        "lon": 83.377038,
+        "alt": 1330.22
+      },
+      "roi": {
+        "tile_id": "nepal-flooding_00000484_post_disaster",
+        "center": {
+          "lat": 26.7127051,
+          "lon": 83.3782726
+        },
+        "bounds": {
+          "west": 83.3758004,
+          "south": 26.7104849,
+          "east": 83.3807448,
+          "north": 26.7149253
+        }
+      },
+      "target": null,
+      "observation_model": "mosaic_fov_roi_scoped",
+      "difficulty": {
+        "distance": "n/a",
+        "clutter": 18,
+        "edge_truncation": 0.0
+      },
+      "review": {
+        "auto_review": {
+          "status": "pending",
+          "errors": []
+        },
+        "human_review": {
+          "status": "approved",
+          "author_checked": true,
+          "reviewer": "lc",
+          "reviewed_at": "",
+          "note": ""
+        },
+        "adjudication": {
+          "status": "not_required",
+          "note": ""
+        },
+        "ambiguity_flags": [
+          "edge_truncation"
+        ]
+      }
+    },
+    "spatial": {
+      "id": "nepal-flooding_00000484_post_disaster__spatial_0021_1098",
+      "scene_id": "nepal-flooding_00000484_post_disaster",
+      "tile_id": "nepal-flooding_00000484_post_disaster",
+      "disaster": "nepal-flooding",
+      "split": "holdout",
+      "question_type": "spatial",
+      "question": "最近的受损建筑位于标记区域中心哪个方向？",
+      "choices": [
+        "北",
+        "东北",
+        "东",
+        "东南",
+        "南",
+        "西南",
+        "西",
+        "西北"
+      ],
+      "answer": "西北",
+      "start": {
+        "lat": 26.7137792,
+        "lon": 83.3822257,
+        "alt": 1330.22
+      },
+      "roi": {
+        "tile_id": "nepal-flooding_00000484_post_disaster",
+        "center": {
+          "lat": 26.7127051,
+          "lon": 83.3782726
+        },
+        "bounds": {
+          "west": 83.3758004,
+          "south": 26.7104849,
+          "east": 83.3807448,
+          "north": 26.7149253
+        }
+      },
+      "target": {
+        "lat": 26.7135192,
+        "lon": 83.3768705,
+        "subtype": "minor-damage"
+      },
+      "observation_model": "mosaic_fov_roi_scoped",
+      "difficulty": {
+        "distance": "medium",
+        "clutter": 0,
+        "edge_truncation": 0.0
+      },
+      "review": {
+        "auto_review": {
+          "status": "pending",
+          "errors": []
+        },
+        "human_review": {
+          "status": "approved",
+          "author_checked": true,
+          "reviewer": "lc",
+          "reviewed_at": "",
+          "note": ""
+        },
+        "adjudication": {
+          "status": "not_required",
+          "note": ""
+        },
+        "ambiguity_flags": [
+          "ambiguous_neighbour"
+        ]
+      },
+      "evidence_norm_xy": [
+        0.2277,
+        0.3242
+      ]
+    }
+  }
+}

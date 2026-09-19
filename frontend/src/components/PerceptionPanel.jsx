@@ -82,7 +82,16 @@ export default function PerceptionPanel({ perception, semanticMap, vlnThought })
 
       {hasVln && <VlnStatus semanticMap={semanticMap} thought={vlnThought} />}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '180px minmax(0, 1fr)', gap: 12, minHeight: 0, flex: 1 }}>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '180px minmax(0, 1fr)',
+          gap: 12,
+          minHeight: 0,
+          flex: '0 0 auto',
+          alignItems: 'start',
+        }}
+      >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
           <div style={{ display: 'flex', gap: 4 }}>
             {tabs.map((t) => (
@@ -133,7 +142,7 @@ export default function PerceptionPanel({ perception, semanticMap, vlnThought })
           </div>
         </div>
 
-        <div className="panel-scroll" style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
+        <div className="perception-details" style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 12 }}>
           <div style={{ color: 'var(--ink)', fontWeight: 600, lineHeight: 1.4 }}>
             {perception.risk_summary}
           </div>
@@ -169,6 +178,19 @@ export default function PerceptionPanel({ perception, semanticMap, vlnThought })
               <div style={chipRowStyle}>
                 {topEntries(det.class_counts, 6).map(([name, count]) => (
                   <span key={name} style={chipStyle}>
+                    {name} <b style={{ marginLeft: 4 }}>{count}</b>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {Object.keys(det.class_counts_four || {}).length > 0 && (
+            <div>
+              <div style={labelStyle}>ChangeOS 四分类估计</div>
+              <div style={chipRowStyle}>
+                {topEntries(det.class_counts_four, 6).map(([name, count]) => (
+                  <span key={name} style={{ ...chipStyle, background: 'rgba(35,97,163,0.08)' }}>
                     {name} <b style={{ marginLeft: 4 }}>{count}</b>
                   </span>
                 ))}
@@ -346,7 +368,10 @@ const panelStyle = {
   flexDirection: 'column',
   gap: 10,
   minHeight: 0,
-  overflow: 'hidden',
+  overflowY: 'auto',
+  overflowX: 'hidden',
+  overscrollBehavior: 'contain',
+  scrollbarGutter: 'stable',
 }
 
 const labelStyle = {

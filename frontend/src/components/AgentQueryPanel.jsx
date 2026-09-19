@@ -12,7 +12,7 @@ const DECISION_LABEL = {
 const REASON_LABEL = {
   sufficient_evidence: '证据充分',
   target_missing: '目标缺失',
-  low_confidence: '置信不足',
+  low_confidence: '复核不确定性较高',
   budget_exhausted: '预算耗尽',
   invalid_question: '问题无效',
   planner_unavailable: '规划器不可用',
@@ -47,6 +47,8 @@ function StepRow({ step, index }) {
   const reason = REASON_LABEL[step.reason_code] || step.reason_code
   const action = ACTION_LABEL[step.action] || step.action
   const pos = step.position || {}
+  const uncertainty = Number(step.uncertainty)
+  const hasUncertainty = Number.isFinite(uncertainty)
   return (
     <div style={{
       padding: '10px 12px', borderRadius: 12,
@@ -69,6 +71,12 @@ function StepRow({ step, index }) {
         决策 <strong style={{ color: 'var(--accent)' }}>{decision}</strong>
         · 理由 {reason} · 动作 {action}
       </div>
+      {step.decision === 'reobserve' && (
+        <div style={{ marginTop: 4, color: 'var(--ink-soft)', fontSize: 11 }}>
+          重观测依据：独立于候选答案置信度的复核策略
+          {hasUncertainty ? `（不确定性 ${Math.round(uncertainty * 100)}%）` : ''}
+        </div>
+      )}
       {pos.lat != null && (
         <div style={{ marginTop: 2, color: 'var(--ink-soft)', fontSize: 11 }}>
           位姿 {Number(pos.lat).toFixed(5)}, {Number(pos.lon).toFixed(5)} @ {Number(pos.alt || 0).toFixed(0)}m
