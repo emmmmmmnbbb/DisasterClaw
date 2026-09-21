@@ -1,64 +1,24 @@
-\section{Reproducibility and provenance}
+\section{Protocol and provenance}
 \label{app:provenance}
-\subsection{Frozen final identities and audit boundary}
-The final protocol is stored in \path{cja_en/review/changeos_p6_final_protocol_20260915.json}. It records full SHA-256 values for the final task set, a review report, the frozen three-event manifest, ChangeOS weights, source fingerprint, system prompt, policy configuration, and analysis scripts. Its own SHA-256 begins \texttt{41ccbb5fed5e}; exact paths and full hashes are retained in the machine-readable protocol rather than truncated in the audit. These identities describe the local execution; they are not substitutes for a publicly recoverable image and checkpoint package.
+The frozen local protocol is \path{cja_en/review/changeos_p6_final_protocol_20260915.json}. It identifies the final task set and consolidated human-review report, three-event manifest, ChangeOS checkpoint, source fingerprint, prompt, policy configuration, and analysis scripts by path and SHA-256. The paths and hashes specify the execution inputs; a public reproduction package would also require authorized image and checkpoint access, scene manifests, dependency versions, and replay instructions.
 
-The dual-review procedure described in Section~\ref{sec:benchmark} requires two independent review records and an adjudication record linked to the frozen question identifiers. The available protocol lists one review-report path and hash; it does not separately identify those three records. Their inclusion and explicit mapping to the frozen set remain requirements for a complete release. This distinction prevents the execution audit from being interpreted as independent verification of the human-review process. Review records are provenance, not model inputs.
+The final run consists of 12 shards with 3,360 question--policy--repeat rows. Their local audit reports complete question and configuration coverage and zero execution errors. This checks execution consistency, not independent reconstruction of the full environment. A separate cost audit finds that 42 episodes end with a fly action and no subsequent recorded state; complete-motion summaries therefore use 3,318 episodes. The terminal-answer analysis retains all 3,360. Search-action detail and component-level render, perception, controller, and Qwen costs are not available, so the action-cost comparison is restricted to executed dedicated rechecks and observed episode wall time.
 
-The 12 final shard directories contain manifests, preflight receipts, \path{episodes.jsonl}, \path{results.json}, and strict per-shard audits. Their combined report is \path{p6_final_three_event_v1_20260915_report.json} under \path{runs/benchmarks/changeos_binary/}; its SHA-256 begins \texttt{9e4370325bc9}. It validates 3,360 rows with zero execution errors, exact question/configuration/repeat coverage, and declared input identities. This is a local execution and consistency audit, not an independent re-execution of the full model pipeline. The run uses a fixed ChangeOS checkpoint and a locally loaded Qwen2.5-VL-7B-Instruct model; checkpoint identity and generation settings must accompany any release rather than be inferred from an online model name.
+The supplementary controls are archived at \path{runs/benchmarks/changeos_binary/revision_controls_report_full_20260920/}. The report aggregates 12 matched-view shards (161 valid forks, no missing pairs or execution errors) and four shortcut shards (960 valid text-only or metadata-only predictions, no call errors or invalid outputs). \path{protocol_notes.md} records the fixed-view branch, allowed shortcut fields, and diagnostic boundaries; \path{report.json} contains the reported task-wise counts and ROI-cluster intervals. The runnable local entry points are \path{scripts/benchmarks/run_revision_matched_queue.sh}, \path{scripts/benchmarks/run_revision_matched_tail.sh}, \path{scripts/benchmarks/run_revision_controls.sh}, and \path{scripts/benchmarks/report_revision_controls.py}. These paths permit local audit of the reported runs but do not substitute for releasing authorized imagery, checkpoints, and the full execution environment.
 
-Scene construction and rendering are in the \path{backend/} modules \path{world.py}, \path{geo.py}, \path{xbd_map.py}, \path{fov_ladder.py}, and \path{perception.py}. Inspection, reobservation, and local Qwen calls are in the same directory's \path{agent_vqa.py}, \path{recheck.py}, and \path{local_qwen_vl.py}. The headless protocol is under \path{scripts/benchmarks/}; this directory also contains \path{build_roi_index.py}, \path{gen_agent_vqa_testset_v2.py}, and \path{review_agent_vqa_testset.py} for coverage indexing, task generation, and review checks. The operator interface is under \path{frontend/src/}. This file map establishes software correspondence, not that every optional module was active in each policy.
-
-The final cost audits are \path{runs/benchmarks/changeos_binary/p7_cost_observability_final_repeat0_20260917/report.json}, with corresponding repeat1 and repeat2 paths. The existing auditor was applied to four shards at a time because its duplicate key is not repeat-aware. Together the three reports cover 3,360 episodes and flag 42 incomplete terminal-motion traces. All logged recheck request, inferred allocation, execution, and episode totals agree. Search-action allocation details, component-level timing, actual flight time, and physical action mapping remain unavailable. A complete public reproduction package would additionally need the licensed source imagery, scene manifests and affine transforms, basemap availability, dependency lock, checkpoint retrieval instructions, and one replay with action/observation hashes.
-
-\section{Historical diagnostics outside the main evidence chain}
-\label{app:historical}
-\subsection{Archived four-class camera and allocation study}
-An earlier \texttt{xview2\_first} four-class pipeline evaluated 3,753 buildings in 44 ROIs. It is not the binary ChangeOS backend of the final study. Table~\ref{tab:fov} retains its camera-footprint results and Table~\ref{tab:allocation} its offline allocation at a 0.25 building-selection fraction. The old temperature, prediction-set threshold, four-class entropy normalization, and allocation scores are not used in the main experiment. These offline selections operate on paired stored predictions, not on executable closed-loop routes or question answers.
-
+For the camera-ladder diagnostic, the construction boundary is summarized below. The table is a reproducibility description, not an ablation of preprocessing choices.
 \begin{table}[htbp]
 \centering\small
-\caption{Historical four-class building-level camera diagnostic on the same 3,753 evaluation buildings. Not comparable to the binary ChangeOS final question endpoint.}
-\label{tab:fov}
-\input{tables/historical/xview2_first_fov}
-\end{table}
-
-\begin{table}[htbp]
-\centering\footnotesize
-\caption{Historical four-class offline allocation at a 0.25 building-selection fraction. The label-informed row uses evaluation labels and is not deployable.}
-\label{tab:allocation}
-\input{tables/historical/xview2_first_allocation}
-\end{table}
-
-\begin{figure}[htbp]
-\centering
-\input{figures/budget_curve}
-\caption{Historical offline four-class allocation sweep. Selected floor predictions replace cruise predictions; this is not a common-budget online policy curve.}
-\label{fig:budget-curve}
-\end{figure}
-
-The archived matched-only sensitivity population contains 2,757 buildings detected at all three views (Table~\ref{tab:matched}). Because the subset is selected by detector success, it cannot replace the full 3,753-building endpoint. Its earlier exploratory ROI-bootstrap intervals, shown in Table~\ref{tab:cluster}, condition on fixed scores and the observed three events; they do not demonstrate transfer to new disasters.
-
-\begin{table}[htbp]
-\centering\small
-\caption{Historical four-class matched-only sensitivity analysis.}
-\label{tab:matched}
-\input{tables/common_matched}
-\end{table}
-
-\begin{table}[htbp]
-\centering\footnotesize
-\caption{Historical four-class exploratory paired ROI-bootstrap differences at the 0.25 offline allocation fraction.}
-\label{tab:cluster}
-\input{tables/cluster_intervals}
-\end{table}
-
-\subsection{Archived VLN switch diagnostic}
-The earlier 200-instruction VLN switch experiment used an earlier observation stack and one recorded run per configuration. Table~\ref{tab:vln-ablation} preserves the archived aggregate as a component diagnostic only. Enabling the recheck configuration did not cause recheck actions in that run; the table cannot establish a benefit from planning, memory, or reobservation under the current ChangeOS binary protocol.
-
-\begin{table}[htbp]
-\centering\footnotesize
-\caption{Archived VLN switch diagnostic. SR is strict success within 25 m of the specified target; semSR accepts a matching damage-class building within 25 m. Recheck triggers were zero in all four configurations.}
-\label{tab:vln-ablation}
-\input{tables/vln_ablation}
+\caption{Camera-ladder preprocessing construction used by the diagnostic.}
+\label{tab:preprocessing-construction}
+\begin{tabular}{lll}
+\toprule
+Stage & Pre-disaster & Post-disaster\\
+\midrule
+Geographic crop & matched window & current footprint\\
+Scale handling & assumed source scale & footprint-dependent sampling\\
+Alignment & paired affine placement & paired affine placement\\
+Detector input & retained source-scale channel & resized current view\\
+\bottomrule
+\end{tabular}
 \end{table}

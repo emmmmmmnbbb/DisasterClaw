@@ -1,0 +1,73 @@
+{
+  "schema": "frozen-trace-view-transitions/1.0",
+  "damage_help": {
+    "qid": "hurricane-michael_00000435_post_disaster__damage_0001_9430",
+    "sequence": [
+      {
+        "step": 0,
+        "role": "episode_initial",
+        "observation_id": "vln-1285598-1789865434216293057",
+        "altitude_m": 1330.22,
+        "gsd_m": 1.5,
+        "image": "damage_step0_alt1330.22_vln-1285598-1789865434216293057.png",
+        "detection_overlay": "damage_step0_alt1330.22_detection_overlay.png"
+      },
+      {
+        "step": 1,
+        "role": "recheck_pre",
+        "observation_id": "vln-1285598-1789865455379567149",
+        "altitude_m": 886.82,
+        "gsd_m": 1.000011,
+        "image": "damage_step1_alt886.82_vln-1285598-1789865455379567149.png",
+        "detection_overlay": "damage_step1_alt886.82_detection_overlay.png",
+        "action_from_previous": {"north_m": 27.8, "east_m": 28.8, "up_m": -443.4}
+      },
+      {
+        "step": 2,
+        "role": "recheck_changed",
+        "observation_id": "vln-1285598-1789865476874815561",
+        "altitude_m": 443.42,
+        "gsd_m": 0.500017,
+        "image": "damage_step2_alt443.42_vln-1285598-1789865476874815561.png",
+        "detection_overlay": "damage_step2_alt443.42_detection_overlay.png",
+        "action_from_previous": {"north_m": 27.8, "east_m": 28.8, "up_m": -443.4}
+      }
+    ],
+    "fixed_view_control": {
+      "observation_id": "vln-1285598-1789865463665426733",
+      "image": "damage_fixed_vln-1285598-1789865463665426733.png",
+      "detection_overlay": "damage_fixed_detection_overlay.png",
+      "byte_identical_to": "recheck_pre"
+    }
+  },
+  "spatial_harm": {
+    "qid": "hurricane-michael_00000306_post_disaster__spatial_0092_5452",
+    "sequence": [
+      {
+        "step": 0,
+        "role": "episode_initial",
+        "observation_id": "vln-1259362-1789865002197335637",
+        "altitude_m": 1330.22,
+        "gsd_m": 1.5,
+        "image": "spatial_step0_alt1330.22_vln-1259362-1789865002197335637.png",
+        "detection_overlay": "spatial_step0_alt1330.22_detection_overlay.png"
+      },
+      {
+        "step": 1,
+        "role": "recheck_changed",
+        "observation_id": "vln-1259362-1789865018724754002",
+        "altitude_m": 886.82,
+        "gsd_m": 1.000011,
+        "image": "spatial_step1_alt886.82_vln-1259362-1789865018724754002.png",
+        "detection_overlay": "spatial_step1_alt886.82_detection_overlay.png",
+        "action_from_previous": {"north_m": 0.0, "east_m": 0.0, "up_m": -443.4}
+      }
+    ],
+    "fixed_view_control": {
+      "observation_id": "vln-1259362-1789865007950442518",
+      "image": "spatial_fixed_vln-1259362-1789865007950442518.png",
+      "detection_overlay": "spatial_fixed_detection_overlay.png",
+      "byte_identical_to": "episode_initial"
+    }
+  }
+}
