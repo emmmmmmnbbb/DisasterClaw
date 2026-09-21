@@ -1,0 +1,23 @@
+\begin{table*}[!t]
+\centering
+\scriptsize
+\caption{Capability-oriented comparison of benchmarks most relevant to task-dependent observation value.}
+\label{tab:capability-comparison}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}llccccc@{}}
+\toprule
+Benchmark & Primary task & \shortstack{Active\\view change} & \shortstack{Disaster-\\specific} & \shortstack{Fixed geographic\\task/answer\\under view change} & \shortstack{Answer after\\active sensing} & \shortstack{Explicit observation-\\value isolation}\\
+\midrule
+AerialVLN & Aerial vision--language navigation & $\checkmark$ & --- & --- & --- & ---\\
+OpenFly & Large-scale aerial vision--language navigation & $\checkmark$ & --- & --- & --- & ---\\
+BEDI & UAV embodied-agent evaluation & $\checkmark$ & $\triangle$ & --- & $\triangle$ & ---\\
+CityEQA & Embodied question answering & $\checkmark$ & --- & $\triangle$ & $\checkmark$ & ---\\
+RescueADI & Disaster remote-sensing agent & --- & $\checkmark$ & --- & $\triangle$ & ---\\
+ThinkGeo & Tool-augmented remote-sensing agent & $\triangle$ & $\triangle$ & --- & $\triangle$ & ---\\
+DisasterM3 & Disaster vision--language benchmark & --- & $\checkmark$ & --- & --- & ---\\
+\textbf{DisasterClaw} & Disaster inspection and observation-value measurement & $\checkmark$ & $\checkmark$ & $\checkmark$ & $\checkmark$ & $\checkmark$\\
+\bottomrule
+\end{tabular}}
+\vspace{2pt}
+\parbox{\textwidth}{\footnotesize ``---'' means that the capability is not the primary evaluation contract reported by the work, rather than that it is technically impossible. $\triangle$ denotes a related but non-equivalent capability. DisasterClaw changes controlled orthographic image footprints rather than physical 3D viewpoints.}
+\end{table*}

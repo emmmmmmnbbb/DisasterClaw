@@ -5,6 +5,15 @@ Each question binds a source tile, a geographic ROI, an initial vehicle state, a
 
 The four task families make the detail--coverage tension testable. Presence asks whether $|D_R|>0$: one convincing positive may suffice, while a negative requires regional evidence. Damage asks for the binary state of a designated building, whose location is a permitted task cue. Count maps $|D_R|$ to $0$, $1$, $2$, or $3+$ and requires aggregation across the ROI. Spatial asks for the eight-sector bearing from the ROI center to the nearest damaged building and requires a nonempty $D_R$. These are annotation and geometry rules, not language-model-generated reference answers.
 
+Figure~\ref{fig:task-traces} illustrates how platform inputs are converted into task outputs. Spatial localization associates predicted damaged buildings with geographic position before computing a relative direction; damage counting aggregates building-level predictions over the visible region; and an active inspection instruction expands into navigation, descent, observation, and reporting actions. These are platform-run examples used to visualize the interface, not samples from the frozen 160-question evaluation set.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=\textwidth]{figure-paper/真正的输入输出.png}
+\caption{Representative platform-run input--output traces. The examples show spatial localization from mapped detections, aggregation for damage counting, and an active low-altitude inspection sequence. They illustrate the interface and action vocabulary; quantitative results use the separately frozen benchmark and headless runner.}
+\label{fig:task-traces}
+\end{figure*}
+
 \subsection{Final-set composition and input boundary}
 The frozen set has 160 questions over 44 ROIs: 48 in Hurricane Michael, 51 in the Moore tornado, and 61 in Nepal flooding. Table~\ref{tab:answer-distribution} reports the answer counts. The count task is concentrated in $0$ and $3+$, with only one $1$ and no $2$; this is a visible class imbalance, so count accuracy alone cannot establish that a policy distinguishes all four buckets. Spatial answers are more dispersed, but that task also requires finding the correct nearest damaged building. Questions from the same ROI share source context and are not independent scenes.
 

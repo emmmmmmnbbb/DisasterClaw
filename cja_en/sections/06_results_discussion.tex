@@ -4,7 +4,7 @@
 \subsection{Benchmark validity: image-aware paths exceed shortcut controls}
 The final answer distribution has a substantial task-conditioned majority baseline: the development-fitted task-majority rule attains 57.50\% (92/160). This number is driven by the frozen answer distribution, especially the count task, rather than by visual interpretation. The text-only S1\_LANGUAGE control reaches 28.75\% over 480 question--repeat instances, and the permitted-metadata S2\_METADATA control reaches 36.25\% (Table~\ref{tab:shortcut-controls}). Neither control receives imagery or detector evidence. In contrast, the image-aware A0\_NO\_RECHECK and T1\_TASK operating points reach 72.29\% and 75.00\%, respectively. Their paired gaps to S1 are $+43.54$ and $+46.25$ points, and to S2 are $+36.04$ and $+38.75$ points; all four 95\% ROI-cluster intervals exclude zero. The complete image-aware task paths therefore exceed controls based on question wording and permitted non-image metadata. Because S1/S2 also use a modality-specific prompt and omit the hybrid rule path, this is a pipeline-level benchmark control rather than a pure image-only causal estimate.
 
-\begin{table*}[htbp]
+\begin{table*}[!t]
 \centering\small
 \caption{Shortcut controls and image-aware operating points on the frozen final set. S0 uses a development-fitted task majority and is deterministic ($n=160$); all other rows use three aligned repeats ($n=480$). S1 receives question text, choices, and task type; S2 additionally receives permitted runtime metadata.}
 \label{tab:shortcut-controls}
@@ -28,6 +28,8 @@ The policy comparison alone cannot distinguish a new image from another answer o
 
 Changed-view candidate answers are correct in 96/161 transitions (59.63\%), versus 81/161 (50.31\%) for the fixed-view matched call, a paired difference of $+9.32$ points (95\% ROI-cluster interval $[-2.00,+21.74]$). The point estimate is accompanied by 36 fixed-wrong/changed-correct transitions and 21 fixed-correct/changed-wrong transitions; 44 pairs are wrong in both branches and 60 correct in both. Answers disagree in 42.24\% of pairs. Thus the changed observation can alter the answer path beyond a repeated call on the old image, but the clustered interval does not establish a stable positive average effect in the sampled ROIs.
 
+Excluding the one episode whose rerun placed its second recheck at step 2 rather than reference step 3 removes two wrong--wrong pairs. The remaining 159 pairs from 118 episodes have 81/159 fixed-view and 96/159 changed-view correct candidates, a $+9.43$-point paired difference (95\% ROI-cluster interval $[-2.03,+22.00]$), with the same 36 help and 21 harm transitions. As a separate old-view repeat check, the pre-recheck and fixed-branch image bytes and normalized candidate answers agree in all 161/161 original forks (159/159 after exclusion). The two old-view calls use different step seeds and evidence prompts, however, so this is observed answer stability under identical image bytes rather than a controlled same-prompt, same-seed repeatability estimate.
+
 \begin{table}[htbp]
 \centering\small
 \caption{Fixed-view matched-call diagnostic at executed T1 recheck transitions. Candidate-answer correctness is measured immediately after the branch, not at episode termination. Presence has no T1 dedicated recheck.}
@@ -45,8 +47,37 @@ Overall & 161 & 50.31 & 59.63 & 36 & 21 & $+9.32$\\
 \end{tabular}
 \end{table}
 
+Figure~\ref{fig:help-harm-cases} grounds the aggregate transitions in two frozen T1 episodes. In the damage episode \nolinkurl{hurricane-michael_00000435_post_disaster__damage_0001_9430}, successive observations at approximately 1330, 887, and 443~m increase the marked building's predicted damage probability from 0.158 to 0.369 and 0.588. The answer consequently changes from the incorrect ``no damage'' to the correct ``damaged.'' This is the intended local-detail benefit of a recheck.
+
+The spatial episode \nolinkurl{hurricane-michael_00000306_post_disaster__spatial_0092_5452} shows the complementary risk. The wide observation selects a damaged building north of the ROI center and answers correctly. After descent, the evidence ranking selects a different building southwest of the center, changing a correct answer to an incorrect one. A further descent is rejected because predicted ROI coverage is 0.340, below the 0.98 gate. The failure is therefore associated with a target-identity switch under reduced regional context, not merely with noise in the bearing of a fixed target.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=\textwidth]{figure-paper/recheck成功失败两个案例.png}
+\caption{Frozen examples of recheck help and harm. (a) Narrower observations strengthen evidence for a marked building and correct a damage answer. (b) A spatial recheck changes the selected nearest damaged building from the correct northern target to a southwestern target; the coverage gate then rejects further descent. The examples expose the action--observation--evidence--answer chain behind the aggregate help and harm counts.}
+\label{fig:help-harm-cases}
+\end{figure*}
+
 \subsection{Changed observations create opportunity and risk}
-The camera-ladder diagnostic holds 7,238 annotated buildings in 43 development ROIs fixed while changing the rendered footprint. ChangeOS localization recall rises from 22.09\% at cruise to 56.52\% at floor. With every unmatched ground-truth building counted as incorrect, binary building accuracy rises from 20.01\% to 53.65\%. The paired cruise-to-floor outcomes include 2,696 incorrect-to-correct changes and 261 correct-to-incorrect changes. This building-level diagnostic establishes that changed rendering changes available predicted evidence, but asymmetric pre-/post-image processing and changed context prevent attributing the response uniquely to GSD or physical descent.
+The camera-ladder diagnostic holds 7,238 annotated buildings in 43 development ROIs fixed while changing the rendered footprint. ChangeOS localization recall rises from 22.09\% at cruise to 34.06\% at intermediate and 56.52\% at floor. With every unmatched ground-truth building counted as incorrect, binary building accuracy rises from 20.01\% to 31.06\% and 53.65\%. Among matched buildings only, binary damage accuracy is 90.56\%, 91.20\%, and 94.92\%, while matched-only macro-F1 is 0.8714, 0.8743, and 0.9232. The paired cruise-to-floor outcomes include 2,696 incorrect-to-correct changes and 261 correct-to-incorrect changes. This building-level diagnostic establishes that changed rendering changes available predicted evidence, but asymmetric pre-/post-image processing and changed context prevent attributing the response uniquely to GSD or physical descent.
+
+Table~\ref{tab:detection-fp-audit} separates localization from conditional damage classification. Localization precision falls to 68.65\% at floor even as recall and matched-building damage accuracy rise; unmatched predictions increase to 43.44 per ROI. TP/FP/FN use a one-to-one nearest-centroid match within 12~m, so an unmatched prediction can reflect a duplicate, localization error, or missing annotation as well as a spurious building. The all-GT accuracy denominator includes missed buildings but does not penalize extra predictions; matched-only accuracy and macro-F1 exclude misses and unmatched predictions. Thus the improving damage accuracies and increasing localization FP count describe different parts of the same detection path, without implying that either metric is incorrect.
+
+\begin{table*}[!t]
+\centering\small
+\caption{ChangeOS localization and binary-damage audit on the same 43 development ROIs and 7,238 annotated buildings at each height. Loc. P/R are localization precision/recall; FP is an unmatched prediction, FN an unmatched GT building, and FP/ROI is FP/43. All-GT accuracy counts unmatched GT as wrong but does not count unmatched predictions; matched accuracy and macro-F1 condition on matched GT only.}
+\label{tab:detection-fp-audit}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lrrrrrrrrr}
+\toprule
+View (height) & TP & FP & FN & Loc. P (\%) & Loc. R (\%) & FP/ROI & All-GT acc. (\%) & Matched acc. (\%) & Matched macro-F1\\
+\midrule
+Cruise (1330 m) & 1,599 & 502 & 5,639 & 76.11 & 22.09 & 11.67 & 20.01 & 90.56 & 0.8714\\
+Intermediate (887 m) & 2,465 & 677 & 4,773 & 78.45 & 34.06 & 15.74 & 31.06 & 91.20 & 0.8743\\
+Floor (443 m) & 4,091 & 1,868 & 3,147 & 68.65 & 56.52 & 43.44 & 53.65 & 94.92 & 0.9232\\
+\bottomrule
+\end{tabular}}
+\end{table*}
 
 The matched-call result carries the same non-monotonic pattern to task answers. Damage and count transitions have positive point differences, whereas spatial transitions have a negative point difference (Table~\ref{tab:matched-view}). A more local view can improve the evidence for a marked building or a damaged-count decision, yet it can change the selected target for a nearest-building direction judgment. These task-wise estimates are descriptive: the recheck subsets are selected by T1 and have only 18 count and 20 spatial transitions.
 

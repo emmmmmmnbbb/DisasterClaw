@@ -2,6 +2,7 @@
 \providecommand\hyper@newdestlabel[2]{}
 \providecommand\HyField@AuxAddToFields[1]{}
 \providecommand\HyField@AuxAddToCoFields[2]{}
+\citation{liu2023aerialvln,gao2026openfly,guo2026bedi,zhao2025cityeqa,liu2024rescueadi,thinkgeo2025}
 \@writefile{toc}{\contentsline {section}{\numberline {1}Introduction}{1}{section.1}\protected@file@percent }
 \citation{liu2023aerialvln,lee2025citynav,gao2026openfly,yao2024aeroverse,guo2026bedi}
 \citation{zhao2025cityeqa}
@@ -10,66 +11,79 @@
 \citation{bajcsy1988active}
 \citation{guo2017calibration,ovadia2019can}
 \@writefile{toc}{\contentsline {section}{\numberline {2}Related work}{2}{section.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Aerial interaction and disaster interpretation}{2}{subsection.2.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Task value of an observation}{2}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.1}Aerial interaction and embodied evaluation}{2}{subsection.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.2}Disaster and remote-sensing agents}{2}{subsection.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {2.3}Task value of an observation}{2}{subsection.2.3}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {3}The DisasterClaw platform}{2}{section.3}\protected@file@percent }
 \newlabel{sec:platform}{{3}{2}{The DisasterClaw platform}{section.3}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.1}From geographic records to inspection episodes}{2}{subsection.3.1}\protected@file@percent }
-\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces DisasterClaw's data-to-episode workflow. Source annotations construct the fixed task and answer; vehicle state determines a rendered view; the episode record links the action, predicted evidence, and answer. The image panels illustrate the workflow rather than a final-test trajectory.}}{2}{figure.1}\protected@file@percent }
-\newlabel{fig:overview}{{1}{2}{DisasterClaw's data-to-episode workflow. Source annotations construct the fixed task and answer; vehicle state determines a rendered view; the episode record links the action, predicted evidence, and answer. The image panels illustrate the workflow rather than a final-test trajectory}{figure.1}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {3.2}Controlled observation and action}{2}{subsection.3.2}\protected@file@percent }
 \newlabel{eq:geometry}{{1}{2}{Controlled observation and action}{equation.1}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Capability-oriented comparison of benchmarks most relevant to task-dependent observation value.}}{3}{table.1}\protected@file@percent }
+\newlabel{tab:capability-comparison}{{1}{3}{Capability-oriented comparison of benchmarks most relevant to task-dependent observation value}{table.1}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Dataset and scene construction. Georeferenced xBD imagery and spatial annotations are aligned with a Leaflet map, indexed into a unified geographic scene, and rendered according to vehicle state and the target ROI. The basemap supplies geographic context but no damage ground truth.}}{3}{figure.1}\protected@file@percent }
+\newlabel{fig:overview}{{1}{3}{Dataset and scene construction. Georeferenced xBD imagery and spatial annotations are aligned with a Leaflet map, indexed into a unified geographic scene, and rendered according to vehicle state and the target ROI. The basemap supplies geographic context but no damage ground truth}{figure.1}{}}
 \@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces Camera-ladder abstraction. Each state renders $1024\times 1024$ pixels from the same orthographic source; descending narrows the footprint and cannot reveal detail below the assumed source resolution.}}{3}{figure.2}\protected@file@percent }
 \newlabel{fig:ladder}{{2}{3}{Camera-ladder abstraction. Each state renders $1024\times 1024$ pixels from the same orthographic source; descending narrows the footprint and cannot reveal detail below the assumed source resolution}{figure.2}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {4}Task benchmark construction}{3}{section.4}\protected@file@percent }
-\newlabel{sec:benchmark}{{4}{3}{Task benchmark construction}{section.4}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Fixed task scope and reference answers}{3}{subsection.4.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Final-set composition and input boundary}{3}{subsection.4.2}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Frozen question and answer distribution. Counts refer to distinct questions, before policy runs or generation repeats.}}{3}{table.1}\protected@file@percent }
-\newlabel{tab:answer-distribution}{{1}{3}{Frozen question and answer distribution. Counts refer to distinct questions, before policy runs or generation repeats}{table.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {4}Task benchmark construction}{4}{section.4}\protected@file@percent }
+\newlabel{sec:benchmark}{{4}{4}{Task benchmark construction}{section.4}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Fixed task scope and reference answers}{4}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Final-set composition and input boundary}{4}{subsection.4.2}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Frozen question and answer distribution. Counts refer to distinct questions, before policy runs or generation repeats.}}{4}{table.2}\protected@file@percent }
+\newlabel{tab:answer-distribution}{{2}{4}{Frozen question and answer distribution. Counts refer to distinct questions, before policy runs or generation repeats}{table.2}{}}
 \@writefile{toc}{\contentsline {section}{\numberline {5}Task-conditioned observation policy}{4}{section.5}\protected@file@percent }
 \newlabel{sec:agent}{{5}{4}{Task-conditioned observation policy}{section.5}{}}
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Episode state and evidence memory}{4}{subsection.5.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}An instantiated recheck gate, not a general view planner}{4}{subsection.5.2}\protected@file@percent }
-\newlabel{eq:taskutility}{{2}{4}{An instantiated recheck gate, not a general view planner}{equation.2}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {6}Evaluation protocol}{4}{section.6}\protected@file@percent }
-\newlabel{sec:setup}{{6}{4}{Evaluation protocol}{section.6}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {7}Results and discussion}{5}{section.7}\protected@file@percent }
-\newlabel{sec:results}{{7}{5}{Results and discussion}{section.7}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}Benchmark validity: image-aware paths exceed shortcut controls}{5}{subsection.7.1}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}Changed observations beyond another answer call}{5}{subsection.7.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}Changed observations create opportunity and risk}{5}{subsection.7.3}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Shortcut controls and image-aware operating points on the frozen final set. S0 uses a development-fitted task majority and is deterministic ($n=160$); all other rows use three aligned repeats ($n=480$). S1 receives question text, choices, and task type; S2 additionally receives permitted runtime metadata.}}{6}{table.2}\protected@file@percent }
-\newlabel{tab:shortcut-controls}{{2}{6}{Shortcut controls and image-aware operating points on the frozen final set. S0 uses a development-fitted task majority and is deterministic ($n=160$); all other rows use three aligned repeats ($n=480$). S1 receives question text, choices, and task type; S2 additionally receives permitted runtime metadata}{table.2}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Fixed-view matched-call diagnostic at executed T1 recheck transitions. Candidate-answer correctness is measured immediately after the branch, not at episode termination. Presence has no T1 dedicated recheck.}}{6}{table.3}\protected@file@percent }
-\newlabel{tab:matched-view}{{3}{6}{Fixed-view matched-call diagnostic at executed T1 recheck transitions. Candidate-answer correctness is measured immediately after the branch, not at episode termination. Presence has no T1 dedicated recheck}{table.3}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}Policy operating points remain secondary evidence}{6}{subsection.7.4}\protected@file@percent }
-\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Primary frozen policy operating points on the same 160 questions under three generation repeats. Rechecks are executed dedicated actions and exclude search.}}{6}{table.4}\protected@file@percent }
-\newlabel{tab:final-policies}{{4}{6}{Primary frozen policy operating points on the same 160 questions under three generation repeats. Rechecks are executed dedicated actions and exclude search}{table.4}{}}
-\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces Prespecified paired T1\_TASK terminal-accuracy contrasts in percentage points. The 98.75\% ROI-cluster intervals adjust for four comparisons.}}{6}{table.5}\protected@file@percent }
-\newlabel{tab:final-contrasts}{{5}{6}{Prespecified paired T1\_TASK terminal-accuracy contrasts in percentage points. The 98.75\% ROI-cluster intervals adjust for four comparisons}{table.5}{}}
-\@writefile{toc}{\contentsline {section}{\numberline {8}Limitations}{6}{section.8}\protected@file@percent }
-\newlabel{sec:limitations}{{8}{6}{Limitations}{section.8}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Representative platform-run input--output traces. The examples show spatial localization from mapped detections, aggregation for damage counting, and an active low-altitude inspection sequence. They illustrate the interface and action vocabulary; quantitative results use the separately frozen benchmark and headless runner.}}{5}{figure.3}\protected@file@percent }
+\newlabel{fig:task-traces}{{3}{5}{Representative platform-run input--output traces. The examples show spatial localization from mapped detections, aggregation for damage counting, and an active low-altitude inspection sequence. They illustrate the interface and action vocabulary; quantitative results use the separately frozen benchmark and headless runner}{figure.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.2}An instantiated recheck gate, not a general view planner}{5}{subsection.5.2}\protected@file@percent }
+\newlabel{eq:taskutility}{{2}{5}{An instantiated recheck gate, not a general view planner}{equation.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {6}Evaluation protocol}{5}{section.6}\protected@file@percent }
+\newlabel{sec:setup}{{6}{5}{Evaluation protocol}{section.6}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Results and discussion}{6}{section.7}\protected@file@percent }
+\newlabel{sec:results}{{7}{6}{Results and discussion}{section.7}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.1}Benchmark validity: image-aware paths exceed shortcut controls}{6}{subsection.7.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.2}Changed observations beyond another answer call}{7}{subsection.7.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.3}Changed observations create opportunity and risk}{7}{subsection.7.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {7.4}Policy operating points remain secondary evidence}{7}{subsection.7.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {3}{\ignorespaces Shortcut controls and image-aware operating points on the frozen final set. S0 uses a development-fitted task majority and is deterministic ($n=160$); all other rows use three aligned repeats ($n=480$). S1 receives question text, choices, and task type; S2 additionally receives permitted runtime metadata.}}{8}{table.3}\protected@file@percent }
+\newlabel{tab:shortcut-controls}{{3}{8}{Shortcut controls and image-aware operating points on the frozen final set. S0 uses a development-fitted task majority and is deterministic ($n=160$); all other rows use three aligned repeats ($n=480$). S1 receives question text, choices, and task type; S2 additionally receives permitted runtime metadata}{table.3}{}}
+\@writefile{lof}{\contentsline {figure}{\numberline {4}{\ignorespaces Frozen examples of recheck help and harm. (a) Narrower observations strengthen evidence for a marked building and correct a damage answer. (b) A spatial recheck changes the selected nearest damaged building from the correct northern target to a southwestern target; the coverage gate then rejects further descent. The examples expose the action--observation--evidence--answer chain behind the aggregate help and harm counts.}}{8}{figure.4}\protected@file@percent }
+\newlabel{fig:help-harm-cases}{{4}{8}{Frozen examples of recheck help and harm. (a) Narrower observations strengthen evidence for a marked building and correct a damage answer. (b) A spatial recheck changes the selected nearest damaged building from the correct northern target to a southwestern target; the coverage gate then rejects further descent. The examples expose the action--observation--evidence--answer chain behind the aggregate help and harm counts}{figure.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {4}{\ignorespaces Fixed-view matched-call diagnostic at executed T1 recheck transitions. Candidate-answer correctness is measured immediately after the branch, not at episode termination. Presence has no T1 dedicated recheck.}}{8}{table.4}\protected@file@percent }
+\newlabel{tab:matched-view}{{4}{8}{Fixed-view matched-call diagnostic at executed T1 recheck transitions. Candidate-answer correctness is measured immediately after the branch, not at episode termination. Presence has no T1 dedicated recheck}{table.4}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {5}{\ignorespaces ChangeOS localization and binary-damage audit on the same 43 development ROIs and 7,238 annotated buildings at each height. Loc. P/R are localization precision/recall; FP is an unmatched prediction, FN an unmatched GT building, and FP/ROI is FP/43. All-GT accuracy counts unmatched GT as wrong but does not count unmatched predictions; matched accuracy and macro-F1 condition on matched GT only.}}{9}{table.5}\protected@file@percent }
+\newlabel{tab:detection-fp-audit}{{5}{9}{ChangeOS localization and binary-damage audit on the same 43 development ROIs and 7,238 annotated buildings at each height. Loc. P/R are localization precision/recall; FP is an unmatched prediction, FN an unmatched GT building, and FP/ROI is FP/43. All-GT accuracy counts unmatched GT as wrong but does not count unmatched predictions; matched accuracy and macro-F1 condition on matched GT only}{table.5}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {6}{\ignorespaces Primary frozen policy operating points on the same 160 questions under three generation repeats. Rechecks are executed dedicated actions and exclude search.}}{9}{table.6}\protected@file@percent }
+\newlabel{tab:final-policies}{{6}{9}{Primary frozen policy operating points on the same 160 questions under three generation repeats. Rechecks are executed dedicated actions and exclude search}{table.6}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {7}{\ignorespaces Prespecified paired T1\_TASK terminal-accuracy contrasts in percentage points. The 98.75\% ROI-cluster intervals adjust for four comparisons.}}{9}{table.7}\protected@file@percent }
+\newlabel{tab:final-contrasts}{{7}{9}{Prespecified paired T1\_TASK terminal-accuracy contrasts in percentage points. The 98.75\% ROI-cluster intervals adjust for four comparisons}{table.7}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {8}Limitations}{9}{section.8}\protected@file@percent }
+\newlabel{sec:limitations}{{8}{9}{Limitations}{section.8}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {9}Conclusion}{9}{section.9}\protected@file@percent }
 \bibstyle{elsarticle-num}
 \bibdata{../cja_en/references}
-\@writefile{toc}{\contentsline {section}{\numberline {9}Conclusion}{7}{section.9}\protected@file@percent }
 \@writefile{toc}{\let\numberline\tmptocnumberline}
-\@writefile{toc}{\contentsline {section}{\numberline {Appendix~A}Protocol and provenance}{7}{appendix.A}\protected@file@percent }
-\newlabel{app:provenance}{{Appendix~A}{7}{Protocol and provenance}{appendix.A}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {Appendix~A}Protocol and provenance}{10}{appendix.A}\protected@file@percent }
+\newlabel{app:provenance}{{Appendix~A}{10}{Protocol and provenance}{appendix.A}{}}
+\@writefile{lot}{\contentsline {table}{\numberline {A.1}{\ignorespaces Camera-ladder preprocessing construction used by the diagnostic.}}{10}{table.A.1}\protected@file@percent }
+\newlabel{tab:preprocessing-construction}{{A.1}{10}{Camera-ladder preprocessing construction used by the diagnostic}{table.A.1}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {Appendix~B}Minimal frozen episode reproduction}{10}{appendix.B}\protected@file@percent }
+\newlabel{app:minimal-reproduction}{{Appendix~B}{10}{Minimal frozen episode reproduction}{appendix.B}{}}
 \bibcite{liu2023aerialvln}{{1}{}{{}}{{}}}
-\bibcite{lee2025citynav}{{2}{}{{}}{{}}}
-\bibcite{gao2026openfly}{{3}{}{{}}{{}}}
-\bibcite{yao2024aeroverse}{{4}{}{{}}{{}}}
-\bibcite{guo2026bedi}{{5}{}{{}}{{}}}
-\bibcite{zhao2025cityeqa}{{6}{}{{}}{{}}}
-\bibcite{gupta2019xbd}{{7}{}{{}}{{}}}
-\bibcite{liu2024rescueadi}{{8}{}{{}}{{}}}
-\bibcite{thinkgeo2025}{{9}{}{{}}{{}}}
+\bibcite{gao2026openfly}{{2}{}{{}}{{}}}
+\bibcite{guo2026bedi}{{3}{}{{}}{{}}}
+\bibcite{zhao2025cityeqa}{{4}{}{{}}{{}}}
+\bibcite{liu2024rescueadi}{{5}{}{{}}{{}}}
+\bibcite{thinkgeo2025}{{6}{}{{}}{{}}}
+\bibcite{lee2025citynav}{{7}{}{{}}{{}}}
+\bibcite{yao2024aeroverse}{{8}{}{{}}{{}}}
+\bibcite{gupta2019xbd}{{9}{}{{}}{{}}}
 \bibcite{wang2025disasterm3}{{10}{}{{}}{{}}}
 \bibcite{bajcsy1988active}{{11}{}{{}}{{}}}
 \bibcite{guo2017calibration}{{12}{}{{}}{{}}}
 \bibcite{ovadia2019can}{{13}{}{{}}{{}}}
 \providecommand\NAT@force@numbers{}\NAT@force@numbers
-\@writefile{lot}{\contentsline {table}{\numberline {A.1}{\ignorespaces Camera-ladder preprocessing construction used by the diagnostic.}}{8}{table.A.1}\protected@file@percent }
-\newlabel{tab:preprocessing-construction}{{A.1}{8}{Camera-ladder preprocessing construction used by the diagnostic}{table.A.1}{}}
-\gdef \@abspage@last{8}
+\@writefile{lot}{\contentsline {table}{\numberline {B.1}{\ignorespaces Expected trace of the single frozen damage episode. Candidate answers are shown in English for readability; the replay emits the original Chinese labels.}}{11}{table.B.1}\protected@file@percent }
+\newlabel{tab:minimal-episode-trace}{{B.1}{11}{Expected trace of the single frozen damage episode. Candidate answers are shown in English for readability; the replay emits the original Chinese labels}{table.B.1}{}}
+\gdef \@abspage@last{11}

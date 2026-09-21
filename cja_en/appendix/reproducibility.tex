@@ -1,17 +1,17 @@
 \section{Protocol and provenance}
 \label{app:provenance}
-The frozen local protocol is \path{cja_en/review/changeos_p6_final_protocol_20260915.json}. It identifies the final task set and consolidated human-review report, three-event manifest, ChangeOS checkpoint, source fingerprint, prompt, policy configuration, and analysis scripts by path and SHA-256. The paths and hashes specify the execution inputs; a public reproduction package would also require authorized image and checkpoint access, scene manifests, dependency versions, and replay instructions.
+The frozen execution protocol identifies the final task set and consolidated human-review report, three-event manifest, ChangeOS checkpoint, source fingerprint, prompt, policy configuration, and analysis scripts by SHA-256. The planned GitHub release will include the protocol, task and scene manifests, dependency specifications, replay instructions, and verified links to the original imagery and checkpoint sources.
 
-The final run consists of 12 shards with 3,360 question--policy--repeat rows. Their local audit reports complete question and configuration coverage and zero execution errors. This checks execution consistency, not independent reconstruction of the full environment. A separate cost audit finds that 42 episodes end with a fly action and no subsequent recorded state; complete-motion summaries therefore use 3,318 episodes. The terminal-answer analysis retains all 3,360. Search-action detail and component-level render, perception, controller, and Qwen costs are not available, so the action-cost comparison is restricted to executed dedicated rechecks and observed episode wall time.
+The final run consists of 12 shards with 3,360 question--policy--repeat rows. The shard audit reports complete question and configuration coverage and zero execution errors. This checks execution consistency, not independent reconstruction of the full environment. A separate cost audit finds that 42 episodes end with a fly action and no subsequent recorded state; complete-motion summaries therefore use 3,318 episodes. The terminal-answer analysis retains all 3,360. Search-action detail and component-level render, perception, controller, and Qwen costs are not available, so the action-cost comparison is restricted to executed dedicated rechecks and observed episode wall time.
 
-The supplementary controls are archived at \path{runs/benchmarks/changeos_binary/revision_controls_report_full_20260920/}. The report aggregates 12 matched-view shards (161 valid forks, no missing pairs or execution errors) and four shortcut shards (960 valid text-only or metadata-only predictions, no call errors or invalid outputs). \path{protocol_notes.md} records the fixed-view branch, allowed shortcut fields, and diagnostic boundaries; \path{report.json} contains the reported task-wise counts and ROI-cluster intervals. The runnable local entry points are \path{scripts/benchmarks/run_revision_matched_queue.sh}, \path{scripts/benchmarks/run_revision_matched_tail.sh}, \path{scripts/benchmarks/run_revision_controls.sh}, and \path{scripts/benchmarks/report_revision_controls.py}. These paths permit local audit of the reported runs but do not substitute for releasing authorized imagery, checkpoints, and the full execution environment.
+The supplementary-control report aggregates 12 matched-view shards (161 valid forks, no missing pairs or execution errors) and four shortcut shards (960 valid text-only or metadata-only predictions, no call errors or invalid outputs). The planned GitHub release will include the machine-readable report, task-wise counts, ROI-cluster intervals, and protocol notes describing the fixed-view branch, allowed shortcut fields, and diagnostic boundaries. It will also include the matched-view and shortcut-control runners and the report-generation script so these results can be regenerated from the released inputs.
 
 For the camera-ladder diagnostic, the construction boundary is summarized below. The table is a reproducibility description, not an ablation of preprocessing choices.
 \begin{table}[htbp]
 \centering\small
 \caption{Camera-ladder preprocessing construction used by the diagnostic.}
 \label{tab:preprocessing-construction}
-\begin{tabular}{lll}
+\begin{tabularx}{\linewidth}{@{}lXX@{}}
 \toprule
 Stage & Pre-disaster & Post-disaster\\
 \midrule
@@ -20,5 +20,5 @@ Scale handling & assumed source scale & footprint-dependent sampling\\
 Alignment & paired affine placement & paired affine placement\\
 Detector input & retained source-scale channel & resized current view\\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}

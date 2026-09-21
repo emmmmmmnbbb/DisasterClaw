@@ -1,0 +1,67 @@
+{
+  "qid": "hurricane-michael_00000435_post_disaster__damage_0001_9430",
+  "mode": "frozen_trace_replay",
+  "scene": {
+    "tile_id": "hurricane-michael_00000435_post_disaster",
+    "pre_png": [
+      1024,
+      1024
+    ],
+    "post_png": [
+      1024,
+      1024
+    ],
+    "target_uid": "1e3c307d-3bfc-43a2-92bf-4d3f49b4a7c3",
+    "target_subtype": "major-damage"
+  },
+  "question": "标记区域内标记建筑 1e3c307d-3bfc-43a2-92bf-4d3f49b4a7c3 的损伤状态是什么？",
+  "trace": [
+    {
+      "step": 0,
+      "observation_id": "vln-3217975-1789512267946498483",
+      "alt_m": 1330.22,
+      "window": {
+        "west": -85.6949375,
+        "south": 30.1803058,
+        "east": -85.6789747,
+        "north": 30.1942012
+      },
+      "candidate_answer": "无损伤",
+      "decision": "reobserve",
+      "action": "fly_relative"
+    },
+    {
+      "step": 1,
+      "observation_id": "vln-3217975-1789512289094194619",
+      "alt_m": 886.82,
+      "window": {
+        "west": -85.6919778,
+        "south": 30.1828731,
+        "east": -85.6813358,
+        "north": 30.1921369
+      },
+      "candidate_answer": "无损伤",
+      "decision": "reobserve",
+      "action": "fly_relative"
+    },
+    {
+      "step": 2,
+      "observation_id": "vln-3217975-1789512310173946052",
+      "alt_m": 443.42,
+      "window": {
+        "west": -85.6890181,
+        "south": 30.1854405,
+        "east": -85.6836969,
+        "north": 30.1900725
+      },
+      "candidate_answer": "损伤",
+      "decision": "answer",
+      "action": "report_observation"
+    }
+  ],
+  "score": {
+    "reference": "损伤",
+    "answer": "损伤",
+    "correct": true
+  }
+}

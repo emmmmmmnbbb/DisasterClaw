@@ -20,8 +20,11 @@
 \usepackage[hidelinks]{hyperref}
 \usepackage{xurl}
 \usepackage{microtype}
+\usepackage{flushend}
 \setlength{\emergencystretch}{1.5em}
-\usepackage[section]{placeins}
+% Let full-width floats move to a suitable page top.  Cross-references keep the
+% discussion unambiguous without forcing each figure into its source section.
+\usepackage{placeins}
 \setlength{\belowcaptionskip}{6pt}
 \newcommand{\authorquery}[1]{\par\smallskip\noindent\textcolor{red!65!black}{\textbf{Author query:} #1}\par\smallskip}
 
@@ -54,6 +57,7 @@ UAV disaster inspection \sep Georeferenced simulation \sep Task benchmark \sep A
 \setcounter{table}{0}
 \renewcommand{\theHtable}{A.\arabic{table}}
 \input{appendix/reproducibility}
+\input{appendix/minimal_episode}
 \begingroup\small
 % Keep the bibliography local to this layout build; the shared input path also
 % contains cja_en/main.bbl, which may have a different citation set.

@@ -1,0 +1,86 @@
+{
+  "schema": "disasterclaw-frozen-episode-replay/1.0",
+  "qid": "hurricane-michael_00000435_post_disaster__damage_0001_9430",
+  "config": "T1_TASK",
+  "repeat": 0,
+  "question_type": "damage",
+  "question": "标记区域内标记建筑 1e3c307d-3bfc-43a2-92bf-4d3f49b4a7c3 的损伤状态是什么？",
+  "choices": [
+    "无损伤",
+    "损伤"
+  ],
+  "target": {
+    "lat": 30.1893845,
+    "lon": -85.684418,
+    "subtype": "major-damage",
+    "ref_id": "1e3c307d-3bfc-43a2-92bf-4d3f49b4a7c3",
+    "marker": "roi_crosshair"
+  },
+  "recorded_answer": "损伤",
+  "source_gt_answer": "损伤",
+  "source_correct": true,
+  "steps": [
+    {
+      "step": 0,
+      "observation_id": "vln-3217975-1789512267946498483",
+      "position": {
+        "lat": 30.1872535,
+        "lon": -85.6869561,
+        "alt": 1330.22
+      },
+      "candidate_answer": "无损伤",
+      "confidence": 0.8417,
+      "decision": "reobserve",
+      "action": "fly_relative",
+      "reason_code": "low_confidence",
+      "target_visible": true,
+      "target_matched": true,
+      "target_conf": 0.8417,
+      "target_ref_id": "1e3c307d-3bfc-43a2-92bf-4d3f49b4a7c3",
+      "gsd_m": null,
+      "n_detected_objects": 1
+    },
+    {
+      "step": 1,
+      "observation_id": "vln-3217975-1789512289094194619",
+      "position": {
+        "lat": 30.187504992672338,
+        "lon": -85.68665679689596,
+        "alt": 886.82
+      },
+      "candidate_answer": "无损伤",
+      "confidence": 0.6308,
+      "decision": "reobserve",
+      "action": "fly_relative",
+      "reason_code": "low_confidence",
+      "target_visible": true,
+      "target_matched": true,
+      "target_conf": 0.6308,
+      "target_ref_id": "1e3c307d-3bfc-43a2-92bf-4d3f49b4a7c3",
+      "gsd_m": null,
+      "n_detected_objects": 1
+    },
+    {
+      "step": 2,
+      "observation_id": "vln-3217975-1789512310173946052",
+      "position": {
+        "lat": 30.187756485344675,
+        "lon": -85.68635749302767,
+        "alt": 443.4200000000001
+      },
+      "candidate_answer": "损伤",
+      "confidence": 0.5875,
+      "decision": "answer",
+      "action": "report_observation",
+      "reason_code": "sufficient_evidence",
+      "target_visible": true,
+      "target_matched": true,
+      "target_conf": 0.5875,
+      "target_ref_id": "1e3c307d-3bfc-43a2-92bf-4d3f49b4a7c3",
+      "gsd_m": null,
+      "n_detected_objects": 1
+    }
+  ],
+  "source_record": "runs/benchmarks/changeos_binary/p6_final_three_event_v1_20260915_repeat0_shard1of4/episodes.jsonl",
+  "mode": "frozen trace replay; no detector or VLM inference"
+}

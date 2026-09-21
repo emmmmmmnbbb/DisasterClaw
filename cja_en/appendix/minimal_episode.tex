@@ -1,0 +1,26 @@
+\section{Minimal frozen episode reproduction}
+\label{app:minimal-reproduction}
+\setcounter{table}{0}
+\renewcommand{\theHtable}{B.\arabic{table}}
+The planned GitHub release will include a minimal example that replays one frozen T1\_TASK damage episode, \nolinkurl{hurricane-michael_00000435_post_disaster__damage_0001_9430}, generation repeat 0. The example contains the paired $1024\times1024$ xBD tile images, the post-disaster polygon/UID annotations, a scene manifest with geographic ROI and pixel-to-geographic transform, a compact record of the episode's observations and actions, a standard-library Python replay script, and exact expected output. SHA-256 digests in the manifest detect asset substitution. This example can be run without detector or language-model weights; it reproduces scene linkage, observation-window geometry, the archived action trace, and reference-answer scoring, but does not rerun perception or generation.
+
+The environment for this replay is Python 3.11 with no third-party packages. The GitHub README will specify how to run the replay script and compare its output with the expected result. For fresh model inference, the release will provide full environment specifications, the frozen task and review manifests, and instructions for obtaining the ChangeOS and Qwen2.5-VL-7B-Instruct checkpoints. A fresh inference run need not reproduce the archived candidate sequence exactly.
+
+The replay first verifies the two image hashes and their dimensions, locates the marked building by xBD UID in the post-disaster label, and computes its binary damage reference from the original \texttt{major-damage} subtype. It then constructs each observation footprint from the recorded pose using the $60^\circ$ field of view and the same geographic conversion used by the renderer. Table~\ref{tab:minimal-episode-trace} gives the compact recorded action sequence. The final \texttt{Report} answer is compared with the annotation-derived reference, yielding the expected output \texttt{reference=damaged}, \texttt{answer=damaged}, and \texttt{correct=true} (the underlying task vocabulary is Chinese). The example identifies its source frozen record by question ID, generation repeat, and shard.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Expected trace of the single frozen damage episode. Candidate answers are shown in English for readability; the replay emits the original Chinese labels.}
+\label{tab:minimal-episode-trace}
+\begin{tabular}{@{}rlll@{}}
+\toprule
+Step & Height (m) & Candidate & Action\\
+\midrule
+0 & 1330.22 & no damage & Fly/reobserve\\
+1 & 886.82 & no damage & Fly/reobserve\\
+2 & 443.42 & damaged & Report\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The GitHub release will also include a supplementary audit script and its machine-readable output. The script reads the matched-call shards, development camera-ladder report, both frozen question manifests, xBD labels, and final T1 traces. Its output contains the schedule-exclusion calculation, old-view answer agreement, building-UID and geographic overlap audit, and the TP/FP/FN counts in Table~\ref{tab:detection-fp-audit}. No new model inference is needed for these audit calculations.

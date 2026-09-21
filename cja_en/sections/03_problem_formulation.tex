@@ -3,12 +3,12 @@
 \subsection{From geographic records to inspection episodes}
 DisasterClaw makes a task, an observation, and an answer refer to the same geographic scene (Fig.~\ref{fig:overview}). Paired xBD images are positioned with pixel-to-geographic affine transforms. Building polygons and damage labels define the reference task; a vehicle state and observation window determine what the agent can see. The operator console and headless runner use the same scene and controller modules. All results in this paper come from the headless runner.
 
-\begin{figure}[htbp]
+\begin{figure*}[!t]
 \centering
-\includegraphics[width=\linewidth]{figure-paper/Fig_DisasterClaw_Refined_NoOverlap.png}
-\caption{DisasterClaw's data-to-episode workflow. Source annotations construct the fixed task and answer; vehicle state determines a rendered view; the episode record links the action, predicted evidence, and answer. The image panels illustrate the workflow rather than a final-test trajectory.}
+\includegraphics[width=\textwidth]{figure-paper/数据集搭建.png}
+\caption{Dataset and scene construction. Georeferenced xBD imagery and spatial annotations are aligned with a Leaflet map, indexed into a unified geographic scene, and rendered according to vehicle state and the target ROI. The basemap supplies geographic context but no damage ground truth.}
 \label{fig:overview}
-\end{figure}
+\end{figure*}
 
 The active disaster tile is embedded at its recorded map footprint. Geographic coordinates locate the task ROI, marked building when applicable, vehicle, and rendered window. Disaster imagery supplies the annotated task evidence; a basemap can supply context outside available tiles but contributes no damage ground truth. The task answer remains defined on the ROI when search or recheck changes the observation window. This fixed-answer, variable-view contract is the benchmark capability used in the experiments, rather than the map display itself.
 
