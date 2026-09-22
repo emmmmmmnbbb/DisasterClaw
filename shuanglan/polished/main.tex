@@ -1,0 +1,68 @@
+\documentclass[final,5p,times,twocolumn]{elsarticle}
+
+% Edited sections are local; figures, tables and appendices are shared.
+\makeatletter
+\def\input@path{{../../cja_en/}}
+\makeatother
+\graphicspath{{../../cja_en/}}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,booktabs,graphicx,tabularx}
+\usepackage{xcolor,tikz,pgfplots}
+\usetikzlibrary{arrows.meta,positioning,fit,shapes.geometric,calc}
+\pgfplotsset{compat=1.18}
+\usepackage{etoolbox}
+% Compact table typography for the narrow two-column measure.
+\AtBeginEnvironment{tabular}{\scriptsize\setlength{\tabcolsep}{2pt}}
+\AtBeginEnvironment{tabularx}{\scriptsize\setlength{\tabcolsep}{2pt}}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xurl}
+\usepackage{microtype}
+\usepackage{flushend}
+\setlength{\emergencystretch}{1.5em}
+% Let full-width floats move to a suitable page top.  Cross-references keep the
+% discussion unambiguous without forcing each figure into its source section.
+\usepackage{placeins}
+\setlength{\belowcaptionskip}{6pt}
+\newcommand{\authorquery}[1]{\par\smallskip\noindent\textcolor{red!65!black}{\textbf{Author query:} #1}\par\smallskip}
+
+\journal{Chinese Journal of Aeronautics}
+
+\begin{document}
+\begin{frontmatter}
+\title{DisasterClaw: A georeferenced imagery benchmark for task-dependent UAV disaster inspection}
+\author{Anonymous authors}
+\affiliation{organization={Anonymous submission}}
+\begin{abstract}
+Aerial disaster inspection requires balancing local detail against regional coverage. DisasterClaw evaluates this trade-off using paired, georeferenced xBD imagery. Each question retains a fixed geographic region and annotation-derived answer as simulated vehicle actions change the observation. Episode records link actions, predicted evidence, and answers. The human-reviewed final set contains 160 presence, damage, count, and spatial questions across 44 regions in three events. A development-fitted task-majority baseline achieves 57.50\% accuracy; text-only and permitted-metadata controls achieve 28.75\% and 36.25\%. At 161 recheck transitions selected by the task-conditioned policy T1, changed-view accuracy is 59.63\%, compared with 50.31\% for a fixed-view control with a matched answer call (difference: $+9.32$ percentage points; 95\% region-clustered interval: $[-2.00,+21.74]$). The paired outcomes include 36 corrections and 21 harms. Across complete episodes, T1 achieves 75.00\% accuracy, compared with 72.29\% for a search-enabled policy without dedicated rechecks; the adjusted difference interval includes zero. These results characterize task-dependent benefits and risks of reobservation, without establishing a consistently positive average benefit. DisasterClaw provides a traceable framework for measuring observation value within a controlled setting based on resampled orthographic imagery and a fixed perception backbone with prior xBD exposure.
+\end{abstract}
+\begin{keyword}
+UAV disaster inspection \sep Georeferenced simulation \sep Task benchmark \sep Active perception \sep Closed-loop evaluation \sep Vision-language agents
+\end{keyword}
+\end{frontmatter}
+
+\input{sections/01_introduction}
+\input{sections/02_related_work}
+\input{sections/03_problem_formulation}
+\input{sections/04_benchmark_construction}
+\input{sections/04_methodology}
+\input{sections/05_experimental_setup}
+\input{sections/06_results_discussion}
+\input{sections/07_limitations}
+\input{sections/08_conclusion}
+\input{appendix/declarations}
+\appendix
+\setcounter{table}{0}
+\renewcommand{\theHtable}{A.\arabic{table}}
+\input{appendix/reproducibility}
+\input{appendix/minimal_episode}
+\begingroup\small
+% Keep the bibliography local to this layout build; the shared input path also
+% contains cja_en/main.bbl, which may have a different citation set.
+\makeatletter\def\input@path{}\makeatother
+\bibliographystyle{elsarticle-num}
+\bibliography{../../cja_en/references}
+\endgroup
+\end{document}

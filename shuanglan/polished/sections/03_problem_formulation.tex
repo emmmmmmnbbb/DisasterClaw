@@ -1,0 +1,32 @@
+\section{The DisasterClaw platform}
+\label{sec:platform}
+\subsection{From geographic records to inspection episodes}
+DisasterClaw links each task, observation, and answer to a common geographic scene (Fig.~\ref{fig:overview}). Paired xBD images are positioned with pixel-to-geographic affine transforms. Building polygons and damage labels define the reference task; a vehicle state and observation window determine what the agent can see. The operator console and headless runner share the same scene and controller modules. All reported quantitative results are produced by the headless runner.
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=\textwidth]{figure-paper/数据集搭建.png}
+\caption{Dataset and scene construction. Georeferenced xBD imagery and spatial annotations are aligned with a Leaflet map, indexed into a unified geographic scene, and rendered according to vehicle state and the target ROI. The basemap supplies geographic context but no damage ground truth.}
+\label{fig:overview}
+\end{figure*}
+
+The active disaster tile is embedded at its recorded map footprint. Geographic coordinates locate the task ROI, marked building when applicable, vehicle, and rendered window. Disaster imagery supplies the annotated task evidence; a basemap can supply context outside available tiles but contributes no damage ground truth. The task answer remains defined on the ROI when search or recheck changes the observation window. The experiments use this fixed-answer, variable-view design to evaluate observation value.
+
+\subsection{Controlled observation and action}
+The nadir renderer uses a $60^\circ$ horizontal field of view and a $1024$-pixel output width. At height $h$, the ground-footprint width $L$ and nominal ground sampling distance $g$ are
+\begin{equation}
+ L(h)=2h\tan(\theta/2),\qquad g(h)=\frac{L(h)}{W}.
+ \label{eq:geometry}
+\end{equation}
+The assumed source scale is $0.5$ m/pixel, so a $1024$-pixel tile defines a nominal 512 m width. Footprints of three, two, and one tile widths give cruise, intermediate, and floor states at approximately 1330.2, 886.8, and 443.4 m, with nominal GSDs of 1.5, 1.0, and 0.5 m/pixel (Fig.~\ref{fig:ladder}). Geographic placement comes from the recorded affine transforms; the $0.5$ m/pixel value defines the camera ladder without assuming an independently verified physical scale for every source tile.
+
+\begin{figure}[htbp]
+\centering
+\resizebox{\linewidth}{!}{\input{figures/observation_ladder}}
+\caption{Camera-ladder abstraction. Each state renders $1024\times1024$ pixels from the same orthographic source; descending narrows the footprint and cannot reveal detail below the assumed source resolution.}
+\label{fig:ladder}
+\end{figure}
+
+For paired damage perception, the post-disaster image is sampled at the current footprint and output size; the pre-disaster window is retained at the assumed source scale before both channels enter the detector input geometry. This asymmetric preprocessing means that the camera-ladder response combines changes in footprint and context with resampling and detector-scale effects. It cannot be attributed solely to additional physical image detail.
+
+The vehicle model stores geographic position, height, heading, and task state. Search can move the vehicle and produce another rendered observation. A dedicated recheck may center on a target and descend, subject to an execution and budget check. The episode log distinguishes requested actions from executed movements, observation identifiers, predicted objects, answer calls, and the final normalized answer. An unchanged-view answer mode supports diagnostic evaluation and is separate from the frozen policy comparison reported here. Motion is simplified position interpolation, and rendering existing orthographic imagery does not create new viewpoints or acquisition times.
