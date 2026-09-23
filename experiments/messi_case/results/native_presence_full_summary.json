@@ -1,0 +1,23 @@
+{
+  "n": 409,
+  "correct": 287,
+  "rechecks": 0,
+  "stop_reasons": {
+    "sufficient_evidence": 409
+  },
+  "by_stratum": {
+    "full_descend": {
+      "n": 280,
+      "correct": 184
+    },
+    "full_train_paths": {
+      "n": 95,
+      "correct": 79
+    },
+    "full_test_paths": {
+      "n": 34,
+      "correct": 24
+    }
+  },
+  "scope": "original DisasterClaw presence gate with a MESSI first-view VLM adapter; not full ChangeOS/hybrid pipeline"
+}

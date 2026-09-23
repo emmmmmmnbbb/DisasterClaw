@@ -1,0 +1,16 @@
+{
+  "n": 409,
+  "rechecks": 0,
+  "stop_reasons_by_split": {
+    "full_descend": {
+      "sufficient_evidence": 280
+    },
+    "full_train_paths": {
+      "sufficient_evidence": 95
+    },
+    "full_test_paths": {
+      "sufficient_evidence": 34
+    }
+  },
+  "interpretation": "original presence gate skips descent even at maximum uncertainty"
+}

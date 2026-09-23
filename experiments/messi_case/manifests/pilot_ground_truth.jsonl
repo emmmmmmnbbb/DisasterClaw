@@ -1,0 +1,4 @@
+{"sample_id": "100_0001_r02", "answer": "yes", "evidence": "Visual review of paired RGB crops plus MESSI vegetation (class 12) labels", "high_label_fraction": 0.739069, "low_label_fraction": 0.609704}
+{"sample_id": "100_0001_r04", "answer": "no", "evidence": "Visual review of paired RGB crops plus MESSI vegetation (class 12) labels", "high_label_fraction": 0.0, "low_label_fraction": 0.0}
+{"sample_id": "100_0001_r15", "answer": "yes", "evidence": "Visual review of paired RGB crops plus MESSI vegetation (class 12) labels", "high_label_fraction": 0.835788, "low_label_fraction": 0.797723}
+{"sample_id": "100_0001_r17", "answer": "no", "evidence": "Visual review of paired RGB crops plus MESSI vegetation (class 12) labels", "high_label_fraction": 0.0, "low_label_fraction": 0.0}

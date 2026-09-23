@@ -1,0 +1,294 @@
+{
+  "data_root": "/home/lc/datasets/MESSI",
+  "total_images": 2525,
+  "groups": [
+    {
+      "split": "Test",
+      "scene": "Ha-Medinah Square",
+      "kind": "Path",
+      "sequence": "Ha-Medinah Square",
+      "level": "60",
+      "n": 52,
+      "csv": "/home/lc/datasets/MESSI/Test/6DOF/Ha-Medinah Square/Path/60/6DOF.csv"
+    },
+    {
+      "split": "Test",
+      "scene": "IrYamim",
+      "kind": "Path",
+      "sequence": "IrYamim",
+      "level": "100",
+      "n": 20,
+      "csv": "/home/lc/datasets/MESSI/Test/6DOF/IrYamim/Path/100/6DOF.csv"
+    },
+    {
+      "split": "Test",
+      "scene": "IrYamim",
+      "kind": "Path",
+      "sequence": "IrYamim",
+      "level": "30",
+      "n": 166,
+      "csv": "/home/lc/datasets/MESSI/Test/6DOF/IrYamim/Path/30/6DOF.csv"
+    },
+    {
+      "split": "Test",
+      "scene": "IrYamim",
+      "kind": "Path",
+      "sequence": "IrYamim",
+      "level": "50",
+      "n": 73,
+      "csv": "/home/lc/datasets/MESSI/Test/6DOF/IrYamim/Path/50/6DOF.csv"
+    },
+    {
+      "split": "Test",
+      "scene": "IrYamim",
+      "kind": "Path",
+      "sequence": "IrYamim",
+      "level": "70",
+      "n": 39,
+      "csv": "/home/lc/datasets/MESSI/Test/6DOF/IrYamim/Path/70/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Descend",
+      "sequence": "100_0001",
+      "level": null,
+      "n": 125,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Descend/100_0001/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Descend",
+      "sequence": "100_0002",
+      "level": null,
+      "n": 125,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Descend/100_0002/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Descend",
+      "sequence": "100_0003",
+      "level": null,
+      "n": 100,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Descend/100_0003/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Descend",
+      "sequence": "100_0004",
+      "level": null,
+      "n": 125,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Descend/100_0004/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Descend",
+      "sequence": "100_0005",
+      "level": null,
+      "n": 125,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Descend/100_0005/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Descend",
+      "sequence": "100_0006",
+      "level": null,
+      "n": 125,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Descend/100_0006/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Descend",
+      "sequence": "100_0031",
+      "level": null,
+      "n": 125,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Descend/100_0031/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Descend",
+      "sequence": "100_0035",
+      "level": null,
+      "n": 125,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Descend/100_0035/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Descend",
+      "sequence": "100_0036",
+      "level": null,
+      "n": 125,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Descend/100_0036/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Descend",
+      "sequence": "100_0037",
+      "level": null,
+      "n": 125,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Descend/100_0037/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Descend",
+      "sequence": "100_0038",
+      "level": null,
+      "n": 125,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Descend/100_0038/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Descend",
+      "sequence": "100_0040",
+      "level": null,
+      "n": 125,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Descend/100_0040/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Descend",
+      "sequence": "100_0041",
+      "level": null,
+      "n": 125,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Descend/100_0041/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Descend",
+      "sequence": "100_0042",
+      "level": null,
+      "n": 125,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Descend/100_0042/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Descend",
+      "sequence": "100_0043",
+      "level": null,
+      "n": 125,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Descend/100_0043/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Path",
+      "sequence": "A",
+      "level": "100",
+      "n": 13,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Path/A/100/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Path",
+      "sequence": "A",
+      "level": "30",
+      "n": 40,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Path/A/30/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Path",
+      "sequence": "A",
+      "level": "50",
+      "n": 25,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Path/A/50/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Path",
+      "sequence": "A",
+      "level": "70",
+      "n": 18,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Path/A/70/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Path",
+      "sequence": "B",
+      "level": "100",
+      "n": 16,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Path/B/100/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Path",
+      "sequence": "B",
+      "level": "30",
+      "n": 51,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Path/B/30/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Path",
+      "sequence": "B",
+      "level": "50",
+      "n": 31,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Path/B/50/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Path",
+      "sequence": "B",
+      "level": "70",
+      "n": 23,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Path/B/70/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Path",
+      "sequence": "C",
+      "level": "100",
+      "n": 15,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Path/C/100/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Path",
+      "sequence": "C",
+      "level": "30",
+      "n": 45,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Path/C/30/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Path",
+      "sequence": "C",
+      "level": "50",
+      "n": 28,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Path/C/50/6DOF.csv"
+    },
+    {
+      "split": "Train and Val",
+      "scene": "Agamim",
+      "kind": "Path",
+      "sequence": "C",
+      "level": "70",
+      "n": 20,
+      "csv": "/home/lc/datasets/MESSI/Train and Val/6DOF/Agamim/Path/C/70/6DOF.csv"
+    }
+  ]
+}

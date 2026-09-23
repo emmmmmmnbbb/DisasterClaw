@@ -1,0 +1,7 @@
+group,branch,planned_n,completed_n,first_correct,first_accuracy,correct,accuracy,corrected,harmed,uncertain,invalid,run_failed
+no,A,55,55,27,0.490909,27,0.490909,0,0,0,0,0
+no,B,55,55,27,0.490909,34,0.618182,20,13,9,0,0
+no,C,55,55,27,0.490909,37,0.672727,21,11,7,0,0
+yes,A,52,52,49,0.942308,49,0.942308,0,0,0,0,0
+yes,B,52,52,49,0.942308,46,0.884615,1,4,0,0,0
+yes,C,52,52,49,0.942308,46,0.884615,1,4,0,0,0

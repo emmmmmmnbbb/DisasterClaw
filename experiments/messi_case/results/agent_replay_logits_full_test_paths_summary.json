@@ -1,0 +1,386 @@
+{
+  "hold": {
+    "correct": 25,
+    "n": 34,
+    "accuracy": 0.7352941176470589,
+    "rechecks": 0,
+    "stop_reasons": {
+      "sufficient_evidence": 34
+    },
+    "first_answer_invalid": 0
+  },
+  "agent": {
+    "correct": 22,
+    "n": 34,
+    "accuracy": 0.6470588235294118,
+    "rechecks": 14,
+    "stop_reasons": {
+      "sufficient_evidence": 34
+    },
+    "first_answer_invalid": 0
+  },
+  "paired": {
+    "corrected": 1,
+    "harmed": 4,
+    "action_taken": 14,
+    "no_action": 20
+  },
+  "by_action": {
+    "0": {
+      "n": 20,
+      "hold_correct": 15,
+      "agent_correct": 15,
+      "corrected": 0,
+      "harmed": 0,
+      "gate_reasons": {
+        "task uncertainty below trigger": 20
+      }
+    },
+    "1": {
+      "n": 14,
+      "hold_correct": 10,
+      "agent_correct": 7,
+      "corrected": 1,
+      "harmed": 4,
+      "gate_reasons": {
+        "positive task-conditioned utility": 14
+      }
+    }
+  },
+  "by_truth_class": {
+    "yes": {
+      "n": 14,
+      "hold_correct": 7,
+      "agent_correct": 6,
+      "rechecks": 9
+    },
+    "no": {
+      "n": 20,
+      "hold_correct": 18,
+      "agent_correct": 16,
+      "rechecks": 5
+    }
+  },
+  "balanced_accuracy": {
+    "hold": 0.7,
+    "agent": 0.6142857142857143
+  },
+  "by_sequence": {
+    "IrYamim": {
+      "n": 34,
+      "hold_correct": 25,
+      "agent_correct": 22,
+      "rechecks": 14,
+      "corrected": 1,
+      "harmed": 4
+    }
+  },
+  "per_sample": [
+    {
+      "sample_id": "IrYamim_DJI_0035",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0043",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0044",
+      "gt": "yes",
+      "sequence_id": "IrYamim",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0045",
+      "gt": "yes",
+      "sequence_id": "IrYamim",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0046",
+      "gt": "yes",
+      "sequence_id": "IrYamim",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0048",
+      "gt": "yes",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0050",
+      "gt": "yes",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0051",
+      "gt": "yes",
+      "sequence_id": "IrYamim",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0052",
+      "gt": "yes",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0053",
+      "gt": "yes",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0054",
+      "gt": "yes",
+      "sequence_id": "IrYamim",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0055",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0060",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0062",
+      "gt": "yes",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0092",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0095",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0096",
+      "gt": "yes",
+      "sequence_id": "IrYamim",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0098",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0099",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0101",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0102",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0103",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0104",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0105",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0106",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0110",
+      "gt": "yes",
+      "sequence_id": "IrYamim",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0113",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0114",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0115",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0116",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0117",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0119",
+      "gt": "no",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0120",
+      "gt": "yes",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "IrYamim_DJI_0121",
+      "gt": "yes",
+      "sequence_id": "IrYamim",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    }
+  ]
+}

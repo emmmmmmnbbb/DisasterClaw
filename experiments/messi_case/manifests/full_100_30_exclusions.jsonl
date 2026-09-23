@@ -1,0 +1,230 @@
+{"sequence_id": "100_0005", "reason": "pair_registration_failed", "detail": "Registration failed: 39 matches", "n_cells": 24}
+{"sample_id": "IrYamim_DJI_0009", "reason": "gps_distance_over_12m", "gps_distance_m": 27.982391757256224}
+{"sample_id": "IrYamim_DJI_0010", "reason": "gps_distance_over_12m", "gps_distance_m": 26.71674392762911}
+{"sample_id": "IrYamim_DJI_0011", "reason": "gps_distance_over_12m", "gps_distance_m": 27.63716171409028}
+{"sample_id": "IrYamim_DJI_0012", "reason": "gps_distance_over_12m", "gps_distance_m": 30.468628192566634}
+{"sample_id": "IrYamim_DJI_0013", "reason": "gps_distance_over_12m", "gps_distance_m": 28.688150630429398}
+{"sample_id": "IrYamim_DJI_0014", "reason": "gps_distance_over_12m", "gps_distance_m": 28.893492796424024}
+{"sample_id": "IrYamim_DJI_0015", "reason": "gps_distance_over_12m", "gps_distance_m": 31.285133558661137}
+{"sample_id": "IrYamim_DJI_0016", "reason": "gps_distance_over_12m", "gps_distance_m": 30.091575346849467}
+{"sample_id": "IrYamim_DJI_0017", "reason": "gps_distance_over_12m", "gps_distance_m": 29.748564677762918}
+{"sample_id": "IrYamim_DJI_0018", "reason": "gps_distance_over_12m", "gps_distance_m": 31.09648712306714}
+{"sample_id": "IrYamim_DJI_0019", "reason": "gps_distance_over_12m", "gps_distance_m": 32.04613970974428}
+{"sample_id": "IrYamim_DJI_0020", "reason": "gps_distance_over_12m", "gps_distance_m": 30.9614971821955}
+{"sample_id": "IrYamim_DJI_0021", "reason": "gps_distance_over_12m", "gps_distance_m": 31.94695463017156}
+{"sample_id": "IrYamim_DJI_0022", "reason": "gps_distance_over_12m", "gps_distance_m": 34.442551259908896}
+{"sample_id": "IrYamim_DJI_0023", "reason": "gps_distance_over_12m", "gps_distance_m": 32.805651366566224}
+{"sample_id": "IrYamim_DJI_0024", "reason": "gps_distance_over_12m", "gps_distance_m": 32.94524842937921}
+{"sample_id": "IrYamim_DJI_0025", "reason": "gps_distance_over_12m", "gps_distance_m": 34.83740926407281}
+{"sample_id": "IrYamim_DJI_0026", "reason": "gps_distance_over_12m", "gps_distance_m": 33.96943584872688}
+{"sample_id": "IrYamim_DJI_0027", "reason": "gps_distance_over_12m", "gps_distance_m": 33.58881182281036}
+{"sample_id": "IrYamim_DJI_0028", "reason": "gps_distance_over_12m", "gps_distance_m": 35.138732973265974}
+{"sample_id": "IrYamim_DJI_0029", "reason": "gps_distance_over_12m", "gps_distance_m": 36.15209372224081}
+{"sample_id": "IrYamim_DJI_0030", "reason": "gps_distance_over_12m", "gps_distance_m": 34.93440715951364}
+{"sample_id": "IrYamim_DJI_0031", "reason": "gps_distance_over_12m", "gps_distance_m": 35.7001266366126}
+{"sample_id": "IrYamim_DJI_0032", "reason": "gps_distance_over_12m", "gps_distance_m": 38.11918462045768}
+{"sample_id": "IrYamim_DJI_0033", "reason": "gps_distance_over_12m", "gps_distance_m": 36.359321778647505}
+{"sample_id": "IrYamim_DJI_0034", "reason": "gps_distance_over_12m", "gps_distance_m": 36.6275365852247}
+{"sample_id": "IrYamim_DJI_0037", "reason": "gps_distance_over_12m", "gps_distance_m": 14.090425324065427}
+{"sample_id": "IrYamim_DJI_0040", "reason": "gps_distance_over_12m", "gps_distance_m": 12.606849000233089}
+{"sample_id": "IrYamim_DJI_0047", "reason": "gps_distance_over_12m", "gps_distance_m": 12.643686911464014}
+{"sample_id": "IrYamim_DJI_0056", "reason": "pair_registration_failed", "detail": "Registration failed: 84 matches"}
+{"sample_id": "IrYamim_DJI_0057", "reason": "gps_distance_over_12m", "gps_distance_m": 12.347131347602412}
+{"sample_id": "IrYamim_DJI_0058", "reason": "pair_registration_failed", "detail": "Registration failed: 45 matches"}
+{"sample_id": "IrYamim_DJI_0059", "reason": "pair_registration_failed", "detail": "Registration failed: 63 matches"}
+{"sample_id": "IrYamim_DJI_0063", "reason": "gps_distance_over_12m", "gps_distance_m": 27.487401375495597}
+{"sample_id": "IrYamim_DJI_0064", "reason": "gps_distance_over_12m", "gps_distance_m": 28.49004934224671}
+{"sample_id": "IrYamim_DJI_0065", "reason": "gps_distance_over_12m", "gps_distance_m": 30.684052867296927}
+{"sample_id": "IrYamim_DJI_0066", "reason": "gps_distance_over_12m", "gps_distance_m": 29.937607943156824}
+{"sample_id": "IrYamim_DJI_0067", "reason": "gps_distance_over_12m", "gps_distance_m": 29.468530990739424}
+{"sample_id": "IrYamim_DJI_0068", "reason": "gps_distance_over_12m", "gps_distance_m": 31.096443553944482}
+{"sample_id": "IrYamim_DJI_0069", "reason": "gps_distance_over_12m", "gps_distance_m": 29.929180872544713}
+{"sample_id": "IrYamim_DJI_0070", "reason": "gps_distance_over_12m", "gps_distance_m": 29.112979436710454}
+{"sample_id": "IrYamim_DJI_0071", "reason": "gps_distance_over_12m", "gps_distance_m": 30.30895856051205}
+{"sample_id": "IrYamim_DJI_0072", "reason": "gps_distance_over_12m", "gps_distance_m": 29.68451488165243}
+{"sample_id": "IrYamim_DJI_0073", "reason": "gps_distance_over_12m", "gps_distance_m": 28.147340443441344}
+{"sample_id": "IrYamim_DJI_0074", "reason": "gps_distance_over_12m", "gps_distance_m": 28.681572710003586}
+{"sample_id": "IrYamim_DJI_0075", "reason": "gps_distance_over_12m", "gps_distance_m": 29.523349172476475}
+{"sample_id": "IrYamim_DJI_0076", "reason": "gps_distance_over_12m", "gps_distance_m": 27.03655340945945}
+{"sample_id": "IrYamim_DJI_0077", "reason": "gps_distance_over_12m", "gps_distance_m": 26.77280267366655}
+{"sample_id": "IrYamim_DJI_0078", "reason": "gps_distance_over_12m", "gps_distance_m": 28.79325032404137}
+{"sample_id": "IrYamim_DJI_0079", "reason": "gps_distance_over_12m", "gps_distance_m": 26.38789492551545}
+{"sample_id": "IrYamim_DJI_0080", "reason": "gps_distance_over_12m", "gps_distance_m": 25.262390521461757}
+{"sample_id": "IrYamim_DJI_0081", "reason": "gps_distance_over_12m", "gps_distance_m": 26.6250737810596}
+{"sample_id": "IrYamim_DJI_0082", "reason": "gps_distance_over_12m", "gps_distance_m": 25.883621811739033}
+{"sample_id": "IrYamim_DJI_0083", "reason": "gps_distance_over_12m", "gps_distance_m": 24.166355150283298}
+{"sample_id": "IrYamim_DJI_0084", "reason": "gps_distance_over_12m", "gps_distance_m": 24.552177702227212}
+{"sample_id": "IrYamim_DJI_0085", "reason": "gps_distance_over_12m", "gps_distance_m": 25.70338804439706}
+{"sample_id": "IrYamim_DJI_0086", "reason": "gps_distance_over_12m", "gps_distance_m": 23.08513335302332}
+{"sample_id": "IrYamim_DJI_0087", "reason": "gps_distance_over_12m", "gps_distance_m": 22.66684657680996}
+{"sample_id": "IrYamim_DJI_0088", "reason": "gps_distance_over_12m", "gps_distance_m": 25.30482637700404}
+{"sample_id": "IrYamim_DJI_0089", "reason": "gps_distance_over_12m", "gps_distance_m": 22.5253191832993}
+{"sample_id": "IrYamim_DJI_0090", "reason": "gps_distance_over_12m", "gps_distance_m": 21.367893445101195}
+{"sample_id": "IrYamim_DJI_0091", "reason": "gps_distance_over_12m", "gps_distance_m": 21.23626981095581}
+{"sample_id": "IrYamim_DJI_0093", "reason": "gps_distance_over_12m", "gps_distance_m": 12.432115639038031}
+{"sample_id": "IrYamim_DJI_0094", "reason": "gps_distance_over_12m", "gps_distance_m": 14.092096315716615}
+{"sample_id": "IrYamim_DJI_0097", "reason": "gps_distance_over_12m", "gps_distance_m": 15.132170989026925}
+{"sample_id": "IrYamim_DJI_0100", "reason": "gps_distance_over_12m", "gps_distance_m": 13.044952241884289}
+{"sample_id": "IrYamim_DJI_0108", "reason": "gps_distance_over_12m", "gps_distance_m": 13.140371872220475}
+{"sample_id": "IrYamim_DJI_0112", "reason": "pair_registration_failed", "detail": "Registration failed: 89 matches"}
+{"sample_id": "IrYamim_DJI_0118", "reason": "gps_distance_over_12m", "gps_distance_m": 12.879789042641393}
+{"sample_id": "IrYamim_DJI_0122", "reason": "gps_distance_over_12m", "gps_distance_m": 29.86825979852452}
+{"sample_id": "IrYamim_DJI_0123", "reason": "gps_distance_over_12m", "gps_distance_m": 29.627121323652176}
+{"sample_id": "IrYamim_DJI_0124", "reason": "gps_distance_over_12m", "gps_distance_m": 30.666707122977332}
+{"sample_id": "IrYamim_DJI_0125", "reason": "gps_distance_over_12m", "gps_distance_m": 30.071132880922935}
+{"sample_id": "IrYamim_DJI_0126", "reason": "gps_distance_over_12m", "gps_distance_m": 28.547472892178472}
+{"sample_id": "IrYamim_DJI_0127", "reason": "gps_distance_over_12m", "gps_distance_m": 28.758466612147227}
+{"sample_id": "IrYamim_DJI_0128", "reason": "gps_distance_over_12m", "gps_distance_m": 29.916452907352426}
+{"sample_id": "IrYamim_DJI_0129", "reason": "gps_distance_over_12m", "gps_distance_m": 27.440020973631068}
+{"sample_id": "IrYamim_DJI_0130", "reason": "gps_distance_over_12m", "gps_distance_m": 27.154658903381105}
+{"sample_id": "IrYamim_DJI_0131", "reason": "gps_distance_over_12m", "gps_distance_m": 29.1516599975974}
+{"sample_id": "IrYamim_DJI_0132", "reason": "gps_distance_over_12m", "gps_distance_m": 26.79049166021485}
+{"sample_id": "IrYamim_DJI_0133", "reason": "gps_distance_over_12m", "gps_distance_m": 25.775859940977654}
+{"sample_id": "IrYamim_DJI_0134", "reason": "gps_distance_over_12m", "gps_distance_m": 26.975279069529446}
+{"sample_id": "IrYamim_DJI_0135", "reason": "gps_distance_over_12m", "gps_distance_m": 25.681948922513378}
+{"sample_id": "IrYamim_DJI_0136", "reason": "gps_distance_over_12m", "gps_distance_m": 23.76615464661141}
+{"sample_id": "IrYamim_DJI_0137", "reason": "gps_distance_over_12m", "gps_distance_m": 24.424522443526936}
+{"sample_id": "IrYamim_DJI_0138", "reason": "gps_distance_over_12m", "gps_distance_m": 25.825216292243077}
+{"sample_id": "IrYamim_DJI_0139", "reason": "gps_distance_over_12m", "gps_distance_m": 23.32478062746573}
+{"sample_id": "IrYamim_DJI_0140", "reason": "gps_distance_over_12m", "gps_distance_m": 23.16021760302633}
+{"sample_id": "IrYamim_DJI_0141", "reason": "gps_distance_over_12m", "gps_distance_m": 25.603613067007583}
+{"sample_id": "IrYamim_DJI_0142", "reason": "gps_distance_over_12m", "gps_distance_m": 22.716049815422764}
+{"sample_id": "IrYamim_DJI_0143", "reason": "gps_distance_over_12m", "gps_distance_m": 21.412095865042225}
+{"sample_id": "IrYamim_DJI_0144", "reason": "gps_distance_over_12m", "gps_distance_m": 22.99614912509032}
+{"sample_id": "IrYamim_DJI_0145", "reason": "gps_distance_over_12m", "gps_distance_m": 22.13613337085968}
+{"sample_id": "IrYamim_DJI_0146", "reason": "gps_distance_over_12m", "gps_distance_m": 20.445311477190465}
+{"sample_id": "IrYamim_DJI_0147", "reason": "gps_distance_over_12m", "gps_distance_m": 21.128317111212954}
+{"sample_id": "IrYamim_DJI_0148", "reason": "gps_distance_over_12m", "gps_distance_m": 22.48237667647763}
+{"sample_id": "IrYamim_DJI_0149", "reason": "gps_distance_over_12m", "gps_distance_m": 19.953679863503943}
+{"sample_id": "IrYamim_DJI_0150", "reason": "gps_distance_over_12m", "gps_distance_m": 19.529021625040514}
+{"sample_id": "IrYamim_DJI_0151", "reason": "gps_distance_over_12m", "gps_distance_m": 47.67341799458493}
+{"sample_id": "IrYamim_DJI_0152", "reason": "gps_distance_over_12m", "gps_distance_m": 48.34262107704794}
+{"sample_id": "IrYamim_DJI_0153", "reason": "gps_distance_over_12m", "gps_distance_m": 49.75392191841184}
+{"sample_id": "IrYamim_DJI_0154", "reason": "gps_distance_over_12m", "gps_distance_m": 48.83771554542873}
+{"sample_id": "IrYamim_DJI_0155", "reason": "gps_distance_over_12m", "gps_distance_m": 49.13295822521836}
+{"sample_id": "IrYamim_DJI_0156", "reason": "gps_distance_over_12m", "gps_distance_m": 50.61845732951153}
+{"sample_id": "IrYamim_DJI_0157", "reason": "gps_distance_over_12m", "gps_distance_m": 50.240184324915504}
+{"sample_id": "IrYamim_DJI_0158", "reason": "gps_distance_over_12m", "gps_distance_m": 50.05292492506567}
+{"sample_id": "IrYamim_DJI_0159", "reason": "gps_distance_over_12m", "gps_distance_m": 51.32157099196784}
+{"sample_id": "IrYamim_DJI_0160", "reason": "gps_distance_over_12m", "gps_distance_m": 52.02206143001031}
+{"sample_id": "IrYamim_DJI_0161", "reason": "gps_distance_over_12m", "gps_distance_m": 51.50511727228791}
+{"sample_id": "IrYamim_DJI_0162", "reason": "gps_distance_over_12m", "gps_distance_m": 52.29879866135917}
+{"sample_id": "IrYamim_DJI_0163", "reason": "gps_distance_over_12m", "gps_distance_m": 53.247850639529325}
+{"sample_id": "IrYamim_DJI_0164", "reason": "gps_distance_over_12m", "gps_distance_m": 52.29493602822306}
+{"sample_id": "IrYamim_DJI_0165", "reason": "gps_distance_over_12m", "gps_distance_m": 52.957395872576186}
+{"sample_id": "IrYamim_DJI_0166", "reason": "gps_distance_over_12m", "gps_distance_m": 54.51306806480751}
+{"sample_id": "IrYamim_DJI_0167", "reason": "gps_distance_over_12m", "gps_distance_m": 54.857627521426686}
+{"sample_id": "IrYamim_DJI_0168", "reason": "gps_distance_over_12m", "gps_distance_m": 54.83419852551361}
+{"sample_id": "IrYamim_DJI_0169", "reason": "gps_distance_over_12m", "gps_distance_m": 55.88806500929589}
+{"sample_id": "IrYamim_DJI_0170", "reason": "gps_distance_over_12m", "gps_distance_m": 56.31713409892876}
+{"sample_id": "IrYamim_DJI_0171", "reason": "gps_distance_over_12m", "gps_distance_m": 55.879580050218}
+{"sample_id": "IrYamim_DJI_0172", "reason": "gps_distance_over_12m", "gps_distance_m": 56.50391132909793}
+{"sample_id": "IrYamim_DJI_0173", "reason": "gps_distance_over_12m", "gps_distance_m": 57.8840040576912}
+{"sample_id": "IrYamim_DJI_0174", "reason": "gps_distance_over_12m", "gps_distance_m": 57.08881021312312}
+{"sample_id": "A_DJI_0052", "reason": "pair_registration_failed", "detail": "Registration failed: 40 matches"}
+{"sample_id": "A_DJI_0053", "reason": "pair_registration_failed", "detail": "Registration failed: 42 matches"}
+{"sample_id": "A_DJI_0054", "reason": "pair_registration_failed", "detail": "Registration failed: 55 matches"}
+{"sample_id": "A_DJI_0055", "reason": "pair_registration_failed", "detail": "Registration failed: 66 matches"}
+{"sample_id": "C_DJI_0274", "reason": "pair_registration_failed", "detail": "Registration failed: 48 matches"}
+{"sample_id": "C_DJI_0275", "reason": "pair_registration_failed", "detail": "Registration failed: 57 matches"}
+{"sample_id": "C_DJI_0278", "reason": "gps_distance_over_12m", "gps_distance_m": 12.26642388404598}
+{"sample_id": "C_DJI_0279", "reason": "pair_registration_failed", "detail": "Registration failed: 44 matches"}
+{"sample_id": "C_DJI_0280", "reason": "pair_registration_failed", "detail": "Registration failed: 49 matches"}
+{"sample_id": "C_DJI_0281", "reason": "pair_registration_failed", "detail": "Registration failed: 46 matches"}
+{"sample_id": "C_DJI_0282", "reason": "pair_registration_failed", "detail": "Registration failed: 64 matches"}
+{"sample_id": "C_DJI_0286", "reason": "pair_registration_failed", "detail": "Registration failed: 65 matches"}
+{"sample_id": "C_DJI_0288", "reason": "gps_distance_over_12m", "gps_distance_m": 12.511571442861674}
+{"sample_id": "C_DJI_0298", "reason": "gps_distance_over_12m", "gps_distance_m": 12.515369926090148}
+{"sample_id": "C_DJI_0307", "reason": "pair_registration_failed", "detail": "Registration failed: 46 matches"}
+{"sample_id": "C_DJI_0308", "reason": "gps_distance_over_12m", "gps_distance_m": 12.77595016056856}
+{"sample_id": "100_0001_r01", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r02", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r03", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r04", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r05", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r06", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r07", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r08", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r09", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r10", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r11", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r12", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r13", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r14", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r15", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r16", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r17", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r18", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r19", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r20", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r21", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r22", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r23", "reason": "pilot_sequence"}
+{"sample_id": "100_0001_r24", "reason": "pilot_sequence"}
+{"sample_id": "100_0002_r06", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0002_r16", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0003_r02", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0003_r14", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0003_r16", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0004_r19", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0006_r01", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0006_r04", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0006_r10", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0006_r15", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0031_r16", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0035_r12", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0036_r06", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0036_r09", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0036_r20", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0037_r05", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0037_r17", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0037_r19", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0037_r20", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0038_r05", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0038_r07", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0038_r08", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0038_r20", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0041_r07", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0041_r10", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0042_r15", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0042_r22", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0042_r24", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0043_r09", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0043_r10", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0043_r12", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "100_0043_r24", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "IrYamim_DJI_0036", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "IrYamim_DJI_0038", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "IrYamim_DJI_0039", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "IrYamim_DJI_0041", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "IrYamim_DJI_0042", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "IrYamim_DJI_0049", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "IrYamim_DJI_0061", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "IrYamim_DJI_0107", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "IrYamim_DJI_0109", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "IrYamim_DJI_0111", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "A_DJI_0067", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "A_DJI_0070", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "A_DJI_0090", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "A_DJI_0091", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "B_DJI_0150", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "B_DJI_0166", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "B_DJI_0167", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "B_DJI_0168", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "B_DJI_0169", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "B_DJI_0170", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "B_DJI_0172", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "B_DJI_0173", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "B_DJI_0175", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "B_DJI_0181", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "B_DJI_0182", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "B_DJI_0189", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "B_DJI_0196", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "B_DJI_0198", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "C_DJI_0273", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "C_DJI_0276", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "C_DJI_0301", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "C_DJI_0302", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "C_DJI_0310", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "C_DJI_0314", "reason": "annotation_fractions_ambiguous_or_discordant"}
+{"sample_id": "C_DJI_0315", "reason": "annotation_fractions_ambiguous_or_discordant"}

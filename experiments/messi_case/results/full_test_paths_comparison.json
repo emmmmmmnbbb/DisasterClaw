@@ -1,0 +1,11 @@
+{
+  "planned_n": 34,
+  "complete_triplets": 34,
+  "C_minus_B_correct": 1,
+  "C_minus_A_correct": -3,
+  "C_B_help": 1,
+  "C_B_harm": 0,
+  "C_A_help": 2,
+  "C_A_harm": 5,
+  "config_hash": "195e8d4705b6a7b0ada2b0256e684e629fe74ac2ea326844be50208d256991d3"
+}

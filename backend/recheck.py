@@ -71,6 +71,10 @@ EVIDENCE_CLASSES = {
     "完全损毁建筑",
     "受损建筑",
     "水池/积水区域",
+    # Single-temporal MESSI task adapter. This is a scene-presence label, not
+    # a damage class; it is accepted only when the caller supplies its own
+    # task-specific binary class_probs.
+    "vegetation",
 }
 
 # 各 risk_level 的"判断暧昧程度"（越大越没把握）。
@@ -97,7 +101,7 @@ def best_evidence(
     for det in detections or []:
         cls = det.get("class_name", "")
         probs = det.get("class_probs")
-        is_binary = isinstance(probs, dict) and set(probs) == {"no-damage", "damaged"}
+        is_binary = isinstance(probs, dict) and len(probs) == 2
         if cls not in EVIDENCE_CLASSES and not (is_binary and cls == "无损伤建筑"):
             continue
         conf = float(det.get("conf", 0.0))
@@ -738,6 +742,14 @@ class RecheckController:
             "up_m": round(up_m, 1),
             "speed": 10.0,
         }
+        if cfg.motion_mode == "descend_only":
+            motion_reason = f"仅下降 {abs(up_m):.0f}m，不做水平居中。"
+        elif cfg.motion_mode == "center_only":
+            motion_reason = "水平居中，不改变高度。"
+        elif cfg.motion_mode == "wide_roi":
+            motion_reason = f"扩展观察范围（相对高度变化 {up_m:.0f}m）。"
+        else:
+            motion_reason = f"降高 {abs(up_m):.0f}m + 飞近居中。"
         return RecheckOutcome(
             kind="recheck", uncertainty=unc, label=rec["label"] or label,
             params=params, target_offset_m=offset, count=rec["count"],
@@ -745,7 +757,7 @@ class RecheckController:
             reason=(
                 f"疑似「{rec['label'] or label or '受灾目标'}」(risk={risk_level}, "
                 f"证据conf {conf:.2f}, 不确定性 {unc:.2f})，第 {rec['count']} 次复核："
-                f"降高 {abs(up_m):.0f}m + 飞近居中。"
+                f"{motion_reason}"
             ),
         )
 

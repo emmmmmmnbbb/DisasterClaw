@@ -1,0 +1,100 @@
+{
+  "experiment": "single_temporal_disasterclaw_messi",
+  "truth_source": "separate MESSI vegetation annotations; never supplied to online replay",
+  "strata": {
+    "full_descend": {
+      "n": 280,
+      "arms": {
+        "hold": {
+          "n": 280,
+          "correct": 259,
+          "accuracy": 0.925,
+          "rechecks": 0,
+          "stop_reasons": {
+            "sufficient_evidence": 280
+          }
+        },
+        "agent": {
+          "n": 280,
+          "correct": 260,
+          "accuracy": 0.9285714285714286,
+          "rechecks": 12,
+          "stop_reasons": {
+            "sufficient_evidence": 280
+          }
+        }
+      },
+      "answer_transitions": {
+        "yes->yes": 145,
+        "no->no": 130,
+        "no->yes": 3,
+        "yes->no": 2
+      },
+      "corrected": 3,
+      "harmed": 2,
+      "scene_groups": 13
+    },
+    "full_train_paths": {
+      "n": 95,
+      "arms": {
+        "hold": {
+          "n": 95,
+          "correct": 85,
+          "accuracy": 0.8947368421052632,
+          "rechecks": 0,
+          "stop_reasons": {
+            "sufficient_evidence": 95
+          }
+        },
+        "agent": {
+          "n": 95,
+          "correct": 87,
+          "accuracy": 0.9157894736842105,
+          "rechecks": 7,
+          "stop_reasons": {
+            "sufficient_evidence": 95
+          }
+        }
+      },
+      "answer_transitions": {
+        "no->no": 13,
+        "yes->yes": 78,
+        "no->yes": 3,
+        "yes->no": 1
+      },
+      "corrected": 3,
+      "harmed": 1,
+      "scene_groups": 3
+    },
+    "full_test_paths": {
+      "n": 34,
+      "arms": {
+        "hold": {
+          "n": 34,
+          "correct": 25,
+          "accuracy": 0.7352941176470589,
+          "rechecks": 0,
+          "stop_reasons": {
+            "sufficient_evidence": 34
+          }
+        },
+        "agent": {
+          "n": 34,
+          "correct": 25,
+          "accuracy": 0.7352941176470589,
+          "rechecks": 1,
+          "stop_reasons": {
+            "sufficient_evidence": 34
+          }
+        }
+      },
+      "answer_transitions": {
+        "yes->yes": 23,
+        "no->no": 11
+      },
+      "corrected": 0,
+      "harmed": 0,
+      "scene_groups": 1
+    }
+  }
+}

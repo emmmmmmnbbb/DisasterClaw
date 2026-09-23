@@ -1,0 +1,13 @@
+sample_id,sequence_id,scene_group_id,truth,first_answer,first_status,first_correct,A_answer,A_status,A_correct,A_transition,B_answer,B_status,B_correct,B_transition,C_answer,C_status,C_correct,C_transition
+100_0002_r02,100_0002,Agamim_site_0002,yes,yes,ok,1,yes,ok,1,unchanged,yes,ok,1,unchanged,no,ok,0,harmed
+100_0002_r10,100_0002,Agamim_site_0002,yes,yes,ok,1,yes,ok,1,unchanged,yes,ok,1,unchanged,yes,ok,1,unchanged
+100_0002_r13,100_0002,Agamim_site_0002,no,yes,ok,0,yes,ok,0,unchanged,no,ok,1,corrected,no,ok,1,corrected
+100_0002_r20,100_0002,Agamim_site_0002,no,no,ok,1,uncertain,ok,0,harmed,uncertain,ok,0,harmed,no,ok,1,unchanged
+100_0003_r01,100_0003,Agamim_site_0003,yes,no,ok,0,no,ok,0,unchanged,yes,ok,1,corrected,yes,ok,1,corrected
+100_0003_r21,100_0003,Agamim_site_0003,yes,yes,ok,1,yes,ok,1,unchanged,yes,ok,1,unchanged,yes,ok,1,unchanged
+100_0003_r10,100_0003,Agamim_site_0003,no,yes,ok,0,yes,ok,0,unchanged,no,ok,1,corrected,no,ok,1,corrected
+100_0003_r20,100_0003,Agamim_site_0003,no,yes,ok,0,yes,ok,0,unchanged,no,ok,1,corrected,no,ok,1,corrected
+100_0042_r07,100_0042,Agamim_site_0042,yes,yes,ok,1,yes,ok,1,unchanged,yes,ok,1,unchanged,yes,ok,1,unchanged
+100_0042_r23,100_0042,Agamim_site_0042,yes,yes,ok,1,yes,ok,1,unchanged,yes,ok,1,unchanged,yes,ok,1,unchanged
+100_0042_r16,100_0042,Agamim_site_0042,no,yes,ok,0,yes,ok,0,unchanged,uncertain,ok,0,unchanged,no,ok,1,corrected
+100_0042_r21,100_0042,Agamim_site_0042,no,no,ok,1,uncertain,ok,0,harmed,no,ok,1,unchanged,no,ok,1,unchanged

@@ -81,6 +81,213 @@ Floor (443 m) & 4,091 & 1,868 & 3,147 & 68.65 & 56.52 & 43.44 & 53.65 & 94.92 & 
 
 The matched-call results show that task answers also respond differently to observation changes. Damage and count transitions have positive point differences, whereas spatial transitions have a negative point difference (Table~\ref{tab:matched-view}). A more local view can improve the evidence for a marked building or a damaged-count decision, yet it can change the selected target for a nearest-building direction judgment. These task-wise estimates are descriptive because T1 selects the recheck subsets, which contain only 18 count and 20 spatial transitions.
 
+\subsection{Case study: Re-observation using real UAV imagery}
+\label{sec:messi-case}
+The preceding experiments change observations by resampling orthographic xBD images. We constructed a separate exploratory case with real multi-elevation UAV images from MESSI~\cite{pinkovich2025messi} to ask whether a lower-altitude acquisition adds information beyond a repeat call or digital enlargement of the high image. During pilot preparation, the proposed parked-vehicle question did not provide stable positive regions in the three candidate evaluation sequences. We therefore fixed one static presence question before formal inference: whether a marked ground region contains visible tree or shrub canopy, supported by MESSI's vegetation annotation (class 12) and visual review of both source images. This is a scene-content check, not disaster-damage recognition.
+
+The case contains 12 fixed regions, four each from MESSI sequences \texttt{100\_0002}, \texttt{100\_0003}, and \texttt{100\_0042}, with six positive and six negative answers. Four regions from \texttt{100\_0001} served only as pilot items and were excluded. For each evaluation sequence, we selected the frames nearest 100 and 30~m in the provided height relative to takeoff: the observed high range was 99.9--100.2~m and the low range 29.8--30.3~m. We matched local image features across the two frames, estimated a homography, and visually checked the paired crops and labels before model outputs. These values are relative heights, not calibrated local above-ground distances. Frame selection by height defines an offline review; it does not reconstruct a flown descent decision.
+
+Each item first presented Qwen2.5-VL-7B-Instruct with the high image and a red outline of the region. The resulting answer was copied into three isolated second-turn histories. Branch A repeated the same outlined high image; B supplied an 800$\times$800-pixel enlargement of the corresponding area cropped from the original high-resolution file; C supplied an 800$\times$800-pixel crop from the real low image. B and C cover approximately the same ground footprint, while A retains the wider scene. All branches used the same question, second prompt, greedy decoding, 16-token output limit, and one second answer call. Ground-truth masks and answers were withheld from prompts. All 12 items completed their planned first and three branch calls; \texttt{UNCERTAIN} and invalid answers counted as incorrect.
+
+The primary paired comparison is C versus B (Table~\ref{tab:messi-case}). C answered 11/12 correctly (91.67\%), versus 10/12 (83.33\%) for B, a descriptive difference of $+8.33$ percentage points. Relative to B, the new image made two incorrect answers correct and one correct answer incorrect. Relative to the first high-image answer, C corrected five items and harmed one. A answered 5/12 (41.67\%), versus 11/12 for C, but this secondary contrast also changes contextual extent. At the sequence level, B and C were tied at 3/4 in \texttt{100\_0002} and 4/4 in \texttt{100\_0003}; C was 4/4 versus B's 3/4 in \texttt{100\_0042}. Thus the aggregate difference is one answer among twelve and should not be read as a stable expected gain.
+
+Figure~\ref{fig:messi-case} shows both directions of the paired outcome. In \texttt{100\_0042\_r16}, the high crop produced \texttt{UNCERTAIN}, whereas the low image correctly rejected canopy on paving. In \texttt{100\_0002\_r02}, the high crop correctly identified vegetation, whereas the low image incorrectly answered \texttt{NO} despite visible canopy at the left of the region. A new view can therefore clarify or lose task-relevant evidence. The sample is small and selected for clear cross-height labels; regions within a sequence are correlated. Registration and axis-aligned high cropping leave some footprint mismatch: the high crop's bounding rectangle exceeds the mapped quadrilateral area by 2.8--15.9\% across the twelve items. Changes in illumination, perspective, and scene context also accompany resolution changes. These fixed-observation branches measure the value of the supplied view; the following replay tests whether an adapted agent requests that view.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Exploratory MESSI case on 12 fixed regions from three sequences (four per sequence; pilot excluded). A repeats the high image, B digitally enlarges its corresponding original-resolution crop, and C uses a real lower-altitude crop. All use the same two-turn budget and the first answer; \texttt{UNCERTAIN} counts incorrect. Corrections and harms compare each final answer with the first answer.}
+\label{tab:messi-case}
+\begin{tabular}{lrrrrr}
+\toprule
+Observation & Correct/$n$ & Acc. (\%) & Corrected & Harmed & Uncertain\\
+\midrule
+First high image & 7/12 & 58.33 & -- & -- & 0\\
+A: high repeated & 5/12 & 41.67 & 0 & 2 & 2\\
+B: high crop & 10/12 & 83.33 & 4 & 1 & 2\\
+C: real low crop & 11/12 & 91.67 & 5 & 1 & 0\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure*}[!t]
+\centering
+\includegraphics[width=\textwidth]{figures/messi_case_pairs.png}
+\caption{MESSI paired examples from the frozen case. The red outline on A identifies the same ground region shown as a full crop in B and C; A is the repeated high image. High and low frames were selected offline at 100.2 and 30.2~m relative altitude for \texttt{100\_0042\_r16} (top), and 99.9 and 30.3~m for \texttt{100\_0002\_r02} (bottom). Text gives second-turn model answers and reference answers (GT). B-to-C is a correction in the top row and a harm in the bottom row. Source images: MESSI~\cite{pinkovich2025messi}, CC BY-NC-SA 3.0.}
+\label{fig:messi-case}
+\end{figure*}
+
+\subsubsection{Action-gated offline replay}
+We next replayed the same twelve regions through DisasterClaw's \texttt{AgentVqaController} and T1 task-conditioned utility gate. This exploratory follow-up was designed after the fixed-observation case. The offline environment initially exposed only the outlined high image; it released the paired low crop after an authorized descent action. The only candidate low frame and the approximately 100/30-m relative heights were fixed in advance. The agent arm had one reobservation action; the paired hold arm had zero. Both arms used the identical cached first Qwen response. The controller recorded each candidate answer, action, budget change, and stop reason. Reference answers were read only after the replay for scoring.
+
+This is a MESSI-specific perception and decision adapter. The original T1 presence branch skips local descent, and MESSI supplies neither the disaster pre/post pair nor ChangeOS damage probabilities. Qwen instead supplied a YES/NO canopy answer and self-reported answer confidence; normalized binary entropy of that confidence replaced damage entropy. For the marked binary target, the adapter invoked the existing gate's damage-target utility formula and its 0.5 uncertainty trigger, 0.05 flight-cost weight, and 0.05 minimum utility. It stipulated that the marked region was visible, used zero horizontal recentering, and bypassed the damage-specific \texttt{RecheckController.assess}. The controller's answer, action-budget, trajectory, and stop paths remained in use with VLM answering and no search. This is an adapted offline decision test, not an unchanged T1 presence-policy or physical-flight test.
+
+The hold arm answered 8/12 correctly, versus 10/12 for the action-enabled arm (Table~\ref{tab:messi-replay}); the two changed outcomes were corrections and none were harms. The agent requested the low image in all 12 episodes, and all episodes in both arms ended with \texttt{sufficient\_evidence}. Thus the replay verifies that the adapted controller can trigger, acquire, incorporate, and stop after a real lower-altitude image, but the observed operating point offers no evidence that it selectively suppresses unnecessary reobservations. Qwen's reported high-view confidence was at most 0.75 in every item, which made every item exceed the entropy trigger. These descriptive results do not estimate a stable accuracy gain.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Action-gated MESSI offline replay on the same 12 regions. The first model response is shared across arms. Rechecks count low-frame releases following a controller action.}
+\label{tab:messi-replay}
+\begin{tabular}{lrrr}
+\toprule
+Arm & Correct/$n$ & Accuracy (\%) & Rechecks\\
+\midrule
+No new observation & 8/12 & 66.67 & 0\\
+Agent autonomous recheck & 10/12 & 83.33 & 12\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Expanded evaluation on public MESSI pairs}
+\label{sec:messi-expanded}
+We extended the case systematically after observing the 12-item results. The extension uses every annotation-consistent cell of a fixed 24-cell grid in five public MESSI descend sequences; \texttt{100\_0001} remains a pilot sequence. This yields 107 regions from 120 evaluation-sequence cells, with 13 ambiguous or cross-height discordant cells excluded before the extension's inference. We also paired each public 30-m frame in Agamim Paths A--C to its nearest 100-m frame by GPS and tested one fixed central region. Of 136 low frames, 120 passed distance and image-registration checks; 25 further pairs had ambiguous or discordant annotations, leaving 95 path pairs. The latter contain 83 positives and 12 negatives. The task is now \emph{visible vegetation including grass, trees, and shrubs}, matching MESSI's vegetation mask; it is distinct from the selected 12-item canopy task. Answers derive from agreement of high- and low-view masks, without visual confirmation of every region. The 202 units share frames and nearby ground content and must not be treated as independent flights.
+
+The same high-repeat (A), high-source crop (B), and real low-image (C) branches completed all 202 vegetation items (Table~\ref{tab:messi-expanded}). On descend regions C answered 83/107 correctly versus B's 80/107, with seven C-over-B corrections and four harms. On path pairs C answered 83/95 versus B's 86/95, with one correction and four harms. Aggregated descriptively, both B and C answered 166/202 correctly; their eight corrections and eight harms cancel. The selected 12-item positive difference therefore does not extend to a consistent low-image advantage under this broader public-pair protocol.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Expanded, post hoc public MESSI vegetation evaluation. Entries A/B/C are correct counts. Help and harm compare C with B on the same items. Descend and path units use different systematic ROI rules and are correlated within geographic sequences.}
+\label{tab:messi-expanded}
+\begin{tabular}{lrrrrr}
+\toprule
+Source & $n$ & A & B & C & C/B help/harm\\
+\midrule
+Descend grid & 107 & 76 & 80 & 83 & 7/4\\
+Path frames & 95 & 79 & 86 & 83 & 1/4\\
+Combined & 202 & 155 & 166 & 166 & 8/8\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+We also replayed the full extension through the self-reported-confidence adapter described above. The no-new-observation arm answered 138/202 correctly. The action-enabled arm answered 158/202, correcting 30 and harming 10, but requested the lower image in every episode. This establishes a complete action/observation/answer trace across the expanded real-image set, while again offering no evidence of selective stopping from that uncertainty signal.
+
+After diagnosing this all-recheck behavior, we ran a separate exploratory adapter that scores the Qwen next-token probabilities of \texttt{YES} and \texttt{NO} after a fixed binary prompt. Their normalized two-way entropy enters the same binary-target utility gate, with its uncertainty trigger set to 0.90 using four excluded pilot regions from \texttt{100\_0001}. This changes both the perception prompt and uncertainty measurement; the original damage-policy gate is still adapted to a marked vegetation target. The new adapter was frozen before its 202 evaluation episodes. Each hold/agent pair shares its first response, and only an approved recheck releases the predetermined low frame. The token scores are uncalibrated and should not be compared with self-reported-confidence accuracy as an isolated policy change.
+
+The token-entropy adapter rechecked 102/202 items and stopped after the high view in 100/202 (Table~\ref{tab:messi-expanded-replay}). Its paired no-new-observation arm answered 155/202 correctly and the agent answered 165/202, with 26 corrections and 16 harms. The 100 stopped cases had 86 correct high-view answers; among the 102 rechecked cases, accuracy changed from 69/102 to 79/102. Descend regions gained seven net correct answers, while path pairs gained three; path B lost two and path C gained two. These post hoc results show selective requesting and stopping within the offline, preselected two-frame environment, but they do not establish the utility threshold's calibration or a gain from physical flight.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Exploratory selective MESSI replay with token-entropy uncertainty. Hold and agent share the first answer on each item; rechecks release the low frame. Corrected/harmed compare paired terminal answers.}
+\label{tab:messi-expanded-replay}
+\begin{tabular}{lrrrrr}
+\toprule
+Source & $n$ & Hold & Agent & Rechecks & Corrected/harmed\\
+\midrule
+Descend grid & 107 & 83 & 90 & 57 & 17/10\\
+Path frames & 95 & 72 & 75 & 45 & 9/6\\
+Combined & 202 & 155 & 165 & 102 & 26/16\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Full-release MESSI fixed observations and earlier Qwen replay}
+\label{sec:messi-full}
+After the public-sample extension, we obtained the author's full 2,525-image MESSI release and inventoried all image, annotation, and pose filenames. We applied the same vegetation task and two-height selection rules to every available descend sequence and to the Agamim and IrYamim paths with both 100- and 30-m acquisitions. The previously used \texttt{100\_0001} sequence remained pilot-only. One additional descend sequence failed the fixed 40-inlier registration criterion, and path pairs exceeding the prespecified 12-m GPS distance or failing annotation agreement were excluded. The Ha-Medinah Square path has only 60-m images, and the 50/70-m acquisitions do not enter this single-action protocol. The resulting 409 eligible regions comprise 280 descend-grid cells, 95 Agamim path pairs, and 34 IrYamim test-path pairs. The training paths replicate the earlier public-sample stratum; the newly available descend and test-path regions extend coverage. All selection and image hashes were fixed before the complete-release inference, with source and exclusion manifests retained separately from model inputs.
+
+The original DisasterClaw presence gate explicitly answers from the wide view and never requests local descent. A diagnostic invoking the repository's \texttt{AgentVqaController} and that unmodified gate on all 409 MESSI items made zero rechecks and answered 287/409 first views correctly. It still used a MESSI VLM first-view adapter rather than the complete ChangeOS/hybrid disaster pipeline. This zero-action result establishes that a positive recheck claim on the vegetation question requires a declared task adapter. Its answer accuracy is not directly comparable with the token-entropy adapter, which uses a different first-answer prompt and scoring method.
+
+In the full-release fixed-observation experiment, high-source crop B and real low-image C each answered 341/409 correctly (Table~\ref{tab:messi-full-fixed}); C corrected 13 B errors and harmed 13 B-correct answers. The descending sequences favored C by two answers, Agamim paths favored B by three, and IrYamim test paths favored C by one. Thus a real descent image did not consistently outperform digital enlargement across this eligible set.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Fixed-observation results on all eligible full-release MESSI 100/30-m vegetation regions. A repeats the high image, B enlarges its source crop, and C uses the real low image. Help/harm compare C with B.}
+\label{tab:messi-full-fixed}
+\begin{tabular}{lrrrrr}
+\toprule
+Source & $n$ & A & B & C & C/B help/harm\\
+\midrule
+Descend grid & 280 & 184 & 235 & 237 & 11/9\\
+Agamim paths & 95 & 79 & 86 & 83 & 1/4\\
+IrYamim test path & 34 & 24 & 20 & 21 & 1/0\\
+Combined & 409 & 287 & 341 & 341 & 13/13\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+In the earlier full-release Qwen token-entropy replay, the adapted controller requested 198/409 lower frames and stopped after the high view in 211/409 (Table~\ref{tab:messi-full-agent}). All 211 no-action gate outcomes cited uncertainty below the trigger; every episode ultimately stopped with \texttt{sufficient\_evidence}. The paired hold arm answered 309/409 correctly versus 329/409 for action-enabled replay, comprising 44 corrections and 24 harms. The gain was 20 net answers on descend regions and three on Agamim paths; on the previously unseen IrYamim test path, rechecks reduced correct answers from 25/34 to 22/34, with one correction and four harms. Every arm shared its first token score, and log audits found no low-frame read without an approved recheck; full action trajectories are retained. This was a separate perception adapter and is retained as exploratory context; the legacy-model experiment below is the direct evaluation of the existing DisasterClaw perception path.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Task-adapted DisasterClaw action-gated offline replay on the full-release eligible regions. Hold forbids new observations; the agent uses the same first token score and may release one fixed low image. Corrected/harmed compare paired terminal answers.}
+\label{tab:messi-full-agent}
+\begin{tabular}{lrrrrr}
+\toprule
+Source & $n$ & Hold & Agent & Rechecks & Corrected/harmed\\
+\midrule
+Descend grid & 280 & 212 & 232 & 139 & 34/14\\
+Agamim paths & 95 & 72 & 75 & 45 & 9/6\\
+IrYamim test path & 34 & 25 & 22 & 14 & 1/4\\
+Combined & 409 & 309 & 329 & 198 & 44/24\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Single-temporal replay with DisasterClaw's legacy perception models}
+\label{sec:messi-native-agent}
+We then evaluated the repository's existing perception models and closed-loop controller on the same 409 eligible regions. The RescueNet YOLO checkpoint (six building-damage, vehicle, and water classes) has no vegetation category; we retain its detections as scene context and do not use them as vegetation evidence. Vegetation presence comes from the ADE20K SegFormer-B2 model, using tree (class 4), grass (9), plant (17), and palm (72). For a region, we map its mean soft vegetation occupancy $f$ to the task score $p=\mathrm{clip}[(f-0.005)/(0.05-0.005),0,1]$ and answer YES at $p\geq0.5$. This is a task-specific score mapping, not a calibration claim.
+
+The model sees an unmarked registered ROI crop at each height. Each paired hold/agent run shares the exact high-view model output. The repository's \texttt{AgentVqaController} retains its evidence memory, answer and stop path, action budget, and trajectory; a narrow single-temporal adapter supplies the vegetation evidence and deterministic presence answer. The \texttt{RecheckController} retains its normalized two-class entropy gate; the 0.50 threshold is inherited from its existing default and was not fitted on MESSI. It is allowed one action. If it triggers, the offline environment releases the pre-registered 30-m crop and records a descend-only action matching the observed relative height difference. It does not execute horizontal recentering, search, or physical motion. The low image is not made available to either the perception callback or the controller before that action.
+
+On the full 409-item set, the no-new-observation arm answered 369 correctly (90.2\%), and the agent arm answered 372 correctly (91.0\%). The controller requested 20 lower-view observations; six changed wrong answers to correct and three changed correct answers to wrong. By stratum, the agent changed 259/280 to 260/280 with 12 rechecks, 85/95 to 87/95 with seven, and 25/34 to 25/34 with one on the IrYamim test-path stratum (Table~\ref{tab:messi-native-agent}).
+
+The 409-item hold arm makes only the first answer call. We therefore added a matched second-observation control for the exact 20 triggered items: after the shared high-view answer and identical controller trigger, one arm reprocessed the same high ROI while the other opened the registered low ROI. Each second-observation arm had the same controller state, one action, and two deterministic answer calls; only the image in the second call differed. The repeated-high arm answered 12/20 correctly, identical to its shared first answers, while the real-low arm answered 15/20 correctly (Table~\ref{tab:messi-trigger-control}). Compared directly with repeated high, the new low view corrected six and harmed three; nine remained correct in both and two remained wrong in both. This isolates the observation change from the additional answer opportunity on the triggered subset. Across all 409 items the aggregate net change remains three answers, and the IrYamim path shows no accuracy gain. These item-level results are descriptive because regions share scenes and frames.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Single-temporal DisasterClaw replay with the legacy YOLO and SegFormer models on all eligible MESSI regions. The hold and agent arms share the first high-view predictions. Rechecks count controller-authorized low-frame releases; corrected/harmed are paired terminal-answer changes.}
+\label{tab:messi-native-agent}
+\begin{tabular}{lrrrrr}
+\toprule
+Source & $n$ & Hold & Agent & Rechecks & Corrected/harmed\\
+\midrule
+Descend grid & 280 & 259 & 260 & 12 & 3/2\\
+Agamim paths & 95 & 85 & 87 & 7 & 3/1\\
+IrYamim test path & 34 & 25 & 25 & 1 & 0/0\\
+Combined & 409 & 369 & 372 & 20 & 6/3\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:messi-trigger-examples} follows one correction and one harm
+through both equal-budget branches. The controller issues the same descend
+request in each branch, with zero horizontal displacement; the repeated-high
+environment retains the original view, while the real-low environment opens
+the pre-registered lower frame. Full event payloads and controller records are
+provided in the machine-readable experiment trajectory file.
+
+\begin{table}[htbp]
+\centering\scriptsize
+\caption{Matched comparison restricted to the 20 first-view-triggered regions. Hold is the shared initial high-view answer. Repeat-high and real-low both receive a second perception and answer call after the same controller action and use a one-action budget. Corrected/harmed compare real-low with repeat-high. The SegFormer task score is uncalibrated.}
+\label{tab:messi-trigger-control}
+\begin{tabularx}{\linewidth}{lXXXX}
+\toprule
+Triggered set & $n$ & High / repeat / low correct & Low corrections / harms & Both unchanged\\
+\midrule
+All triggered regions & 20 & 12 / 12 / 15 & 6 / 3 & 9 correct / 2 wrong\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{table}[htbp]
+\centering\scriptsize
+\caption{Representative complete decision traces from the matched triggered cohort. Each branch terminates with \texttt{sufficient\_evidence} after two answer calls; action budget changes from one to zero. The repeated-high branch recomputes the same high ROI, and the real-low branch receives its paired 30-m ROI.}
+\label{tab:messi-trigger-examples}
+\begin{tabularx}{\linewidth}{lXXXXX}
+\toprule
+Case / reference & High score / answer & Gate & Repeat-high & Real low & Outcome\\
+\midrule
+\texttt{100\_0041\_r11} / YES & 0.218 / NO & $U=0.757$, $\Delta z=-70.0$ m & 0.218 / NO & 0.809 / YES & Fix\\
+\texttt{100\_0004\_r08} / NO & 0.477 / NO & $U=0.998$, $\Delta z=-70.1$ m & 0.477 / NO & 0.500 / YES & Harm\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The 34 IrYamim regions belong to the MESSI Test split, but the same source
+regions had already appeared in earlier Qwen-only MESSI explorations. The
+RescueNet checkpoint, SegFormer checkpoint and class mapping, and inherited
+0.50 trigger were fixed before this legacy-model replay; no IrYamim answer was
+used to tune them. We therefore report IrYamim as a test-path stratum but do
+not treat it as a data-naive untouched holdout.
+
 \subsection{Complete-policy performance}
 Table~\ref{tab:final-policies} reports the prespecified complete-policy runs. T1\_TASK has the highest observed terminal accuracy, 360/480 question--repeat instances (75.00\%), with 161 executed dedicated rechecks. A0\_NO\_RECHECK (the internal configuration identifier is A0\_HOLD) forbids dedicated rechecks but permits search and answers 347/480 (72.29\%). A2\_ALWAYS makes 923 rechecks and answers 307/480 (63.96\%). Active policies share a maximum of two dedicated rechecks. Their realized operating points differ in actions, model calls, and total cost, which are not matched in this comparison.
 

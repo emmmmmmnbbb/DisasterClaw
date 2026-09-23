@@ -1,0 +1,126 @@
+{
+  "hold": {
+    "correct": 8,
+    "n": 12,
+    "accuracy": 0.6666666666666666,
+    "rechecks": 0,
+    "stop_reasons": {
+      "sufficient_evidence": 12
+    },
+    "first_answer_invalid": 0
+  },
+  "agent": {
+    "correct": 10,
+    "n": 12,
+    "accuracy": 0.8333333333333334,
+    "rechecks": 12,
+    "stop_reasons": {
+      "sufficient_evidence": 12
+    },
+    "first_answer_invalid": 0
+  },
+  "paired": {
+    "corrected": 2,
+    "harmed": 0,
+    "action_taken": 12,
+    "no_action": 0
+  },
+  "per_sample": [
+    {
+      "sample_id": "100_0002_r02",
+      "gt": "yes",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0002_r10",
+      "gt": "yes",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0002_r13",
+      "gt": "no",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0002_r20",
+      "gt": "no",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0003_r01",
+      "gt": "yes",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0003_r21",
+      "gt": "yes",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0003_r10",
+      "gt": "no",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0003_r20",
+      "gt": "no",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0042_r07",
+      "gt": "yes",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0042_r23",
+      "gt": "yes",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0042_r16",
+      "gt": "no",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0042_r21",
+      "gt": "no",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    }
+  ]
+}

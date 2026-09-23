@@ -1,0 +1,19 @@
+{
+  "model": "Qwen/Qwen2.5-VL-7B-Instruct",
+  "revision": "cc594898137f460bfe9f0759e9844b3ce807cfb5",
+  "question": "图中标记地面区域是否存在可见植被（包括草、树木或灌木）？",
+  "first_prompt": "Inspect only the ground region inside the red rectangle. Does it contain visible vegetation, including grass, trees, or shrubs? Answer with exactly one token: YES or NO.",
+  "second_prompt": "Reassess the same ground region using this newly acquired lower-altitude observation; the entire image is the region. Answer with exactly one token: YES or NO.",
+  "answer": "normalized YES/NO next-token logits",
+  "temperature": 0,
+  "threshold": 0.9,
+  "gate": "task_conditioned_recheck_decision damage-target branch",
+  "cost_weight": 0.05,
+  "cost_scale_s": 60,
+  "min_utility": 0.05,
+  "max_rechecks": 1,
+  "max_search": 0,
+  "threshold_provenance": "chosen on four 100_0001 pilot items",
+  "manifest_sha256": "b4d9767ed92762807633d06457ea984d30dc2dfba17fcad1fe5ab5a5b03a3a11",
+  "split": "exhaustive_paths"
+}

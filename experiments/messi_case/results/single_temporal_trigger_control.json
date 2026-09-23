@@ -1,0 +1,1613 @@
+{
+  "n_triggered": 20,
+  "initial_high_correct": 12,
+  "repeat_high_correct": 12,
+  "real_low_correct": 15,
+  "real_low_vs_initial": {
+    "unchanged_correct": 9,
+    "harmed": 3,
+    "corrected": 6,
+    "unchanged_incorrect": 2
+  },
+  "real_low_vs_repeat_high": {
+    "both_correct": 9,
+    "low_wrong_repeat_correct": 3,
+    "low_correct_repeat_wrong": 6,
+    "both_wrong": 2
+  },
+  "reobservations_per_arm": 1,
+  "answer_calls_per_arm": 2,
+  "high_repeat_matches_initial_answer": true,
+  "ir_yamim_reuses_prior_qwen_exploratory_data": true,
+  "examples": {
+    "correction": {
+      "sample_id": "100_0041_r11",
+      "split": "full_descend",
+      "truth": "yes",
+      "initial_high_answer": "no",
+      "real_low_answer": "yes",
+      "repeat_high_answer": "no",
+      "high_first_prediction": {
+        "p_yes": 0.21834917532073123,
+        "vegetation_soft_fraction": 0.014825712889432907,
+        "vegetation_hard_fraction": 0.00897216796875,
+        "predicted_pixel_count": 147,
+        "yolo_detections": [
+          {
+            "class_id": 5,
+            "class_name": "type_10",
+            "task_label": "水池/积水区域",
+            "conf": 0.6387349367141724,
+            "bbox_xyxy": [
+              709.5618896484375,
+              458.59490966796875,
+              800.0,
+              527.4761962890625
+            ]
+          },
+          {
+            "class_id": 0,
+            "class_name": "type_2",
+            "task_label": "无损伤建筑",
+            "conf": 0.637487530708313,
+            "bbox_xyxy": [
+              723.2870483398438,
+              135.98358154296875,
+              800.0,
+              415.0164489746094
+            ]
+          },
+          {
+            "class_id": 1,
+            "class_name": "type_3",
+            "task_label": "轻微损伤建筑",
+            "conf": 0.5922725796699524,
+            "bbox_xyxy": [
+              225.9774169921875,
+              43.25111389160156,
+              586.4953002929688,
+              793.57763671875
+            ]
+          },
+          {
+            "class_id": 5,
+            "class_name": "type_10",
+            "task_label": "水池/积水区域",
+            "conf": 0.4474107623100281,
+            "bbox_xyxy": [
+              0.027227401733398438,
+              527.5805053710938,
+              58.053016662597656,
+              622.99609375
+            ]
+          },
+          {
+            "class_id": 5,
+            "class_name": "type_10",
+            "task_label": "水池/积水区域",
+            "conf": 0.2715126872062683,
+            "bbox_xyxy": [
+              707.77587890625,
+              547.255126953125,
+              799.923583984375,
+              635.16650390625
+            ]
+          }
+        ],
+        "latency_s": 0.2529
+      },
+      "low_agent_trace": {
+        "sample_id": "100_0041_r11",
+        "arm": "agent",
+        "answer": "yes",
+        "confidence": 0.80927368,
+        "rechecks": 1,
+        "stop_reason": "sufficient_evidence",
+        "events": [
+          {
+            "event": "observation",
+            "level": 0,
+            "altitude_m": 99.9,
+            "image": "high_crop",
+            "prediction": {
+              "p_yes": 0.21834917532073123,
+              "vegetation_soft_fraction": 0.014825712889432907,
+              "vegetation_hard_fraction": 0.00897216796875,
+              "predicted_pixel_count": 147,
+              "yolo_detections": [
+                {
+                  "class_id": 5,
+                  "class_name": "type_10",
+                  "task_label": "水池/积水区域",
+                  "conf": 0.6387349367141724,
+                  "bbox_xyxy": [
+                    709.5618896484375,
+                    458.59490966796875,
+                    800.0,
+                    527.4761962890625
+                  ]
+                },
+                {
+                  "class_id": 0,
+                  "class_name": "type_2",
+                  "task_label": "无损伤建筑",
+                  "conf": 0.637487530708313,
+                  "bbox_xyxy": [
+                    723.2870483398438,
+                    135.98358154296875,
+                    800.0,
+                    415.0164489746094
+                  ]
+                },
+                {
+                  "class_id": 1,
+                  "class_name": "type_3",
+                  "task_label": "轻微损伤建筑",
+                  "conf": 0.5922725796699524,
+                  "bbox_xyxy": [
+                    225.9774169921875,
+                    43.25111389160156,
+                    586.4953002929688,
+                    793.57763671875
+                  ]
+                },
+                {
+                  "class_id": 5,
+                  "class_name": "type_10",
+                  "task_label": "水池/积水区域",
+                  "conf": 0.4474107623100281,
+                  "bbox_xyxy": [
+                    0.027227401733398438,
+                    527.5805053710938,
+                    58.053016662597656,
+                    622.99609375
+                  ]
+                },
+                {
+                  "class_id": 5,
+                  "class_name": "type_10",
+                  "task_label": "水池/积水区域",
+                  "conf": 0.2715126872062683,
+                  "bbox_xyxy": [
+                    707.77587890625,
+                    547.255126953125,
+                    799.923583984375,
+                    635.16650390625
+                  ]
+                }
+              ],
+              "latency_s": 0.2529
+            }
+          },
+          {
+            "event": "gate",
+            "kind": "recheck",
+            "reason": "疑似「vegetation」(risk=moderate, 证据conf 0.78, 不确定性 0.76)，第 1 次复核：仅下降 70m，不做水平居中。",
+            "uncertainty": 0.757,
+            "label": "vegetation",
+            "params": {
+              "north_m": 0.0,
+              "east_m": 0.0,
+              "up_m": -70.0,
+              "speed": 10.0
+            },
+            "status": null,
+            "altitude_m": 99.9
+          },
+          {
+            "event": "action",
+            "action": "descend_only",
+            "executed_view": "low_crop",
+            "from_m": 99.9,
+            "to_m": 29.9,
+            "requested_params": {
+              "north_m": 0.0,
+              "east_m": 0.0,
+              "up_m": -70.0,
+              "speed": 10.0
+            }
+          },
+          {
+            "event": "observation",
+            "level": 1,
+            "altitude_m": 29.9,
+            "image": "low_crop",
+            "prediction": {
+              "p_yes": 0.8092736800511677,
+              "vegetation_soft_fraction": 0.04141731560230255,
+              "vegetation_hard_fraction": 0.042724609375,
+              "predicted_pixel_count": 700,
+              "yolo_detections": [
+                {
+                  "class_id": 1,
+                  "class_name": "type_3",
+                  "task_label": "轻微损伤建筑",
+                  "conf": 0.6407138109207153,
+                  "bbox_xyxy": [
+                    168.76380920410156,
+                    23.826522827148438,
+                    561.4058837890625,
+                    777.7130126953125
+                  ]
+                },
+                {
+                  "class_id": 0,
+                  "class_name": "type_2",
+                  "task_label": "无损伤建筑",
+                  "conf": 0.31819573044776917,
+                  "bbox_xyxy": [
+                    715.5313110351562,
+                    224.9410858154297,
+                    799.8410034179688,
+                    639.5840454101562
+                  ]
+                },
+                {
+                  "class_id": 1,
+                  "class_name": "type_3",
+                  "task_label": "轻微损伤建筑",
+                  "conf": 0.28493252396583557,
+                  "bbox_xyxy": [
+                    0.28705596923828125,
+                    135.19729614257812,
+                    166.33743286132812,
+                    759.8905029296875
+                  ]
+                },
+                {
+                  "class_id": 4,
+                  "class_name": "type_6",
+                  "task_label": "车辆",
+                  "conf": 0.2522762715816498,
+                  "bbox_xyxy": [
+                    657.0362548828125,
+                    122.30796813964844,
+                    690.804931640625,
+                    197.0028076171875
+                  ]
+                }
+              ],
+              "latency_s": 0.2451
+            }
+          }
+        ],
+        "trajectory": [
+          {
+            "question_id": "100_0041_r11",
+            "observation_id": "100_0041_r11_high",
+            "position": {
+              "lat": 0.0,
+              "lon": 0.0,
+              "alt": 99.9
+            },
+            "question_type": "presence",
+            "candidate_answer": "否",
+            "confidence": 0.7817,
+            "evidence_ids": [
+              "100_0041_r11_high"
+            ],
+            "decision": "reobserve",
+            "reason_code": "low_confidence",
+            "action": "fly_relative",
+            "budget_before": 1,
+            "budget_after": 0,
+            "fallback_used": false,
+            "degraded_reason": "",
+            "evidence": {
+              "observation_id": "100_0041_r11_high",
+              "source": "single_temporal_segmentation",
+              "target_label": "vegetation",
+              "target_subtype": "no_vegetation",
+              "target_conf": 0.7817,
+              "norm_xy": [
+                0.5,
+                0.5
+              ],
+              "target_bbox": [
+                0.0,
+                0.0,
+                800.0,
+                800.0
+              ],
+              "target_norm_xy": null,
+              "roi_norm_bbox": null,
+              "target_ref_id": "",
+              "target_visible": false,
+              "target_matched": true,
+              "match_method": "task_presence_soft_occupancy",
+              "match_distance_px": null,
+              "matching_count": 1,
+              "class_probs": {
+                "vegetation": 0.21834918,
+                "no_vegetation": 0.78165082
+              },
+              "detection_source": "segformer_ade20k",
+              "risk_level": "moderate",
+              "scene_text": "YOLO scene detections recorded separately; vegetation presence from SegFormer",
+              "degraded": false,
+              "degraded_reason": "",
+              "objects": [
+                {
+                  "label": "vegetation",
+                  "subtype": "no_vegetation",
+                  "confidence": 0.781651,
+                  "class_probs": {
+                    "vegetation": 0.21834918,
+                    "no_vegetation": 0.78165082
+                  },
+                  "bbox": [
+                    0.0,
+                    0.0,
+                    800.0,
+                    800.0
+                  ],
+                  "norm_xy": [
+                    0.5,
+                    0.5
+                  ],
+                  "observation_id": "100_0041_r11_high",
+                  "geographic_id": "observation:100_0041_r11_high:0",
+                  "history_observation_ids": [
+                    "100_0041_r11_high"
+                  ],
+                  "n_sightings": 1,
+                  "visible_in_current": true
+                }
+              ],
+              "view_window": null,
+              "roi_geo_bounds": null,
+              "observation_gsd_m": null,
+              "roi_coverage": 0.0,
+              "geographic_id": "observation:100_0041_r11_high:0",
+              "target_geo": null,
+              "selected_observation_id": "100_0041_r11_high",
+              "history_observation_ids": [
+                "100_0041_r11_high"
+              ],
+              "fusion_reason": "current_observation"
+            },
+            "reobserve_kind": "recheck",
+            "reobserve_reason": "疑似「vegetation」(risk=moderate, 证据conf 0.78, 不确定性 0.76)，第 1 次复核：仅下降 70m，不做水平居中。",
+            "reobserve_params": {
+              "north_m": 0.0,
+              "east_m": 0.0,
+              "up_m": -70.0,
+              "speed": 10.0
+            },
+            "reobserve_executed": {},
+            "entropy_table_loaded": false,
+            "entropy_fallback_used": false,
+            "motion_mode": "",
+            "uncertainty": 0.757,
+            "policy_metrics": {},
+            "generation_seed": null,
+            "generation_repeat": 0,
+            "generation_call_role": ""
+          },
+          {
+            "question_id": "100_0041_r11",
+            "observation_id": "100_0041_r11_low",
+            "position": {
+              "lat": 0.0,
+              "lon": 0.0,
+              "alt": 29.9
+            },
+            "question_type": "presence",
+            "candidate_answer": "是",
+            "confidence": 0.8093,
+            "evidence_ids": [
+              "100_0041_r11_high",
+              "100_0041_r11_low"
+            ],
+            "decision": "answer",
+            "reason_code": "sufficient_evidence",
+            "action": "report_observation",
+            "budget_before": 0,
+            "budget_after": 0,
+            "fallback_used": false,
+            "degraded_reason": "",
+            "evidence": {
+              "observation_id": "100_0041_r11_low",
+              "source": "history",
+              "target_label": "vegetation",
+              "target_subtype": "vegetation",
+              "target_conf": 0.8093,
+              "norm_xy": [
+                0.5,
+                0.5
+              ],
+              "target_bbox": [
+                0.0,
+                0.0,
+                800.0,
+                800.0
+              ],
+              "target_norm_xy": null,
+              "roi_norm_bbox": null,
+              "target_ref_id": "",
+              "target_visible": false,
+              "target_matched": true,
+              "match_method": "task_presence_soft_occupancy",
+              "match_distance_px": null,
+              "matching_count": 1,
+              "class_probs": {
+                "vegetation": 0.80927368,
+                "no_vegetation": 0.19072632
+              },
+              "detection_source": "segformer_ade20k",
+              "risk_level": "moderate",
+              "scene_text": "YOLO scene detections recorded separately; vegetation presence from SegFormer",
+              "degraded": false,
+              "degraded_reason": "",
+              "objects": [
+                {
+                  "label": "vegetation",
+                  "subtype": "no_vegetation",
+                  "confidence": 0.781651,
+                  "class_probs": {
+                    "vegetation": 0.21834918,
+                    "no_vegetation": 0.78165082
+                  },
+                  "bbox": [
+                    0.0,
+                    0.0,
+                    800.0,
+                    800.0
+                  ],
+                  "norm_xy": [
+                    0.5,
+                    0.5
+                  ],
+                  "observation_id": "100_0041_r11_high",
+                  "geographic_id": "observation:100_0041_r11_high:0",
+                  "history_observation_ids": [
+                    "100_0041_r11_high"
+                  ],
+                  "n_sightings": 1,
+                  "visible_in_current": false
+                },
+                {
+                  "label": "vegetation",
+                  "subtype": "vegetation",
+                  "confidence": 0.809274,
+                  "class_probs": {
+                    "vegetation": 0.80927368,
+                    "no_vegetation": 0.19072632
+                  },
+                  "bbox": [
+                    0.0,
+                    0.0,
+                    800.0,
+                    800.0
+                  ],
+                  "norm_xy": [
+                    0.5,
+                    0.5
+                  ],
+                  "observation_id": "100_0041_r11_low",
+                  "geographic_id": "observation:100_0041_r11_low:1",
+                  "history_observation_ids": [
+                    "100_0041_r11_low"
+                  ],
+                  "n_sightings": 1,
+                  "visible_in_current": true
+                }
+              ],
+              "view_window": null,
+              "roi_geo_bounds": null,
+              "observation_gsd_m": null,
+              "roi_coverage": 0.0,
+              "geographic_id": "observation:100_0041_r11_low:1",
+              "target_geo": null,
+              "selected_observation_id": "100_0041_r11_low",
+              "history_observation_ids": [
+                "100_0041_r11_high",
+                "100_0041_r11_low"
+              ],
+              "fusion_reason": "resolution_weighted_probabilities_and_geographic_deduplication"
+            },
+            "reobserve_kind": "",
+            "reobserve_reason": "",
+            "reobserve_params": {},
+            "reobserve_executed": {},
+            "entropy_table_loaded": false,
+            "entropy_fallback_used": false,
+            "motion_mode": "",
+            "uncertainty": null,
+            "policy_metrics": {},
+            "generation_seed": null,
+            "generation_repeat": 0,
+            "generation_call_role": ""
+          }
+        ],
+        "elapsed_s": 0.246
+      },
+      "repeat_high_trace": {
+        "sample_id": "100_0041_r11",
+        "arm": "repeat_high",
+        "answer": "no",
+        "confidence": 0.78165082,
+        "rechecks": 1,
+        "stop_reason": "sufficient_evidence",
+        "events": [
+          {
+            "event": "observation",
+            "level": 0,
+            "altitude_m": 99.9,
+            "image": "high_crop",
+            "prediction": {
+              "p_yes": 0.21834917532073123,
+              "vegetation_soft_fraction": 0.014825712889432907,
+              "vegetation_hard_fraction": 0.00897216796875,
+              "predicted_pixel_count": 147,
+              "yolo_detections": [
+                {
+                  "class_id": 5,
+                  "class_name": "type_10",
+                  "task_label": "水池/积水区域",
+                  "conf": 0.6387349367141724,
+                  "bbox_xyxy": [
+                    709.5618896484375,
+                    458.59490966796875,
+                    800.0,
+                    527.4761962890625
+                  ]
+                },
+                {
+                  "class_id": 0,
+                  "class_name": "type_2",
+                  "task_label": "无损伤建筑",
+                  "conf": 0.637487530708313,
+                  "bbox_xyxy": [
+                    723.2870483398438,
+                    135.98358154296875,
+                    800.0,
+                    415.0164489746094
+                  ]
+                },
+                {
+                  "class_id": 1,
+                  "class_name": "type_3",
+                  "task_label": "轻微损伤建筑",
+                  "conf": 0.5922725796699524,
+                  "bbox_xyxy": [
+                    225.9774169921875,
+                    43.25111389160156,
+                    586.4953002929688,
+                    793.57763671875
+                  ]
+                },
+                {
+                  "class_id": 5,
+                  "class_name": "type_10",
+                  "task_label": "水池/积水区域",
+                  "conf": 0.4474107623100281,
+                  "bbox_xyxy": [
+                    0.027227401733398438,
+                    527.5805053710938,
+                    58.053016662597656,
+                    622.99609375
+                  ]
+                },
+                {
+                  "class_id": 5,
+                  "class_name": "type_10",
+                  "task_label": "水池/积水区域",
+                  "conf": 0.2715126872062683,
+                  "bbox_xyxy": [
+                    707.77587890625,
+                    547.255126953125,
+                    799.923583984375,
+                    635.16650390625
+                  ]
+                }
+              ],
+              "latency_s": 0.2529
+            }
+          },
+          {
+            "event": "gate",
+            "kind": "recheck",
+            "reason": "疑似「vegetation」(risk=moderate, 证据conf 0.78, 不确定性 0.76)，第 1 次复核：仅下降 70m，不做水平居中。",
+            "uncertainty": 0.757,
+            "label": "vegetation",
+            "params": {
+              "north_m": 0.0,
+              "east_m": 0.0,
+              "up_m": -70.0,
+              "speed": 10.0
+            },
+            "status": null,
+            "altitude_m": 99.9
+          },
+          {
+            "event": "action",
+            "action": "repeat_high",
+            "executed_view": "high_crop",
+            "from_m": 99.9,
+            "to_m": 99.9,
+            "requested_params": {
+              "north_m": 0.0,
+              "east_m": 0.0,
+              "up_m": -70.0,
+              "speed": 10.0
+            }
+          },
+          {
+            "event": "observation",
+            "level": 1,
+            "altitude_m": 99.9,
+            "image": "high_crop",
+            "prediction": {
+              "p_yes": 0.21834917532073123,
+              "vegetation_soft_fraction": 0.014825712889432907,
+              "vegetation_hard_fraction": 0.00897216796875,
+              "predicted_pixel_count": 147,
+              "yolo_detections": [
+                {
+                  "class_id": 5,
+                  "class_name": "type_10",
+                  "task_label": "水池/积水区域",
+                  "conf": 0.6387349367141724,
+                  "bbox_xyxy": [
+                    709.5618896484375,
+                    458.59490966796875,
+                    800.0,
+                    527.4761962890625
+                  ]
+                },
+                {
+                  "class_id": 0,
+                  "class_name": "type_2",
+                  "task_label": "无损伤建筑",
+                  "conf": 0.637487530708313,
+                  "bbox_xyxy": [
+                    723.2870483398438,
+                    135.98358154296875,
+                    800.0,
+                    415.0164489746094
+                  ]
+                },
+                {
+                  "class_id": 1,
+                  "class_name": "type_3",
+                  "task_label": "轻微损伤建筑",
+                  "conf": 0.5922725796699524,
+                  "bbox_xyxy": [
+                    225.9774169921875,
+                    43.25111389160156,
+                    586.4953002929688,
+                    793.57763671875
+                  ]
+                },
+                {
+                  "class_id": 5,
+                  "class_name": "type_10",
+                  "task_label": "水池/积水区域",
+                  "conf": 0.4474107623100281,
+                  "bbox_xyxy": [
+                    0.027227401733398438,
+                    527.5805053710938,
+                    58.053016662597656,
+                    622.99609375
+                  ]
+                },
+                {
+                  "class_id": 5,
+                  "class_name": "type_10",
+                  "task_label": "水池/积水区域",
+                  "conf": 0.2715126872062683,
+                  "bbox_xyxy": [
+                    707.77587890625,
+                    547.255126953125,
+                    799.923583984375,
+                    635.16650390625
+                  ]
+                }
+              ],
+              "latency_s": 0.1283
+            }
+          }
+        ],
+        "trajectory": [
+          {
+            "question_id": "100_0041_r11",
+            "observation_id": "100_0041_r11_high",
+            "position": {
+              "lat": 0.0,
+              "lon": 0.0,
+              "alt": 99.9
+            },
+            "question_type": "presence",
+            "candidate_answer": "否",
+            "confidence": 0.7817,
+            "evidence_ids": [
+              "100_0041_r11_high"
+            ],
+            "decision": "reobserve",
+            "reason_code": "low_confidence",
+            "action": "fly_relative",
+            "budget_before": 1,
+            "budget_after": 0,
+            "fallback_used": false,
+            "degraded_reason": "",
+            "evidence": {
+              "observation_id": "100_0041_r11_high",
+              "source": "single_temporal_segmentation",
+              "target_label": "vegetation",
+              "target_subtype": "no_vegetation",
+              "target_conf": 0.7817,
+              "norm_xy": [
+                0.5,
+                0.5
+              ],
+              "target_bbox": [
+                0.0,
+                0.0,
+                800.0,
+                800.0
+              ],
+              "target_norm_xy": null,
+              "roi_norm_bbox": null,
+              "target_ref_id": "",
+              "target_visible": false,
+              "target_matched": true,
+              "match_method": "task_presence_soft_occupancy",
+              "match_distance_px": null,
+              "matching_count": 1,
+              "class_probs": {
+                "vegetation": 0.21834918,
+                "no_vegetation": 0.78165082
+              },
+              "detection_source": "segformer_ade20k",
+              "risk_level": "moderate",
+              "scene_text": "YOLO scene detections recorded separately; vegetation presence from SegFormer",
+              "degraded": false,
+              "degraded_reason": "",
+              "objects": [
+                {
+                  "label": "vegetation",
+                  "subtype": "no_vegetation",
+                  "confidence": 0.781651,
+                  "class_probs": {
+                    "vegetation": 0.21834918,
+                    "no_vegetation": 0.78165082
+                  },
+                  "bbox": [
+                    0.0,
+                    0.0,
+                    800.0,
+                    800.0
+                  ],
+                  "norm_xy": [
+                    0.5,
+                    0.5
+                  ],
+                  "observation_id": "100_0041_r11_high",
+                  "geographic_id": "observation:100_0041_r11_high:0",
+                  "history_observation_ids": [
+                    "100_0041_r11_high"
+                  ],
+                  "n_sightings": 1,
+                  "visible_in_current": true
+                }
+              ],
+              "view_window": null,
+              "roi_geo_bounds": null,
+              "observation_gsd_m": null,
+              "roi_coverage": 0.0,
+              "geographic_id": "observation:100_0041_r11_high:0",
+              "target_geo": null,
+              "selected_observation_id": "100_0041_r11_high",
+              "history_observation_ids": [
+                "100_0041_r11_high"
+              ],
+              "fusion_reason": "current_observation"
+            },
+            "reobserve_kind": "recheck",
+            "reobserve_reason": "疑似「vegetation」(risk=moderate, 证据conf 0.78, 不确定性 0.76)，第 1 次复核：仅下降 70m，不做水平居中。",
+            "reobserve_params": {
+              "north_m": 0.0,
+              "east_m": 0.0,
+              "up_m": -70.0,
+              "speed": 10.0
+            },
+            "reobserve_executed": {},
+            "entropy_table_loaded": false,
+            "entropy_fallback_used": false,
+            "motion_mode": "",
+            "uncertainty": 0.757,
+            "policy_metrics": {},
+            "generation_seed": null,
+            "generation_repeat": 0,
+            "generation_call_role": ""
+          },
+          {
+            "question_id": "100_0041_r11",
+            "observation_id": "100_0041_r11_low",
+            "position": {
+              "lat": 0.0,
+              "lon": 0.0,
+              "alt": 29.9
+            },
+            "question_type": "presence",
+            "candidate_answer": "否",
+            "confidence": 0.7817,
+            "evidence_ids": [
+              "100_0041_r11_high",
+              "100_0041_r11_low"
+            ],
+            "decision": "answer",
+            "reason_code": "sufficient_evidence",
+            "action": "report_observation",
+            "budget_before": 0,
+            "budget_after": 0,
+            "fallback_used": false,
+            "degraded_reason": "",
+            "evidence": {
+              "observation_id": "100_0041_r11_low",
+              "source": "history",
+              "target_label": "vegetation",
+              "target_subtype": "no_vegetation",
+              "target_conf": 0.7817,
+              "norm_xy": [
+                0.5,
+                0.5
+              ],
+              "target_bbox": [
+                0.0,
+                0.0,
+                800.0,
+                800.0
+              ],
+              "target_norm_xy": null,
+              "roi_norm_bbox": null,
+              "target_ref_id": "",
+              "target_visible": false,
+              "target_matched": true,
+              "match_method": "task_presence_soft_occupancy",
+              "match_distance_px": null,
+              "matching_count": 1,
+              "class_probs": {
+                "vegetation": 0.21834918,
+                "no_vegetation": 0.78165082
+              },
+              "detection_source": "segformer_ade20k",
+              "risk_level": "moderate",
+              "scene_text": "YOLO scene detections recorded separately; vegetation presence from SegFormer",
+              "degraded": false,
+              "degraded_reason": "",
+              "objects": [
+                {
+                  "label": "vegetation",
+                  "subtype": "no_vegetation",
+                  "confidence": 0.781651,
+                  "class_probs": {
+                    "vegetation": 0.21834918,
+                    "no_vegetation": 0.78165082
+                  },
+                  "bbox": [
+                    0.0,
+                    0.0,
+                    800.0,
+                    800.0
+                  ],
+                  "norm_xy": [
+                    0.5,
+                    0.5
+                  ],
+                  "observation_id": "100_0041_r11_high",
+                  "geographic_id": "observation:100_0041_r11_high:0",
+                  "history_observation_ids": [
+                    "100_0041_r11_high"
+                  ],
+                  "n_sightings": 1,
+                  "visible_in_current": false
+                },
+                {
+                  "label": "vegetation",
+                  "subtype": "no_vegetation",
+                  "confidence": 0.781651,
+                  "class_probs": {
+                    "vegetation": 0.21834918,
+                    "no_vegetation": 0.78165082
+                  },
+                  "bbox": [
+                    0.0,
+                    0.0,
+                    800.0,
+                    800.0
+                  ],
+                  "norm_xy": [
+                    0.5,
+                    0.5
+                  ],
+                  "observation_id": "100_0041_r11_low",
+                  "geographic_id": "observation:100_0041_r11_low:1",
+                  "history_observation_ids": [
+                    "100_0041_r11_low"
+                  ],
+                  "n_sightings": 1,
+                  "visible_in_current": true
+                }
+              ],
+              "view_window": null,
+              "roi_geo_bounds": null,
+              "observation_gsd_m": null,
+              "roi_coverage": 0.0,
+              "geographic_id": "observation:100_0041_r11_low:1",
+              "target_geo": null,
+              "selected_observation_id": "100_0041_r11_low",
+              "history_observation_ids": [
+                "100_0041_r11_high",
+                "100_0041_r11_low"
+              ],
+              "fusion_reason": "resolution_weighted_probabilities_and_geographic_deduplication"
+            },
+            "reobserve_kind": "",
+            "reobserve_reason": "",
+            "reobserve_params": {},
+            "reobserve_executed": {},
+            "entropy_table_loaded": false,
+            "entropy_fallback_used": false,
+            "motion_mode": "",
+            "uncertainty": null,
+            "policy_metrics": {},
+            "generation_seed": null,
+            "generation_repeat": 0,
+            "generation_call_role": ""
+          }
+        ],
+        "elapsed_s": 0.1297
+      }
+    },
+    "harm": {
+      "sample_id": "100_0004_r08",
+      "split": "full_descend",
+      "truth": "no",
+      "initial_high_answer": "no",
+      "real_low_answer": "yes",
+      "repeat_high_answer": "no",
+      "high_first_prediction": {
+        "p_yes": 0.47664540674951333,
+        "vegetation_soft_fraction": 0.026449043303728104,
+        "vegetation_hard_fraction": 0.03424072265625,
+        "predicted_pixel_count": 561,
+        "yolo_detections": [],
+        "latency_s": 0.1546
+      },
+      "low_agent_trace": {
+        "sample_id": "100_0004_r08",
+        "arm": "agent",
+        "answer": "yes",
+        "confidence": 0.50009354,
+        "rechecks": 1,
+        "stop_reason": "sufficient_evidence",
+        "events": [
+          {
+            "event": "observation",
+            "level": 0,
+            "altitude_m": 100.1,
+            "image": "high_crop",
+            "prediction": {
+              "p_yes": 0.47664540674951333,
+              "vegetation_soft_fraction": 0.026449043303728104,
+              "vegetation_hard_fraction": 0.03424072265625,
+              "predicted_pixel_count": 561,
+              "yolo_detections": [],
+              "latency_s": 0.1546
+            }
+          },
+          {
+            "event": "gate",
+            "kind": "recheck",
+            "reason": "疑似「vegetation」(risk=moderate, 证据conf 0.52, 不确定性 1.00)，第 1 次复核：仅下降 70m，不做水平居中。",
+            "uncertainty": 0.998,
+            "label": "vegetation",
+            "params": {
+              "north_m": 0.0,
+              "east_m": 0.0,
+              "up_m": -70.1,
+              "speed": 10.0
+            },
+            "status": null,
+            "altitude_m": 100.1
+          },
+          {
+            "event": "action",
+            "action": "descend_only",
+            "executed_view": "low_crop",
+            "from_m": 100.1,
+            "to_m": 30.0,
+            "requested_params": {
+              "north_m": 0.0,
+              "east_m": 0.0,
+              "up_m": -70.1,
+              "speed": 10.0
+            }
+          },
+          {
+            "event": "observation",
+            "level": 1,
+            "altitude_m": 30.0,
+            "image": "low_crop",
+            "prediction": {
+              "p_yes": 0.5000935428672366,
+              "vegetation_soft_fraction": 0.02750420942902565,
+              "vegetation_hard_fraction": 0.022216796875,
+              "predicted_pixel_count": 364,
+              "yolo_detections": [],
+              "latency_s": 0.1836
+            }
+          }
+        ],
+        "trajectory": [
+          {
+            "question_id": "100_0004_r08",
+            "observation_id": "100_0004_r08_high",
+            "position": {
+              "lat": 0.0,
+              "lon": 0.0,
+              "alt": 100.1
+            },
+            "question_type": "presence",
+            "candidate_answer": "否",
+            "confidence": 0.5234,
+            "evidence_ids": [
+              "100_0004_r08_high"
+            ],
+            "decision": "reobserve",
+            "reason_code": "low_confidence",
+            "action": "fly_relative",
+            "budget_before": 1,
+            "budget_after": 0,
+            "fallback_used": false,
+            "degraded_reason": "",
+            "evidence": {
+              "observation_id": "100_0004_r08_high",
+              "source": "single_temporal_segmentation",
+              "target_label": "vegetation",
+              "target_subtype": "no_vegetation",
+              "target_conf": 0.5234,
+              "norm_xy": [
+                0.5,
+                0.5
+              ],
+              "target_bbox": [
+                0.0,
+                0.0,
+                800.0,
+                800.0
+              ],
+              "target_norm_xy": null,
+              "roi_norm_bbox": null,
+              "target_ref_id": "",
+              "target_visible": false,
+              "target_matched": true,
+              "match_method": "task_presence_soft_occupancy",
+              "match_distance_px": null,
+              "matching_count": 1,
+              "class_probs": {
+                "vegetation": 0.47664541,
+                "no_vegetation": 0.52335459
+              },
+              "detection_source": "segformer_ade20k",
+              "risk_level": "moderate",
+              "scene_text": "YOLO scene detections recorded separately; vegetation presence from SegFormer",
+              "degraded": false,
+              "degraded_reason": "",
+              "objects": [
+                {
+                  "label": "vegetation",
+                  "subtype": "no_vegetation",
+                  "confidence": 0.523355,
+                  "class_probs": {
+                    "vegetation": 0.47664541,
+                    "no_vegetation": 0.52335459
+                  },
+                  "bbox": [
+                    0.0,
+                    0.0,
+                    800.0,
+                    800.0
+                  ],
+                  "norm_xy": [
+                    0.5,
+                    0.5
+                  ],
+                  "observation_id": "100_0004_r08_high",
+                  "geographic_id": "observation:100_0004_r08_high:0",
+                  "history_observation_ids": [
+                    "100_0004_r08_high"
+                  ],
+                  "n_sightings": 1,
+                  "visible_in_current": true
+                }
+              ],
+              "view_window": null,
+              "roi_geo_bounds": null,
+              "observation_gsd_m": null,
+              "roi_coverage": 0.0,
+              "geographic_id": "observation:100_0004_r08_high:0",
+              "target_geo": null,
+              "selected_observation_id": "100_0004_r08_high",
+              "history_observation_ids": [
+                "100_0004_r08_high"
+              ],
+              "fusion_reason": "current_observation"
+            },
+            "reobserve_kind": "recheck",
+            "reobserve_reason": "疑似「vegetation」(risk=moderate, 证据conf 0.52, 不确定性 1.00)，第 1 次复核：仅下降 70m，不做水平居中。",
+            "reobserve_params": {
+              "north_m": 0.0,
+              "east_m": 0.0,
+              "up_m": -70.1,
+              "speed": 10.0
+            },
+            "reobserve_executed": {},
+            "entropy_table_loaded": false,
+            "entropy_fallback_used": false,
+            "motion_mode": "",
+            "uncertainty": 0.998,
+            "policy_metrics": {},
+            "generation_seed": null,
+            "generation_repeat": 0,
+            "generation_call_role": ""
+          },
+          {
+            "question_id": "100_0004_r08",
+            "observation_id": "100_0004_r08_low",
+            "position": {
+              "lat": 0.0,
+              "lon": 0.0,
+              "alt": 30.0
+            },
+            "question_type": "presence",
+            "candidate_answer": "是",
+            "confidence": 0.5001,
+            "evidence_ids": [
+              "100_0004_r08_high",
+              "100_0004_r08_low"
+            ],
+            "decision": "answer",
+            "reason_code": "sufficient_evidence",
+            "action": "report_observation",
+            "budget_before": 0,
+            "budget_after": 0,
+            "fallback_used": false,
+            "degraded_reason": "",
+            "evidence": {
+              "observation_id": "100_0004_r08_low",
+              "source": "history",
+              "target_label": "vegetation",
+              "target_subtype": "vegetation",
+              "target_conf": 0.5001,
+              "norm_xy": [
+                0.5,
+                0.5
+              ],
+              "target_bbox": [
+                0.0,
+                0.0,
+                800.0,
+                800.0
+              ],
+              "target_norm_xy": null,
+              "roi_norm_bbox": null,
+              "target_ref_id": "",
+              "target_visible": false,
+              "target_matched": true,
+              "match_method": "task_presence_soft_occupancy",
+              "match_distance_px": null,
+              "matching_count": 1,
+              "class_probs": {
+                "vegetation": 0.50009354,
+                "no_vegetation": 0.49990646
+              },
+              "detection_source": "segformer_ade20k",
+              "risk_level": "moderate",
+              "scene_text": "YOLO scene detections recorded separately; vegetation presence from SegFormer",
+              "degraded": false,
+              "degraded_reason": "",
+              "objects": [
+                {
+                  "label": "vegetation",
+                  "subtype": "no_vegetation",
+                  "confidence": 0.523355,
+                  "class_probs": {
+                    "vegetation": 0.47664541,
+                    "no_vegetation": 0.52335459
+                  },
+                  "bbox": [
+                    0.0,
+                    0.0,
+                    800.0,
+                    800.0
+                  ],
+                  "norm_xy": [
+                    0.5,
+                    0.5
+                  ],
+                  "observation_id": "100_0004_r08_high",
+                  "geographic_id": "observation:100_0004_r08_high:0",
+                  "history_observation_ids": [
+                    "100_0004_r08_high"
+                  ],
+                  "n_sightings": 1,
+                  "visible_in_current": false
+                },
+                {
+                  "label": "vegetation",
+                  "subtype": "vegetation",
+                  "confidence": 0.500094,
+                  "class_probs": {
+                    "vegetation": 0.50009354,
+                    "no_vegetation": 0.49990646
+                  },
+                  "bbox": [
+                    0.0,
+                    0.0,
+                    800.0,
+                    800.0
+                  ],
+                  "norm_xy": [
+                    0.5,
+                    0.5
+                  ],
+                  "observation_id": "100_0004_r08_low",
+                  "geographic_id": "observation:100_0004_r08_low:1",
+                  "history_observation_ids": [
+                    "100_0004_r08_low"
+                  ],
+                  "n_sightings": 1,
+                  "visible_in_current": true
+                }
+              ],
+              "view_window": null,
+              "roi_geo_bounds": null,
+              "observation_gsd_m": null,
+              "roi_coverage": 0.0,
+              "geographic_id": "observation:100_0004_r08_low:1",
+              "target_geo": null,
+              "selected_observation_id": "100_0004_r08_low",
+              "history_observation_ids": [
+                "100_0004_r08_high",
+                "100_0004_r08_low"
+              ],
+              "fusion_reason": "resolution_weighted_probabilities_and_geographic_deduplication"
+            },
+            "reobserve_kind": "",
+            "reobserve_reason": "",
+            "reobserve_params": {},
+            "reobserve_executed": {},
+            "entropy_table_loaded": false,
+            "entropy_fallback_used": false,
+            "motion_mode": "",
+            "uncertainty": null,
+            "policy_metrics": {},
+            "generation_seed": null,
+            "generation_repeat": 0,
+            "generation_call_role": ""
+          }
+        ],
+        "elapsed_s": 0.1847
+      },
+      "repeat_high_trace": {
+        "sample_id": "100_0004_r08",
+        "arm": "repeat_high",
+        "answer": "no",
+        "confidence": 0.5233545900000001,
+        "rechecks": 1,
+        "stop_reason": "sufficient_evidence",
+        "events": [
+          {
+            "event": "observation",
+            "level": 0,
+            "altitude_m": 100.1,
+            "image": "high_crop",
+            "prediction": {
+              "p_yes": 0.47664540674951333,
+              "vegetation_soft_fraction": 0.026449043303728104,
+              "vegetation_hard_fraction": 0.03424072265625,
+              "predicted_pixel_count": 561,
+              "yolo_detections": [],
+              "latency_s": 0.1546
+            }
+          },
+          {
+            "event": "gate",
+            "kind": "recheck",
+            "reason": "疑似「vegetation」(risk=moderate, 证据conf 0.52, 不确定性 1.00)，第 1 次复核：仅下降 70m，不做水平居中。",
+            "uncertainty": 0.998,
+            "label": "vegetation",
+            "params": {
+              "north_m": 0.0,
+              "east_m": 0.0,
+              "up_m": -70.1,
+              "speed": 10.0
+            },
+            "status": null,
+            "altitude_m": 100.1
+          },
+          {
+            "event": "action",
+            "action": "repeat_high",
+            "executed_view": "high_crop",
+            "from_m": 100.1,
+            "to_m": 100.1,
+            "requested_params": {
+              "north_m": 0.0,
+              "east_m": 0.0,
+              "up_m": -70.1,
+              "speed": 10.0
+            }
+          },
+          {
+            "event": "observation",
+            "level": 1,
+            "altitude_m": 100.1,
+            "image": "high_crop",
+            "prediction": {
+              "p_yes": 0.47664540674951333,
+              "vegetation_soft_fraction": 0.026449043303728104,
+              "vegetation_hard_fraction": 0.03424072265625,
+              "predicted_pixel_count": 561,
+              "yolo_detections": [],
+              "latency_s": 0.1944
+            }
+          }
+        ],
+        "trajectory": [
+          {
+            "question_id": "100_0004_r08",
+            "observation_id": "100_0004_r08_high",
+            "position": {
+              "lat": 0.0,
+              "lon": 0.0,
+              "alt": 100.1
+            },
+            "question_type": "presence",
+            "candidate_answer": "否",
+            "confidence": 0.5234,
+            "evidence_ids": [
+              "100_0004_r08_high"
+            ],
+            "decision": "reobserve",
+            "reason_code": "low_confidence",
+            "action": "fly_relative",
+            "budget_before": 1,
+            "budget_after": 0,
+            "fallback_used": false,
+            "degraded_reason": "",
+            "evidence": {
+              "observation_id": "100_0004_r08_high",
+              "source": "single_temporal_segmentation",
+              "target_label": "vegetation",
+              "target_subtype": "no_vegetation",
+              "target_conf": 0.5234,
+              "norm_xy": [
+                0.5,
+                0.5
+              ],
+              "target_bbox": [
+                0.0,
+                0.0,
+                800.0,
+                800.0
+              ],
+              "target_norm_xy": null,
+              "roi_norm_bbox": null,
+              "target_ref_id": "",
+              "target_visible": false,
+              "target_matched": true,
+              "match_method": "task_presence_soft_occupancy",
+              "match_distance_px": null,
+              "matching_count": 1,
+              "class_probs": {
+                "vegetation": 0.47664541,
+                "no_vegetation": 0.52335459
+              },
+              "detection_source": "segformer_ade20k",
+              "risk_level": "moderate",
+              "scene_text": "YOLO scene detections recorded separately; vegetation presence from SegFormer",
+              "degraded": false,
+              "degraded_reason": "",
+              "objects": [
+                {
+                  "label": "vegetation",
+                  "subtype": "no_vegetation",
+                  "confidence": 0.523355,
+                  "class_probs": {
+                    "vegetation": 0.47664541,
+                    "no_vegetation": 0.52335459
+                  },
+                  "bbox": [
+                    0.0,
+                    0.0,
+                    800.0,
+                    800.0
+                  ],
+                  "norm_xy": [
+                    0.5,
+                    0.5
+                  ],
+                  "observation_id": "100_0004_r08_high",
+                  "geographic_id": "observation:100_0004_r08_high:0",
+                  "history_observation_ids": [
+                    "100_0004_r08_high"
+                  ],
+                  "n_sightings": 1,
+                  "visible_in_current": true
+                }
+              ],
+              "view_window": null,
+              "roi_geo_bounds": null,
+              "observation_gsd_m": null,
+              "roi_coverage": 0.0,
+              "geographic_id": "observation:100_0004_r08_high:0",
+              "target_geo": null,
+              "selected_observation_id": "100_0004_r08_high",
+              "history_observation_ids": [
+                "100_0004_r08_high"
+              ],
+              "fusion_reason": "current_observation"
+            },
+            "reobserve_kind": "recheck",
+            "reobserve_reason": "疑似「vegetation」(risk=moderate, 证据conf 0.52, 不确定性 1.00)，第 1 次复核：仅下降 70m，不做水平居中。",
+            "reobserve_params": {
+              "north_m": 0.0,
+              "east_m": 0.0,
+              "up_m": -70.1,
+              "speed": 10.0
+            },
+            "reobserve_executed": {},
+            "entropy_table_loaded": false,
+            "entropy_fallback_used": false,
+            "motion_mode": "",
+            "uncertainty": 0.998,
+            "policy_metrics": {},
+            "generation_seed": null,
+            "generation_repeat": 0,
+            "generation_call_role": ""
+          },
+          {
+            "question_id": "100_0004_r08",
+            "observation_id": "100_0004_r08_low",
+            "position": {
+              "lat": 0.0,
+              "lon": 0.0,
+              "alt": 30.0
+            },
+            "question_type": "presence",
+            "candidate_answer": "否",
+            "confidence": 0.5234,
+            "evidence_ids": [
+              "100_0004_r08_high",
+              "100_0004_r08_low"
+            ],
+            "decision": "answer",
+            "reason_code": "sufficient_evidence",
+            "action": "report_observation",
+            "budget_before": 0,
+            "budget_after": 0,
+            "fallback_used": false,
+            "degraded_reason": "",
+            "evidence": {
+              "observation_id": "100_0004_r08_low",
+              "source": "history",
+              "target_label": "vegetation",
+              "target_subtype": "no_vegetation",
+              "target_conf": 0.5234,
+              "norm_xy": [
+                0.5,
+                0.5
+              ],
+              "target_bbox": [
+                0.0,
+                0.0,
+                800.0,
+                800.0
+              ],
+              "target_norm_xy": null,
+              "roi_norm_bbox": null,
+              "target_ref_id": "",
+              "target_visible": false,
+              "target_matched": true,
+              "match_method": "task_presence_soft_occupancy",
+              "match_distance_px": null,
+              "matching_count": 1,
+              "class_probs": {
+                "vegetation": 0.47664541,
+                "no_vegetation": 0.52335459
+              },
+              "detection_source": "segformer_ade20k",
+              "risk_level": "moderate",
+              "scene_text": "YOLO scene detections recorded separately; vegetation presence from SegFormer",
+              "degraded": false,
+              "degraded_reason": "",
+              "objects": [
+                {
+                  "label": "vegetation",
+                  "subtype": "no_vegetation",
+                  "confidence": 0.523355,
+                  "class_probs": {
+                    "vegetation": 0.47664541,
+                    "no_vegetation": 0.52335459
+                  },
+                  "bbox": [
+                    0.0,
+                    0.0,
+                    800.0,
+                    800.0
+                  ],
+                  "norm_xy": [
+                    0.5,
+                    0.5
+                  ],
+                  "observation_id": "100_0004_r08_high",
+                  "geographic_id": "observation:100_0004_r08_high:0",
+                  "history_observation_ids": [
+                    "100_0004_r08_high"
+                  ],
+                  "n_sightings": 1,
+                  "visible_in_current": false
+                },
+                {
+                  "label": "vegetation",
+                  "subtype": "no_vegetation",
+                  "confidence": 0.523355,
+                  "class_probs": {
+                    "vegetation": 0.47664541,
+                    "no_vegetation": 0.52335459
+                  },
+                  "bbox": [
+                    0.0,
+                    0.0,
+                    800.0,
+                    800.0
+                  ],
+                  "norm_xy": [
+                    0.5,
+                    0.5
+                  ],
+                  "observation_id": "100_0004_r08_low",
+                  "geographic_id": "observation:100_0004_r08_low:1",
+                  "history_observation_ids": [
+                    "100_0004_r08_low"
+                  ],
+                  "n_sightings": 1,
+                  "visible_in_current": true
+                }
+              ],
+              "view_window": null,
+              "roi_geo_bounds": null,
+              "observation_gsd_m": null,
+              "roi_coverage": 0.0,
+              "geographic_id": "observation:100_0004_r08_low:1",
+              "target_geo": null,
+              "selected_observation_id": "100_0004_r08_low",
+              "history_observation_ids": [
+                "100_0004_r08_high",
+                "100_0004_r08_low"
+              ],
+              "fusion_reason": "resolution_weighted_probabilities_and_geographic_deduplication"
+            },
+            "reobserve_kind": "",
+            "reobserve_reason": "",
+            "reobserve_params": {},
+            "reobserve_executed": {},
+            "entropy_table_loaded": false,
+            "entropy_fallback_used": false,
+            "motion_mode": "",
+            "uncertainty": null,
+            "policy_metrics": {},
+            "generation_seed": null,
+            "generation_repeat": 0,
+            "generation_call_role": ""
+          }
+        ],
+        "elapsed_s": 0.1982
+      }
+    }
+  }
+}

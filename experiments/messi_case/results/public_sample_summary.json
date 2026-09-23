@@ -1,0 +1,102 @@
+{
+  "scope": "public annotated 100-to-30-m MESSI vegetation pairs",
+  "fixed_observation": {
+    "by_stratum": {
+      "exhaustive_descend": {
+        "n": 107,
+        "correct": {
+          "A": 76,
+          "B": 80,
+          "C": 83
+        },
+        "C_vs_B_help": 7,
+        "C_vs_B_harm": 4
+      },
+      "exhaustive_paths": {
+        "n": 95,
+        "correct": {
+          "A": 79,
+          "B": 86,
+          "C": 83
+        },
+        "C_vs_B_help": 1,
+        "C_vs_B_harm": 4
+      }
+    },
+    "combined": {
+      "n": 202,
+      "correct": {
+        "A": 155,
+        "B": 166,
+        "C": 166
+      },
+      "C_vs_B_help": 8,
+      "C_vs_B_harm": 8,
+      "accuracy": {
+        "A": 0.7673267326732673,
+        "B": 0.8217821782178217,
+        "C": 0.8217821782178217
+      }
+    }
+  },
+  "self_reported_agent": {
+    "by_stratum": {
+      "exhaustive_descend": {
+        "n": 107,
+        "hold_correct": 79,
+        "agent_correct": 86,
+        "rechecks": 107,
+        "corrected": 14,
+        "harmed": 7
+      },
+      "exhaustive_paths": {
+        "n": 95,
+        "hold_correct": 59,
+        "agent_correct": 72,
+        "rechecks": 95,
+        "corrected": 16,
+        "harmed": 3
+      }
+    },
+    "combined": {
+      "n": 202,
+      "hold_correct": 138,
+      "agent_correct": 158,
+      "rechecks": 202,
+      "corrected": 30,
+      "harmed": 10,
+      "hold_accuracy": 0.6831683168316832,
+      "agent_accuracy": 0.7821782178217822
+    }
+  },
+  "token_entropy_agent": {
+    "by_stratum": {
+      "exhaustive_descend": {
+        "n": 107,
+        "hold_correct": 83,
+        "agent_correct": 90,
+        "rechecks": 57,
+        "corrected": 17,
+        "harmed": 10
+      },
+      "exhaustive_paths": {
+        "n": 95,
+        "hold_correct": 72,
+        "agent_correct": 75,
+        "rechecks": 45,
+        "corrected": 9,
+        "harmed": 6
+      }
+    },
+    "combined": {
+      "n": 202,
+      "hold_correct": 155,
+      "agent_correct": 165,
+      "rechecks": 102,
+      "corrected": 26,
+      "harmed": 16,
+      "hold_accuracy": 0.7673267326732673,
+      "agent_accuracy": 0.8168316831683168
+    }
+  }
+}

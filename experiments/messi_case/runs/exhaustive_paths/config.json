@@ -1,0 +1,21 @@
+{
+  "first_prompt": "Inspect only the ground region inside the red rectangle. Does it contain visible vegetation, including grass, trees, or shrubs? Reply with exactly one word: YES, NO, or UNCERTAIN.",
+  "second_prompt": "Reassess the same ground region using this second observation. Use the red rectangle if one is shown; otherwise the entire image is the region. Reply with exactly one word: YES, NO, or UNCERTAIN.",
+  "model": "Qwen/Qwen2.5-VL-7B-Instruct",
+  "revision": "cc594898137f460bfe9f0759e9844b3ce807cfb5",
+  "temperature": 0.0,
+  "max_new_tokens": 16,
+  "seed": 0,
+  "device": "cuda:1",
+  "input_size_high": [
+    1200,
+    800
+  ],
+  "input_size_crop": [
+    800,
+    800
+  ],
+  "parse": "exact YES/NO/UNCERTAIN; invalid counted incorrect",
+  "retry": 0,
+  "manifest_sha256": "b4d9767ed92762807633d06457ea984d30dc2dfba17fcad1fe5ab5a5b03a3a11"
+}

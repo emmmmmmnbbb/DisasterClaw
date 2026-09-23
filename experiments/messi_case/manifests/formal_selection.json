@@ -1,0 +1,14 @@
+[
+  {"sequence":"100_0002","candidate_id":"100_0002_r02","answer":"positive","split":"formal","scene_group_id":"Agamim_site_0002"},
+  {"sequence":"100_0002","candidate_id":"100_0002_r10","answer":"positive","split":"formal","scene_group_id":"Agamim_site_0002"},
+  {"sequence":"100_0002","candidate_id":"100_0002_r13","answer":"negative","split":"formal","scene_group_id":"Agamim_site_0002"},
+  {"sequence":"100_0002","candidate_id":"100_0002_r20","answer":"negative","split":"formal","scene_group_id":"Agamim_site_0002"},
+  {"sequence":"100_0003","candidate_id":"100_0003_r01","answer":"positive","split":"formal","scene_group_id":"Agamim_site_0003"},
+  {"sequence":"100_0003","candidate_id":"100_0003_r21","answer":"positive","split":"formal","scene_group_id":"Agamim_site_0003"},
+  {"sequence":"100_0003","candidate_id":"100_0003_r10","answer":"negative","split":"formal","scene_group_id":"Agamim_site_0003"},
+  {"sequence":"100_0003","candidate_id":"100_0003_r20","answer":"negative","split":"formal","scene_group_id":"Agamim_site_0003"},
+  {"sequence":"100_0042","candidate_id":"100_0042_r07","answer":"positive","split":"formal","scene_group_id":"Agamim_site_0042"},
+  {"sequence":"100_0042","candidate_id":"100_0042_r23","answer":"positive","split":"formal","scene_group_id":"Agamim_site_0042"},
+  {"sequence":"100_0042","candidate_id":"100_0042_r16","answer":"negative","split":"formal","scene_group_id":"Agamim_site_0042"},
+  {"sequence":"100_0042","candidate_id":"100_0042_r21","answer":"negative","split":"formal","scene_group_id":"Agamim_site_0042"}
+]

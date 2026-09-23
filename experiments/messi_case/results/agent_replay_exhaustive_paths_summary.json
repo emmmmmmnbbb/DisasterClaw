@@ -1,0 +1,929 @@
+{
+  "hold": {
+    "correct": 59,
+    "n": 95,
+    "accuracy": 0.6210526315789474,
+    "rechecks": 0,
+    "stop_reasons": {
+      "sufficient_evidence": 95
+    },
+    "first_answer_invalid": 0
+  },
+  "agent": {
+    "correct": 72,
+    "n": 95,
+    "accuracy": 0.7578947368421053,
+    "rechecks": 95,
+    "stop_reasons": {
+      "sufficient_evidence": 95
+    },
+    "first_answer_invalid": 0
+  },
+  "paired": {
+    "corrected": 16,
+    "harmed": 3,
+    "action_taken": 95,
+    "no_action": 0
+  },
+  "by_truth_class": {
+    "yes": {
+      "n": 83,
+      "hold_correct": 53,
+      "agent_correct": 62,
+      "rechecks": 83
+    },
+    "no": {
+      "n": 12,
+      "hold_correct": 6,
+      "agent_correct": 10,
+      "rechecks": 12
+    }
+  },
+  "balanced_accuracy": {
+    "hold": 0.5692771084337349,
+    "agent": 0.7901606425702812
+  },
+  "by_sequence": {
+    "path_A": {
+      "n": 32,
+      "hold_correct": 15,
+      "agent_correct": 27,
+      "rechecks": 32,
+      "corrected": 12,
+      "harmed": 0
+    },
+    "path_B": {
+      "n": 37,
+      "hold_correct": 21,
+      "agent_correct": 20,
+      "rechecks": 37,
+      "corrected": 2,
+      "harmed": 3
+    },
+    "path_C": {
+      "n": 26,
+      "hold_correct": 23,
+      "agent_correct": 25,
+      "rechecks": 26,
+      "corrected": 2,
+      "harmed": 0
+    }
+  },
+  "per_sample": [
+    {
+      "sample_id": "path_A_DJI_0056",
+      "gt": "no",
+      "sequence_id": "path_A",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0057",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0058",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0059",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0060",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0061",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0062",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0063",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0064",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0065",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0066",
+      "gt": "no",
+      "sequence_id": "path_A",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0068",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0069",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0071",
+      "gt": "no",
+      "sequence_id": "path_A",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0072",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0073",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0074",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0075",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0076",
+      "gt": "no",
+      "sequence_id": "path_A",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0077",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0078",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0079",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0080",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0081",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0082",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0083",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0084",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0085",
+      "gt": "no",
+      "sequence_id": "path_A",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0086",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0087",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0088",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_A_DJI_0089",
+      "gt": "yes",
+      "sequence_id": "path_A",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0151",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0152",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0153",
+      "gt": "no",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0154",
+      "gt": "no",
+      "sequence_id": "path_B",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0155",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0156",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0157",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0158",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0159",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0160",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0161",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0162",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0163",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0164",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0165",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0171",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0174",
+      "gt": "no",
+      "sequence_id": "path_B",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0176",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0177",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0178",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0179",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0180",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0183",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0184",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0185",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0186",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0187",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0188",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0190",
+      "gt": "no",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0191",
+      "gt": "no",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0192",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0193",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0194",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0195",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0197",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0199",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_B_DJI_0200",
+      "gt": "yes",
+      "sequence_id": "path_B",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0277",
+      "gt": "no",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0283",
+      "gt": "no",
+      "sequence_id": "path_C",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0284",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0285",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0287",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0289",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0290",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0291",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0292",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0293",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0294",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0295",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0296",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0297",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0299",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0300",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0303",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0304",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0305",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0306",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0309",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0311",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0312",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0313",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0316",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "path_C_DJI_0317",
+      "gt": "yes",
+      "sequence_id": "path_C",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    }
+  ]
+}

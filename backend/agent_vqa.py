@@ -528,6 +528,31 @@ def build_evidence_from_perception(perception_result: Any, spec: QuestionSpec,
             if geo:
                 ev.geographic_id = f"geo:{geo[0]:.6f}:{geo[1]:.6f}"
                 ev.target_geo = [float(geo[0]), float(geo[1])]
+    # Explicit single-temporal presence adapter: non-damage tasks such as
+    # vegetation use a task_evidence payload produced from current-frame model
+    # predictions. It never contains annotation truth or future observations.
+    task_ev = extras.get("task_evidence")
+    if (spec.question_type == "presence" and isinstance(task_ev, dict)
+            and task_ev.get("task") == "vegetation_presence"):
+        probs = task_ev.get("class_probs")
+        if isinstance(probs, dict) and len(probs) == 2:
+            ev.source = "single_temporal_segmentation"
+            ev.target_label = "vegetation"
+            ev.target_subtype = "vegetation"
+            ev.target_conf = max(float(v) for v in probs.values())
+            ev.class_probs = copy.deepcopy(probs)
+            ev.detection_source = "segformer_ade20k"
+            ev.target_matched = True
+            ev.match_method = "task_presence_soft_occupancy"
+            ev.matching_count = int(task_ev.get("predicted_pixel_count", 0) > 0)
+            ev.scene_text = "YOLO scene detections recorded separately; vegetation presence from SegFormer"
+            ev.objects = [{
+                "label": "vegetation", "subtype": "vegetation",
+                "confidence": ev.target_conf, "class_probs": copy.deepcopy(probs),
+                "bbox": [0.0, 0.0, float(getattr(perception_result, "patch_width", 0)),
+                         float(getattr(perception_result, "patch_height", 0))],
+                "norm_xy": [0.5, 0.5], "observation_id": observation_id,
+            }]
     ev.selected_observation_id = observation_id
     ev.history_observation_ids = [observation_id]
     ev.fusion_reason = "current_observation"
@@ -1242,6 +1267,17 @@ class AgentVqaController:
     def _rule_fallback(self, qid, spec, ev) -> VqaAnswer:
         """VLM 不可用时的规则回退 (计划 3.1 / RQ5)。只用结构化检测证据。"""
         if spec.question_type == "presence":
+            probs = ev.class_probs or {}
+            if (ev.target_label == "vegetation"
+                    and set(probs) == {"vegetation", "no_vegetation"}):
+                p_yes = float(probs["vegetation"])
+                ans = "是" if p_yes >= 0.5 else "否"
+                return VqaAnswer(
+                    qid, spec.question_type, answer=ans,
+                    confidence=max(p_yes, 1.0-p_yes),
+                    decision="answer", reason_code="sufficient_evidence",
+                    evidence=ev.to_dict(),
+                )
             present = bool(ev.target_subtype and
                             (not spec.target_subtypes or ev.target_subtype in spec.target_subtypes))
             ans = "是" if present else "否"

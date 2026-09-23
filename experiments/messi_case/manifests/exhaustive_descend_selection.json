@@ -1,0 +1,965 @@
+[
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r01",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r02",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r03",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r04",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r05",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r07",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r08",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r09",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r10",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r11",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r12",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r13",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r14",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r15",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r17",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r18",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r19",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r20",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r21",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r22",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r23",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0002",
+    "candidate_id": "100_0002_r24",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0002",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r01",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r03",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r04",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r05",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r06",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r07",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r08",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r09",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r10",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r11",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r12",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r13",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r15",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r17",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r18",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r19",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r20",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r21",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r22",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r23",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0003",
+    "candidate_id": "100_0003_r24",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0003",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r01",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r02",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r03",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r04",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r05",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r06",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r07",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r08",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r09",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r10",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r11",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r12",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r13",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r14",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r15",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r16",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r17",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r18",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r20",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r21",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r22",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r23",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0004",
+    "candidate_id": "100_0004_r24",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0004",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r01",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r02",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r03",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r04",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r05",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r06",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r07",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r08",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r09",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r10",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r11",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r12",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r13",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r14",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r16",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r17",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r18",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r19",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r20",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r21",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0042",
+    "candidate_id": "100_0042_r23",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0042",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r01",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r02",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r03",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r04",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r05",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r06",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r07",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r08",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r11",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r13",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r14",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r15",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r16",
+    "answer": "positive",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r17",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r18",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r19",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r20",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r21",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r22",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  },
+  {
+    "sequence": "100_0043",
+    "candidate_id": "100_0043_r23",
+    "answer": "negative",
+    "split": "exhaustive_descend",
+    "scene_group_id": "Agamim_site_0043",
+    "question": "Does the indicated ground region contain visible vegetation, including grass, trees, or shrubs?",
+    "evidence": "MESSI vegetation (class 12) mask agreement at both heights; automatic reference"
+  }
+]

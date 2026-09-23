@@ -1,0 +1,1075 @@
+{
+  "hold": {
+    "correct": 83,
+    "n": 107,
+    "accuracy": 0.7757009345794392,
+    "rechecks": 0,
+    "stop_reasons": {
+      "sufficient_evidence": 107
+    },
+    "first_answer_invalid": 0
+  },
+  "agent": {
+    "correct": 90,
+    "n": 107,
+    "accuracy": 0.8411214953271028,
+    "rechecks": 57,
+    "stop_reasons": {
+      "sufficient_evidence": 107
+    },
+    "first_answer_invalid": 0
+  },
+  "paired": {
+    "corrected": 17,
+    "harmed": 10,
+    "action_taken": 57,
+    "no_action": 50
+  },
+  "by_action": {
+    "0": {
+      "n": 50,
+      "hold_correct": 44,
+      "agent_correct": 44,
+      "corrected": 0,
+      "harmed": 0,
+      "gate_reasons": {
+        "task uncertainty below trigger": 50
+      }
+    },
+    "1": {
+      "n": 57,
+      "hold_correct": 39,
+      "agent_correct": 46,
+      "corrected": 17,
+      "harmed": 10,
+      "gate_reasons": {
+        "positive task-conditioned utility": 57
+      }
+    }
+  },
+  "by_truth_class": {
+    "yes": {
+      "n": 52,
+      "hold_correct": 43,
+      "agent_correct": 40,
+      "rechecks": 28
+    },
+    "no": {
+      "n": 55,
+      "hold_correct": 40,
+      "agent_correct": 50,
+      "rechecks": 29
+    }
+  },
+  "balanced_accuracy": {
+    "hold": 0.7770979020979021,
+    "agent": 0.8391608391608392
+  },
+  "by_sequence": {
+    "100_0002": {
+      "n": 22,
+      "hold_correct": 16,
+      "agent_correct": 19,
+      "rechecks": 10,
+      "corrected": 4,
+      "harmed": 1
+    },
+    "100_0003": {
+      "n": 21,
+      "hold_correct": 15,
+      "agent_correct": 17,
+      "rechecks": 13,
+      "corrected": 5,
+      "harmed": 3
+    },
+    "100_0004": {
+      "n": 23,
+      "hold_correct": 21,
+      "agent_correct": 20,
+      "rechecks": 13,
+      "corrected": 1,
+      "harmed": 2
+    },
+    "100_0042": {
+      "n": 21,
+      "hold_correct": 15,
+      "agent_correct": 16,
+      "rechecks": 10,
+      "corrected": 3,
+      "harmed": 2
+    },
+    "100_0043": {
+      "n": 20,
+      "hold_correct": 16,
+      "agent_correct": 18,
+      "rechecks": 11,
+      "corrected": 4,
+      "harmed": 2
+    }
+  },
+  "per_sample": [
+    {
+      "sample_id": "100_0002_r01",
+      "gt": "yes",
+      "sequence_id": "100_0002",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0002_r02",
+      "gt": "yes",
+      "sequence_id": "100_0002",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0002_r03",
+      "gt": "no",
+      "sequence_id": "100_0002",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0002_r04",
+      "gt": "yes",
+      "sequence_id": "100_0002",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0002_r05",
+      "gt": "yes",
+      "sequence_id": "100_0002",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0002_r07",
+      "gt": "yes",
+      "sequence_id": "100_0002",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0002_r08",
+      "gt": "yes",
+      "sequence_id": "100_0002",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0002_r09",
+      "gt": "no",
+      "sequence_id": "100_0002",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0002_r10",
+      "gt": "yes",
+      "sequence_id": "100_0002",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0002_r11",
+      "gt": "yes",
+      "sequence_id": "100_0002",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0002_r12",
+      "gt": "yes",
+      "sequence_id": "100_0002",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0002_r13",
+      "gt": "no",
+      "sequence_id": "100_0002",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0002_r14",
+      "gt": "no",
+      "sequence_id": "100_0002",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0002_r15",
+      "gt": "no",
+      "sequence_id": "100_0002",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0002_r17",
+      "gt": "no",
+      "sequence_id": "100_0002",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0002_r18",
+      "gt": "yes",
+      "sequence_id": "100_0002",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0002_r19",
+      "gt": "no",
+      "sequence_id": "100_0002",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0002_r20",
+      "gt": "no",
+      "sequence_id": "100_0002",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0002_r21",
+      "gt": "no",
+      "sequence_id": "100_0002",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0002_r22",
+      "gt": "no",
+      "sequence_id": "100_0002",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0002_r23",
+      "gt": "no",
+      "sequence_id": "100_0002",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0002_r24",
+      "gt": "no",
+      "sequence_id": "100_0002",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0003_r01",
+      "gt": "yes",
+      "sequence_id": "100_0003",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0003_r03",
+      "gt": "no",
+      "sequence_id": "100_0003",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0003_r04",
+      "gt": "no",
+      "sequence_id": "100_0003",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0003_r05",
+      "gt": "yes",
+      "sequence_id": "100_0003",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0003_r06",
+      "gt": "yes",
+      "sequence_id": "100_0003",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0003_r07",
+      "gt": "yes",
+      "sequence_id": "100_0003",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0003_r08",
+      "gt": "yes",
+      "sequence_id": "100_0003",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0003_r09",
+      "gt": "yes",
+      "sequence_id": "100_0003",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0003_r10",
+      "gt": "no",
+      "sequence_id": "100_0003",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0003_r11",
+      "gt": "yes",
+      "sequence_id": "100_0003",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0003_r12",
+      "gt": "yes",
+      "sequence_id": "100_0003",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0003_r13",
+      "gt": "no",
+      "sequence_id": "100_0003",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0003_r15",
+      "gt": "yes",
+      "sequence_id": "100_0003",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0003_r17",
+      "gt": "yes",
+      "sequence_id": "100_0003",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0003_r18",
+      "gt": "yes",
+      "sequence_id": "100_0003",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0003_r19",
+      "gt": "no",
+      "sequence_id": "100_0003",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0003_r20",
+      "gt": "no",
+      "sequence_id": "100_0003",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0003_r21",
+      "gt": "yes",
+      "sequence_id": "100_0003",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0003_r22",
+      "gt": "yes",
+      "sequence_id": "100_0003",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0003_r23",
+      "gt": "yes",
+      "sequence_id": "100_0003",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0003_r24",
+      "gt": "yes",
+      "sequence_id": "100_0003",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0004_r01",
+      "gt": "yes",
+      "sequence_id": "100_0004",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0004_r02",
+      "gt": "yes",
+      "sequence_id": "100_0004",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0004_r03",
+      "gt": "yes",
+      "sequence_id": "100_0004",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0004_r04",
+      "gt": "yes",
+      "sequence_id": "100_0004",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0004_r05",
+      "gt": "yes",
+      "sequence_id": "100_0004",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0004_r06",
+      "gt": "yes",
+      "sequence_id": "100_0004",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0004_r07",
+      "gt": "no",
+      "sequence_id": "100_0004",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0004_r08",
+      "gt": "no",
+      "sequence_id": "100_0004",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0004_r09",
+      "gt": "no",
+      "sequence_id": "100_0004",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0004_r10",
+      "gt": "no",
+      "sequence_id": "100_0004",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0004_r11",
+      "gt": "no",
+      "sequence_id": "100_0004",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0004_r12",
+      "gt": "no",
+      "sequence_id": "100_0004",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0004_r13",
+      "gt": "no",
+      "sequence_id": "100_0004",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0004_r14",
+      "gt": "no",
+      "sequence_id": "100_0004",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0004_r15",
+      "gt": "yes",
+      "sequence_id": "100_0004",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0004_r16",
+      "gt": "no",
+      "sequence_id": "100_0004",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0004_r17",
+      "gt": "no",
+      "sequence_id": "100_0004",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0004_r18",
+      "gt": "yes",
+      "sequence_id": "100_0004",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0004_r20",
+      "gt": "no",
+      "sequence_id": "100_0004",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0004_r21",
+      "gt": "yes",
+      "sequence_id": "100_0004",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0004_r22",
+      "gt": "no",
+      "sequence_id": "100_0004",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0004_r23",
+      "gt": "no",
+      "sequence_id": "100_0004",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0004_r24",
+      "gt": "no",
+      "sequence_id": "100_0004",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0042_r01",
+      "gt": "yes",
+      "sequence_id": "100_0042",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0042_r02",
+      "gt": "no",
+      "sequence_id": "100_0042",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0042_r03",
+      "gt": "no",
+      "sequence_id": "100_0042",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0042_r04",
+      "gt": "no",
+      "sequence_id": "100_0042",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0042_r05",
+      "gt": "no",
+      "sequence_id": "100_0042",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0042_r06",
+      "gt": "no",
+      "sequence_id": "100_0042",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0042_r07",
+      "gt": "yes",
+      "sequence_id": "100_0042",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0042_r08",
+      "gt": "yes",
+      "sequence_id": "100_0042",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0042_r09",
+      "gt": "yes",
+      "sequence_id": "100_0042",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0042_r10",
+      "gt": "yes",
+      "sequence_id": "100_0042",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0042_r11",
+      "gt": "yes",
+      "sequence_id": "100_0042",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0042_r12",
+      "gt": "yes",
+      "sequence_id": "100_0042",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0042_r13",
+      "gt": "yes",
+      "sequence_id": "100_0042",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0042_r14",
+      "gt": "yes",
+      "sequence_id": "100_0042",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0042_r16",
+      "gt": "no",
+      "sequence_id": "100_0042",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0042_r17",
+      "gt": "yes",
+      "sequence_id": "100_0042",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0042_r18",
+      "gt": "yes",
+      "sequence_id": "100_0042",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0042_r19",
+      "gt": "yes",
+      "sequence_id": "100_0042",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0042_r20",
+      "gt": "yes",
+      "sequence_id": "100_0042",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0042_r21",
+      "gt": "no",
+      "sequence_id": "100_0042",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0042_r23",
+      "gt": "yes",
+      "sequence_id": "100_0042",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0043_r01",
+      "gt": "no",
+      "sequence_id": "100_0043",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0043_r02",
+      "gt": "no",
+      "sequence_id": "100_0043",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0043_r03",
+      "gt": "no",
+      "sequence_id": "100_0043",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0043_r04",
+      "gt": "no",
+      "sequence_id": "100_0043",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0043_r05",
+      "gt": "no",
+      "sequence_id": "100_0043",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0043_r06",
+      "gt": "no",
+      "sequence_id": "100_0043",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0043_r07",
+      "gt": "no",
+      "sequence_id": "100_0043",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0043_r08",
+      "gt": "no",
+      "sequence_id": "100_0043",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0043_r11",
+      "gt": "no",
+      "sequence_id": "100_0043",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0043_r13",
+      "gt": "yes",
+      "sequence_id": "100_0043",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0043_r14",
+      "gt": "yes",
+      "sequence_id": "100_0043",
+      "hold": "yes",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0043_r15",
+      "gt": "yes",
+      "sequence_id": "100_0043",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0043_r16",
+      "gt": "yes",
+      "sequence_id": "100_0043",
+      "hold": "no",
+      "agent": "yes",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0043_r17",
+      "gt": "no",
+      "sequence_id": "100_0043",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0043_r18",
+      "gt": "no",
+      "sequence_id": "100_0043",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 0,
+      "gate_reason": "task uncertainty below trigger"
+    },
+    {
+      "sample_id": "100_0043_r19",
+      "gt": "no",
+      "sequence_id": "100_0043",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0043_r20",
+      "gt": "no",
+      "sequence_id": "100_0043",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0043_r21",
+      "gt": "no",
+      "sequence_id": "100_0043",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0043_r22",
+      "gt": "no",
+      "sequence_id": "100_0043",
+      "hold": "yes",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    },
+    {
+      "sample_id": "100_0043_r23",
+      "gt": "no",
+      "sequence_id": "100_0043",
+      "hold": "no",
+      "agent": "no",
+      "rechecks": 1,
+      "gate_reason": "positive task-conditioned utility"
+    }
+  ]
+}

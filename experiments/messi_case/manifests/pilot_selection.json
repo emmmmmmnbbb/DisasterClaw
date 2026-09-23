@@ -1,0 +1,6 @@
+[
+  {"sequence":"100_0001","candidate_id":"100_0001_r02","answer":"positive","split":"pilot","scene_group_id":"Agamim_roundabout"},
+  {"sequence":"100_0001","candidate_id":"100_0001_r04","answer":"negative","split":"pilot","scene_group_id":"Agamim_roundabout"},
+  {"sequence":"100_0001","candidate_id":"100_0001_r15","answer":"positive","split":"pilot","scene_group_id":"Agamim_roundabout"},
+  {"sequence":"100_0001","candidate_id":"100_0001_r17","answer":"negative","split":"pilot","scene_group_id":"Agamim_roundabout"}
+]

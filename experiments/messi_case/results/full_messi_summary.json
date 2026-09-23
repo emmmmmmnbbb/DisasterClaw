@@ -1,0 +1,277 @@
+{
+  "scope": "all eligible 100-to-30-m paired vegetation regions in the 2525-image release",
+  "fixed_by_stratum": {
+    "full_descend": {
+      "n": 280,
+      "correct": {
+        "A": 184,
+        "B": 235,
+        "C": 237
+      },
+      "C_B_help": 11,
+      "C_B_harm": 9
+    },
+    "full_train_paths": {
+      "n": 95,
+      "correct": {
+        "A": 79,
+        "B": 86,
+        "C": 83
+      },
+      "C_B_help": 1,
+      "C_B_harm": 4
+    },
+    "full_test_paths": {
+      "n": 34,
+      "correct": {
+        "A": 24,
+        "B": 20,
+        "C": 21
+      },
+      "C_B_help": 1,
+      "C_B_harm": 0
+    }
+  },
+  "fixed_total": {
+    "n": 409,
+    "correct": {
+      "A": 287,
+      "B": 341,
+      "C": 341
+    },
+    "C_B_help": 13,
+    "C_B_harm": 13,
+    "C_minus_B_cluster_interval": {
+      "estimate": 0.0,
+      "cluster_n": 17,
+      "lower_95": -0.033419023136246784,
+      "upper_95": 0.03935185185185185,
+      "method": "cluster bootstrap percentile, 10000 draws"
+    }
+  },
+  "replay_by_stratum": {
+    "full_descend": {
+      "n": 280,
+      "hold_correct": 212,
+      "agent_correct": 232,
+      "rechecks": 139,
+      "corrected": 34,
+      "harmed": 14,
+      "by_truth_class": {
+        "yes": {
+          "n": 128,
+          "hold_correct": 87,
+          "agent_correct": 86,
+          "rechecks": 59
+        },
+        "no": {
+          "n": 152,
+          "hold_correct": 125,
+          "agent_correct": 146,
+          "rechecks": 80
+        }
+      },
+      "by_sequence": {
+        "100_0002": {
+          "n": 22,
+          "hold_correct": 16,
+          "agent_correct": 19,
+          "rechecks": 10,
+          "corrected": 4,
+          "harmed": 1
+        },
+        "100_0003": {
+          "n": 21,
+          "hold_correct": 15,
+          "agent_correct": 17,
+          "rechecks": 13,
+          "corrected": 5,
+          "harmed": 3
+        },
+        "100_0004": {
+          "n": 23,
+          "hold_correct": 21,
+          "agent_correct": 20,
+          "rechecks": 13,
+          "corrected": 1,
+          "harmed": 2
+        },
+        "100_0006": {
+          "n": 20,
+          "hold_correct": 13,
+          "agent_correct": 18,
+          "rechecks": 11,
+          "corrected": 6,
+          "harmed": 1
+        },
+        "100_0031": {
+          "n": 23,
+          "hold_correct": 15,
+          "agent_correct": 17,
+          "rechecks": 6,
+          "corrected": 2,
+          "harmed": 0
+        },
+        "100_0035": {
+          "n": 23,
+          "hold_correct": 15,
+          "agent_correct": 15,
+          "rechecks": 7,
+          "corrected": 0,
+          "harmed": 0
+        },
+        "100_0036": {
+          "n": 21,
+          "hold_correct": 20,
+          "agent_correct": 19,
+          "rechecks": 15,
+          "corrected": 0,
+          "harmed": 1
+        },
+        "100_0037": {
+          "n": 20,
+          "hold_correct": 14,
+          "agent_correct": 16,
+          "rechecks": 9,
+          "corrected": 2,
+          "harmed": 0
+        },
+        "100_0038": {
+          "n": 20,
+          "hold_correct": 13,
+          "agent_correct": 18,
+          "rechecks": 9,
+          "corrected": 5,
+          "harmed": 0
+        },
+        "100_0040": {
+          "n": 24,
+          "hold_correct": 20,
+          "agent_correct": 20,
+          "rechecks": 14,
+          "corrected": 1,
+          "harmed": 1
+        },
+        "100_0041": {
+          "n": 22,
+          "hold_correct": 19,
+          "agent_correct": 19,
+          "rechecks": 11,
+          "corrected": 1,
+          "harmed": 1
+        },
+        "100_0042": {
+          "n": 21,
+          "hold_correct": 15,
+          "agent_correct": 16,
+          "rechecks": 10,
+          "corrected": 3,
+          "harmed": 2
+        },
+        "100_0043": {
+          "n": 20,
+          "hold_correct": 16,
+          "agent_correct": 18,
+          "rechecks": 11,
+          "corrected": 4,
+          "harmed": 2
+        }
+      }
+    },
+    "full_train_paths": {
+      "n": 95,
+      "hold_correct": 72,
+      "agent_correct": 75,
+      "rechecks": 45,
+      "corrected": 9,
+      "harmed": 6,
+      "by_truth_class": {
+        "yes": {
+          "n": 83,
+          "hold_correct": 67,
+          "agent_correct": 66,
+          "rechecks": 37
+        },
+        "no": {
+          "n": 12,
+          "hold_correct": 5,
+          "agent_correct": 9,
+          "rechecks": 8
+        }
+      },
+      "by_sequence": {
+        "A": {
+          "n": 32,
+          "hold_correct": 22,
+          "agent_correct": 25,
+          "rechecks": 18,
+          "corrected": 4,
+          "harmed": 1
+        },
+        "B": {
+          "n": 37,
+          "hold_correct": 26,
+          "agent_correct": 24,
+          "rechecks": 19,
+          "corrected": 3,
+          "harmed": 5
+        },
+        "C": {
+          "n": 26,
+          "hold_correct": 24,
+          "agent_correct": 26,
+          "rechecks": 8,
+          "corrected": 2,
+          "harmed": 0
+        }
+      }
+    },
+    "full_test_paths": {
+      "n": 34,
+      "hold_correct": 25,
+      "agent_correct": 22,
+      "rechecks": 14,
+      "corrected": 1,
+      "harmed": 4,
+      "by_truth_class": {
+        "yes": {
+          "n": 14,
+          "hold_correct": 7,
+          "agent_correct": 6,
+          "rechecks": 9
+        },
+        "no": {
+          "n": 20,
+          "hold_correct": 18,
+          "agent_correct": 16,
+          "rechecks": 5
+        }
+      },
+      "by_sequence": {
+        "IrYamim": {
+          "n": 34,
+          "hold_correct": 25,
+          "agent_correct": 22,
+          "rechecks": 14,
+          "corrected": 1,
+          "harmed": 4
+        }
+      }
+    }
+  },
+  "replay_total": {
+    "n": 409,
+    "hold_correct": 309,
+    "agent_correct": 329,
+    "rechecks": 198,
+    "corrected": 44,
+    "harmed": 24,
+    "agent_minus_hold_cluster_interval": {
+      "estimate": 0.0488997555012225,
+      "cluster_n": 17,
+      "lower_95": 0.0049382716049382715,
+      "upper_95": 0.0966183574879227,
+      "method": "cluster bootstrap percentile, 10000 draws"
+    }
+  }
+}
