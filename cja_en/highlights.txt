@@ -1,6 +1,0 @@
-Draft highlights; journal-specific requirements remain to be verified.
-
-- DisasterClaw turns disaster imagery into a map-anchored inspection environment.
-- Annotations and geometry ground four task families with deterministic answers.
-- Automated checks and dual review produce 160 tasks over 44 geographic regions.
-- Traceable episodes expose task-dependent trade-offs between detail and coverage.

@@ -1,5 +1,0 @@
-episodes_jsonl=/home/lc/disasterclaw/runs/benchmarks/changeos_binary/revision_matched_view_repeat0_shard1of4_full_20260920/episodes.jsonl
-run_log=/home/lc/disasterclaw/runs/benchmarks/changeos_binary/revision_matched_logs_full_20260920/repeat0_shard1.log
-The source run directory contains the JSONL/log only; the rendered PNGs and detection
-overlays were recovered from backend/outputs and copied into this folder under the
-damage_pre/damage_fixed/damage_changed names.

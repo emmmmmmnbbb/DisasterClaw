@@ -1,20 +1,17 @@
-# 双栏论文语言润色稿
+# DisasterClaw CJA manuscript
 
-本目录是 2026-09-22 创建的独立润色版本。原始 `shuanglan/main.tex`、`shuanglan/main.pdf` 和 `cja_en/` 均未修改。
+This is the single maintained LaTeX manuscript project. The entry point, section sources, tables, figures, appendices, and bibliography are all stored in this directory; compilation does not depend on another manuscript directory.
 
-- `main.pdf`：加入 MESSI 真实航空影像案例、公开样本系统扩展和智能体离线回放后的双栏稿。
-- `main.tex`：独立入口，包含润色后的摘要。
-- `sections/`：9 个正文章节的润色副本。
-- `language_changes.diff`：相对原稿的逐行修改记录，仅供阅读比较。
+Build from this directory:
 
-原有语言润色重点为摘要、引言的研究问题表述、观察和复查术语、方法与结果的长句以及局限性和结论。现另加入独立的 MESSI 案例及智能体离线回放小节、表、图、引用和相应的摘要／引言／局限性／结论说明。案例的原始日志、样本、真值、评分和复现步骤在 `../../experiments/messi_case/`，与原有 xBD 主实验分开统计。
+```sh
+latexmk -pdf -interaction=nonstopmode -halt-on-error main.tex
+```
 
-图像、表格、附录和参考文献继续引用 `../../cja_en/`，因此本目录不能单独脱离仓库使用。作者、基金、利益冲突等待填写声明沿用原稿，本版本不是已完成全部投稿手续的终稿。MESSI 离线实验独立于原 xBD 主实验。
-
-从仓库根目录编译：
+Or build from the repository root:
 
 ```sh
 latexmk -pdf -cd -interaction=nonstopmode -halt-on-error shuanglan/polished/main.tex
 ```
 
-MESSI 初始案例为 12 个冠层区域；后续以官方 2,525 张影像全集为来源，对符合固定 100→30 米配对规则的 409 个植被区域进行实验，两组任务定义不同，未合并统计。全集固定观测对照中，真实低空图与高空原图裁剪均为 341/409 正确。原生 DisasterClaw `presence` 规则在 409 个区域上均不复查；明确任务适配的控制器自主复查 198/409 次，配对正确数从 309/409 增至 329/409，但在新增 IrYamim 测试路径上从 25/34 降至 22/34。所有案例均为预设候选帧的离线回放，不验证实飞、灾损识别或未经适配的原始智能体策略。完整方法、日志和范围说明见 `../../experiments/messi_case/README.md`。
+The PDF is written to `main.pdf`. MESSI experiment records and reproducibility materials remain under `../../experiments/messi_case/`; they are not required to compile the manuscript.

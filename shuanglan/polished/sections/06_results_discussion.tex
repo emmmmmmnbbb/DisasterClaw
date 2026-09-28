@@ -87,7 +87,7 @@ The preceding experiments change observations by resampling orthographic xBD ima
 
 The case contains 12 fixed regions, four each from MESSI sequences \texttt{100\_0002}, \texttt{100\_0003}, and \texttt{100\_0042}, with six positive and six negative answers. Four regions from \texttt{100\_0001} served only as pilot items and were excluded. For each evaluation sequence, we selected the frames nearest 100 and 30~m in the provided height relative to takeoff: the observed high range was 99.9--100.2~m and the low range 29.8--30.3~m. We matched local image features across the two frames, estimated a homography, and visually checked the paired crops and labels before model outputs. These values are relative heights, not calibrated local above-ground distances. Frame selection by height defines an offline review; it does not reconstruct a flown descent decision.
 
-Each item first presented Qwen2.5-VL-7B-Instruct with the high image and a red outline of the region. The resulting answer was copied into three isolated second-turn histories. Branch A repeated the same outlined high image; B supplied an 800$\times$800-pixel enlargement of the corresponding area cropped from the original high-resolution file; C supplied an 800$\times$800-pixel crop from the real low image. B and C cover approximately the same ground footprint, while A retains the wider scene. All branches used the same question, second prompt, greedy decoding, 16-token output limit, and one second answer call. Ground-truth masks and answers were withheld from prompts. All 12 items completed their planned first and three branch calls; \texttt{UNCERTAIN} and invalid answers counted as incorrect.
+Each item first presented Qwen2.5-VL-7B-Instruct with the high image and a red outline of the region. The resulting answer was copied into three isolated second-turn histories. Branch A repeated the same outlined high image. B was an 800$\times$800-pixel digital enlargement of the corresponding crop from the approximately 100-m source image; it magnifies existing pixels and adds no new source detail. C was an 800$\times$800-pixel crop from a separate image acquired at approximately 30~m. B and C show approximately the same ground footprint at matched display dimensions, but they are different source images. All branches used the same question, second prompt, greedy decoding, 16-token output limit, and one second answer call. Ground-truth masks and answers were withheld from prompts. All 12 items completed their planned first and three branch calls; \texttt{UNCERTAIN} and invalid answers counted as incorrect.
 
 The primary paired comparison is C versus B (Table~\ref{tab:messi-case}). C answered 11/12 correctly (91.67\%), versus 10/12 (83.33\%) for B, a descriptive difference of $+8.33$ percentage points. Relative to B, the new image made two incorrect answers correct and one correct answer incorrect. Relative to the first high-image answer, C corrected five items and harmed one. A answered 5/12 (41.67\%), versus 11/12 for C, but this secondary contrast also changes contextual extent. At the sequence level, B and C were tied at 3/4 in \texttt{100\_0002} and 4/4 in \texttt{100\_0003}; C was 4/4 versus B's 3/4 in \texttt{100\_0042}. Thus the aggregate difference is one answer among twelve and should not be read as a stable expected gain.
 
@@ -95,7 +95,7 @@ Figure~\ref{fig:messi-case} shows both directions of the paired outcome. In \tex
 
 \begin{table}[htbp]
 \centering\small
-\caption{Exploratory MESSI case on 12 fixed regions from three sequences (four per sequence; pilot excluded). A repeats the high image, B digitally enlarges its corresponding original-resolution crop, and C uses a real lower-altitude crop. All use the same two-turn budget and the first answer; \texttt{UNCERTAIN} counts incorrect. Corrections and harms compare each final answer with the first answer.}
+\caption{Exploratory MESSI case on 12 fixed regions from three sequences (four per sequence; pilot excluded). A repeats the approximately 100-m image, B digitally enlarges its corresponding high-image crop, and C uses a crop from a separate approximately 30-m image. All use the same two-turn budget and first answer; B and C cover approximately the same ground footprint and are displayed at the same size. \texttt{UNCERTAIN} counts incorrect. Corrections and harms compare each final answer with the first answer.}
 \label{tab:messi-case}
 \begin{tabular}{lrrrrr}
 \toprule
@@ -112,7 +112,7 @@ C: real low crop & 11/12 & 91.67 & 5 & 1 & 0\\
 \begin{figure*}[!t]
 \centering
 \includegraphics[width=\textwidth]{figures/messi_case_pairs.png}
-\caption{MESSI paired examples from the frozen case. The red outline on A identifies the same ground region shown as a full crop in B and C; A is the repeated high image. High and low frames were selected offline at 100.2 and 30.2~m relative altitude for \texttt{100\_0042\_r16} (top), and 99.9 and 30.3~m for \texttt{100\_0002\_r02} (bottom). Text gives second-turn model answers and reference answers (GT). B-to-C is a correction in the top row and a harm in the bottom row. Source images: MESSI~\cite{pinkovich2025messi}, CC BY-NC-SA 3.0.}
+\caption{MESSI paired examples from the frozen case. A is the repeated high-altitude view with the target region marked. B is a digital enlargement of that region from the approximately 100-m image; C is the corresponding crop from a separate approximately 30-m image. B and C show approximately the same ground footprint at the same display size, but are not the same image: B enlarges existing high-view pixels, whereas C is a new lower-altitude observation. Frames were selected offline at 100.2 and 30.2~m relative altitude for \texttt{100\_0042\_r16} (top), and 99.9 and 30.3~m for \texttt{100\_0002\_r02} (bottom). Text gives second-turn model and reference answers (GT). The top row shows B-to-C correction; the bottom row shows B-to-C harm. Source images: MESSI~\cite{pinkovich2025messi}, CC BY-NC-SA 3.0.}
 \label{fig:messi-case}
 \end{figure*}
 
@@ -235,16 +235,17 @@ The 409-item hold arm makes only the first answer call. We therefore added a mat
 \centering\small
 \caption{Single-temporal DisasterClaw replay with the legacy YOLO and SegFormer models on all eligible MESSI regions. The hold and agent arms share the first high-view predictions. Rechecks count controller-authorized low-frame releases; corrected/harmed are paired terminal-answer changes.}
 \label{tab:messi-native-agent}
-\begin{tabular}{lrrrrr}
+\footnotesize
+\begin{tabularx}{\dimexpr\linewidth-3pt\relax}{@{}p{0.95in}*{5}{>{\centering\arraybackslash}X}@{}}
 \toprule
-Source & $n$ & Hold & Agent & Rechecks & Corrected/harmed\\
+Source & $n$ & Hold & Agent & Recheck & C / H\\
 \midrule
 Descend grid & 280 & 259 & 260 & 12 & 3/2\\
 Agamim paths & 95 & 85 & 87 & 7 & 3/1\\
 IrYamim test path & 34 & 25 & 25 & 1 & 0/0\\
 Combined & 409 & 369 & 372 & 20 & 6/3\\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
 
 Table~\ref{tab:messi-trigger-examples} follows one correction and one harm
@@ -254,32 +255,34 @@ environment retains the original view, while the real-low environment opens
 the pre-registered lower frame. Full event payloads and controller records are
 provided in the machine-readable experiment trajectory file.
 
-\begin{table}[htbp]
-\centering\scriptsize
-\caption{Matched comparison restricted to the 20 first-view-triggered regions. Hold is the shared initial high-view answer. Repeat-high and real-low both receive a second perception and answer call after the same controller action and use a one-action budget. Corrected/harmed compare real-low with repeat-high. The SegFormer task score is uncalibrated.}
+\begin{table*}[!t]
+\centering\small
+\caption{Matched, equal-budget comparison on the 20 first-view-triggered regions. Both second-observation arms share the initial high-view output, controller trigger, one-action budget, and two answer calls; only the second image differs. Corrected and harmed compare real-low with repeat-high. Scores are uncalibrated.}
 \label{tab:messi-trigger-control}
-\begin{tabularx}{\linewidth}{lXXXX}
+\footnotesize
+\begin{tabularx}{\textwidth}{@{}l*{7}{>{\centering\arraybackslash}X}@{}}
 \toprule
-Triggered set & $n$ & High / repeat / low correct & Low corrections / harms & Both unchanged\\
+Triggered set & $n$ & Initial high correct & Repeat-high correct & Real-low correct & Corrected & Harmed & Unchanged: correct / wrong\\
 \midrule
-All triggered regions & 20 & 12 / 12 / 15 & 6 / 3 & 9 correct / 2 wrong\\
+All regions & 20 & 12 & 12 & 15 & 6 & 3 & 9 / 2\\
 \bottomrule
 \end{tabularx}
-\end{table}
+\end{table*}
 
-\begin{table}[htbp]
-\centering\scriptsize
-\caption{Representative complete decision traces from the matched triggered cohort. Each branch terminates with \texttt{sufficient\_evidence} after two answer calls; action budget changes from one to zero. The repeated-high branch recomputes the same high ROI, and the real-low branch receives its paired 30-m ROI.}
+\begin{table*}[!t]
+\centering\small
+\caption{Representative complete decision traces from the matched triggered cohort. Both branches use two answer calls, one controller-authorized descend request with zero horizontal displacement, and terminate with \texttt{sufficient\_evidence} after the one-action budget is consumed.}
 \label{tab:messi-trigger-examples}
-\begin{tabularx}{\linewidth}{lXXXXX}
+\footnotesize
+\begin{tabularx}{\textwidth}{@{}l*{6}{>{\centering\arraybackslash}X}@{}}
 \toprule
-Case / reference & High score / answer & Gate & Repeat-high & Real low & Outcome\\
+Case / truth & High: score / answer & Gate: entropy / descent & Repeat-high: score / answer & Real-low: score / answer & Calls / terminal stop & Effect\\
 \midrule
-\texttt{100\_0041\_r11} / YES & 0.218 / NO & $U=0.757$, $\Delta z=-70.0$ m & 0.218 / NO & 0.809 / YES & Fix\\
-\texttt{100\_0004\_r08} / NO & 0.477 / NO & $U=0.998$, $\Delta z=-70.1$ m & 0.477 / NO & 0.500 / YES & Harm\\
+\texttt{100\_0041\_r11} / YES & 0.218 / NO & $U=0.757$; $\Delta z=-70.0$ m & 0.218 / NO & 0.809 / YES & 2; sufficient evidence & Corrected\\
+\texttt{100\_0004\_r08} / NO & 0.477 / NO & $U=0.998$; $\Delta z=-70.1$ m & 0.477 / NO & 0.500 / YES & 2; sufficient evidence & Harmed\\
 \bottomrule
 \end{tabularx}
-\end{table}
+\end{table*}
 
 The 34 IrYamim regions belong to the MESSI Test split, but the same source
 regions had already appeared in earlier Qwen-only MESSI explorations. The
@@ -295,7 +298,8 @@ Table~\ref{tab:final-policies} reports the prespecified complete-policy runs. T1
 \centering\small
 \caption{Primary frozen policy operating points on the same 160 questions under three generation repeats. Rechecks are executed dedicated actions and exclude search.}
 \label{tab:final-policies}
-\begin{tabular}{lrrr}
+\footnotesize
+\begin{tabularx}{\linewidth}{@{}Xrrr@{}}
 \toprule
 Policy & Correct / 480 & Accuracy (\%) & Rechecks\\
 \midrule
@@ -305,7 +309,7 @@ A2\_ALWAYS & 307 & 63.96 & 923\\
 A3U\_RAW\_ENTROPY & 339 & 70.63 & 626\\
 T1\_TASK & 360 & 75.00 & 161\\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
 
 The 2.71-point T1\_TASK advantage over A0\_NO\_RECHECK is an observed difference of 13 correct question--repeat instances, not 13 distinct questions. Its 98.75\% multiplicity-adjusted interval includes zero (Table~\ref{tab:final-contrasts}), as does the comparison with raw entropy. The positive interval against A2\_ALWAYS supports a difference between these complete policies on the sampled ROIs; it does not show that T1's individual changed observations caused that difference.
@@ -314,7 +318,8 @@ The 2.71-point T1\_TASK advantage over A0\_NO\_RECHECK is an observed difference
 \centering\small
 \caption{Prespecified paired T1\_TASK terminal-accuracy contrasts in percentage points. The 98.75\% ROI-cluster intervals adjust for four comparisons.}
 \label{tab:final-contrasts}
-\begin{tabular}{lrr}
+\footnotesize
+\begin{tabularx}{\linewidth}{@{}Xrr@{}}
 \toprule
 Contrast & Difference & 98.75\% interval\\
 \midrule
@@ -323,7 +328,7 @@ T1 minus A1\_RANDOM & $+7.08$ & $[+0.01,+14.69]$\\
 T1 minus A2\_ALWAYS & $+11.04$ & $[+0.86,+21.38]$\\
 T1 minus A3U\_RAW\_ENTROPY & $+4.38$ & $[-4.33,+12.96]$\\
 \bottomrule
-\end{tabular}
+\end{tabularx}
 \end{table}
 
 At the terminal-episode level, presence is unchanged between T1 and A0\_NO\_RECHECK, damage and count are numerically higher for T1, and spatial accuracy is lower (Table~\ref{tab:shortcut-controls}). Performance also varies by event: T1 versus A0 is 54.86\% versus 58.33\% in Hurricane Michael, 84.31\% versus 77.12\% in Moore, and 83.06\% versus 79.23\% in Nepal. Together, the matched-call results and complete-policy comparisons characterize task-dependent corrections and harms. The interval for the A0 contrast and incomplete cost measurements limit conclusions about the overall effectiveness and efficiency of the recheck policy.

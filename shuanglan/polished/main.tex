@@ -1,22 +1,20 @@
 \documentclass[final,5p,times,twocolumn]{elsarticle}
 
 % Edited sections are local; figures, tables and appendices are shared.
-\makeatletter
-\def\input@path{{../../cja_en/}}
-\makeatother
-\graphicspath{{../../cja_en/}}
+\graphicspath{{./}}
 
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage{lmodern}
 \usepackage{amsmath,amssymb,booktabs,graphicx,tabularx}
+\usepackage{array}
 \usepackage{xcolor,tikz,pgfplots}
 \usetikzlibrary{arrows.meta,positioning,fit,shapes.geometric,calc}
 \pgfplotsset{compat=1.18}
 \usepackage{etoolbox}
 % Compact table typography for the narrow two-column measure.
 \AtBeginEnvironment{tabular}{\scriptsize\setlength{\tabcolsep}{2pt}}
-\AtBeginEnvironment{tabularx}{\scriptsize\setlength{\tabcolsep}{2pt}}
+\AtBeginEnvironment{tabularx}{\footnotesize\setlength{\tabcolsep}{3pt}}
 \usepackage[hidelinks]{hyperref}
 \usepackage{xurl}
 \usepackage{microtype}
@@ -32,14 +30,14 @@
 
 \begin{document}
 \begin{frontmatter}
-\title{DisasterClaw: A georeferenced imagery benchmark for task-dependent UAV disaster inspection}
+\title{DisasterClaw: A task-centric benchmark for active observation in embodied UAV inspection}
 \author{Anonymous authors}
 \affiliation{organization={Anonymous submission}}
 \begin{abstract}
-Aerial disaster inspection requires balancing local detail against regional coverage. DisasterClaw evaluates this trade-off using paired, georeferenced xBD imagery. Each question retains a fixed geographic region and annotation-derived answer as simulated vehicle actions change the observation. Episode records link actions, predicted evidence, and answers. The human-reviewed final set contains 160 presence, damage, count, and spatial questions across 44 regions in three events. A development-fitted task-majority baseline achieves 57.50\% accuracy; text-only and permitted-metadata controls achieve 28.75\% and 36.25\%. At 161 recheck transitions selected by the task-conditioned policy T1, changed-view accuracy is 59.63\%, compared with 50.31\% for a fixed-view control with a matched answer call (difference: $+9.32$ percentage points; 95\% region-clustered interval: $[-2.00,+21.74]$). The paired outcomes include 36 corrections and 21 harms. Across complete episodes, T1 achieves 75.00\% accuracy, compared with 72.29\% for a search-enabled policy without dedicated rechecks; the adjusted difference interval includes zero. On 409 eligible pairs from the full 2,525-image MESSI release, a single-temporal adaptation using existing YOLO and SegFormer models with DisasterClaw's evidence and recheck controllers requests 20 lower-altitude observations and changes paired accuracy from 369/409 to 372/409 (six corrections, three harms). On the 20 action-triggered MESSI items, a matched repeat-high control receives the same second-call budget as the real-low arm and answers 12/20 correctly, compared with 15/20 for the real-low arm (six corrections, three harms). The 34 IrYamim Test regions had appeared in earlier Qwen-only exploratory runs; both current arms answer 25/34 correctly, and this stratum is not an untouched holdout. This offline replay tests adapted re-observation decisions on real UAV imagery; it does not establish flight effectiveness or transfer of the unchanged disaster-damage pipeline. DisasterClaw provides a traceable framework for measuring observation value within a controlled setting based on resampled orthographic imagery and a fixed perception backbone with prior xBD exposure.
+Aerial agents can actively acquire new observations to resolve uncertainty, but doing so incurs sensing and maneuvering costs. Existing evaluations often assess navigation or perception without isolating whether a new observation improves the final answer. To address this gap, we introduce DisasterClaw, a georeferenced benchmark and replay platform for evaluating task-conditioned observation decisions in disaster assessment. DisasterClaw keeps the question, geographic region, and reference answer fixed while allowing vehicle actions to change the observed image footprint. Its traceable evaluation protocol connects observations, predicted evidence, actions, and answers, and uses matched fixed-view controls to distinguish the value of new visual evidence from additional answer calls. The benchmark comprises 160 human-reviewed questions across 44 regions and three disaster events. Text-only and permitted-metadata controls achieve accuracies of 28.75\% and 36.25\%, respectively, compared with 72.29\% and 75.00\% for image-aware policies. Across 161 recheck transitions, changed-view accuracy reaches 59.63\%, versus 50.31\% for matched fixed-view calls, yielding a gain of 9.32 percentage points with a 95\% region-clustered interval of [-2.00, 21.74]. These transitions produce 36 corrections and 21 harms, highlighting both the potential benefits and risks of re-observation. An additional offline case study applies a single-temporal adaptation of the controller to 409 eligible image pairs from MESSI, using existing YOLO and SegFormer models. The controller requests 20 lower-altitude observations, increasing the number of correct answers from 369 to 372; on these triggered cases, lower-altitude observations yield 15 correct answers, compared with 12 under an equal-budget repeat-high control. Together, these experiments provide a reproducible basis for studying when additional observations help aerial agents, while leaving consistent cross-scene gains and physical flight effectiveness unestablished. Project resources will be available at https://github.com/emmmmmmnbbb/DisasterClaw.
 \end{abstract}
 \begin{keyword}
-UAV disaster inspection \sep Georeferenced simulation \sep Task benchmark \sep Active perception \sep Closed-loop evaluation \sep Vision-language agents
+Embodied aerial agents \sep Active perception \sep Disaster assessment \sep Observation value \sep Benchmarking
 \end{keyword}
 \end{frontmatter}
 
@@ -59,10 +57,7 @@ UAV disaster inspection \sep Georeferenced simulation \sep Task benchmark \sep A
 \input{appendix/reproducibility}
 \input{appendix/minimal_episode}
 \begingroup\small
-% Keep the bibliography local to this layout build; the shared input path also
-% contains cja_en/main.bbl, which may have a different citation set.
-\makeatletter\def\input@path{}\makeatother
 \bibliographystyle{elsarticle-num}
-\bibliography{../../cja_en/references,messi_case}
+\bibliography{references,messi_case}
 \endgroup
 \end{document}
