@@ -145,7 +145,8 @@ def to_perception(sample, level, output, key=None):
     return result
 
 
-def make_episode(sample, arm, models, first_prediction=None, second_view="low"):
+def make_episode(sample, arm, models, first_prediction=None, second_view="low",
+                 random_selected=None):
     yolo, seg, torch, F = models
     level = {"current": 0}
     events = []
@@ -180,6 +181,17 @@ def make_episode(sample, arm, models, first_prediction=None, second_view="low"):
             patch_radius_m=0.0, patch_width=result.patch_width, patch_height=result.patch_height,
             track_id=sample["sample_id"], allow_recheck=(arm in {"agent", "repeat_high"}),
         )
+        if random_selected is not None:
+            # Supplementary budget-matched policy: only the selection rule changes.
+            # Selection is frozen outside the episode without labels or low views.
+            out = SimpleNamespace(
+                kind="recheck" if random_selected else "skip",
+                reason="frozen_uniform_random_selection", uncertainty=out.uncertainty,
+                label="vegetation", status=None,
+                params={"north_m": 0.0, "east_m": 0.0,
+                        "up_m": float(sample["low_rel_alt"])-float(sample["high_rel_alt"]),
+                        "speed": 10.0} if random_selected else None,
+            )
         event = {"kind": out.kind, "reason": out.reason,
                  "uncertainty": out.uncertainty, "label": out.label,
                  "params": out.params, "status": out.status,

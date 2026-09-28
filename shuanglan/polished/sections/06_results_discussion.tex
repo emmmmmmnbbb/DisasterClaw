@@ -1,5 +1,6 @@
 \section{Results and discussion}
 \label{sec:results}
+We first report the benchmark controls, matched-call observation effects, and complete-policy results. For real UAV imagery, the final adapted-controller evaluation is the 409-region YOLO/SegFormer replay in Section~\ref{sec:messi-native-agent}, including its equal-budget repeat-high control. The preceding MESSI experiments document exploratory development and fixed-observation diagnostics; they are not additional independent validations of that final controller.
 
 \subsection{Image-aware performance and shortcut controls}
 The final answer distribution yields a strong task-majority baseline: the development-fitted task-majority rule attains 57.50\% (92/160). This result reflects the frozen answer distribution, particularly for count questions, without using visual evidence. The text-only S1\_LANGUAGE control reaches 28.75\% over 480 question--repeat instances, and the permitted-metadata S2\_METADATA control reaches 36.25\% (Table~\ref{tab:shortcut-controls}). Neither control receives imagery or detector evidence. In contrast, the image-aware A0\_NO\_RECHECK and T1\_TASK operating points reach 72.29\% and 75.00\%, respectively. Their paired gaps to S1 are $+43.54$ and $+46.25$ points, and to S2 are $+36.04$ and $+38.75$ points; all four 95\% ROI-cluster intervals exclude zero. The complete image-aware pipelines therefore outperform the evaluated controls based on question wording and permitted non-image metadata. Because S1/S2 also use a modality-specific prompt and omit the hybrid rule path, the comparison measures a pipeline-level difference and does not isolate the causal effect of image access.
@@ -80,6 +81,52 @@ Floor (443 m) & 4,091 & 1,868 & 3,147 & 68.65 & 56.52 & 43.44 & 53.65 & 94.92 & 
 \end{table*}
 
 The matched-call results show that task answers also respond differently to observation changes. Damage and count transitions have positive point differences, whereas spatial transitions have a negative point difference (Table~\ref{tab:matched-view}). A more local view can improve the evidence for a marked building or a damaged-count decision, yet it can change the selected target for a nearest-building direction judgment. These task-wise estimates are descriptive because T1 selects the recheck subsets, which contain only 18 count and 20 spatial transitions.
+
+\subsection{Complete-policy performance}
+Table~\ref{tab:final-policies} reports the prespecified complete-policy runs. T1\_TASK has the highest observed terminal accuracy, 360/480 question--repeat instances (75.00\%), with 161 executed dedicated rechecks. A0\_NO\_RECHECK (the internal configuration identifier is A0\_HOLD) forbids dedicated rechecks but permits search and answers 347/480 (72.29\%). A2\_ALWAYS makes 923 rechecks and answers 307/480 (63.96\%). Active policies share a maximum of two dedicated rechecks. Their realized operating points differ in actions, model calls, and total cost, which are not matched in this comparison.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Primary frozen policy operating points on the same 160 questions under three generation repeats. Rechecks are executed dedicated actions and exclude search.}
+\label{tab:final-policies}
+\footnotesize
+\begin{tabularx}{\linewidth}{@{}Xrrr@{}}
+\toprule
+Policy & Correct / 480 & Accuracy (\%) & Rechecks\\
+\midrule
+A0\_NO\_RECHECK & 347 & 72.29 & 0\\
+A1\_RANDOM & 326 & 67.92 & 419\\
+A2\_ALWAYS & 307 & 63.96 & 923\\
+A3U\_RAW\_ENTROPY & 339 & 70.63 & 626\\
+T1\_TASK & 360 & 75.00 & 161\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The 2.71-point T1\_TASK advantage over A0\_NO\_RECHECK is an observed difference of 13 correct question--repeat instances, not 13 distinct questions. Its 98.75\% multiplicity-adjusted interval includes zero (Table~\ref{tab:final-contrasts}), as does the comparison with raw entropy. The positive interval against A2\_ALWAYS supports a difference between these complete policies on the sampled ROIs; it does not show that T1's individual changed observations caused that difference.
+
+\begin{table}[htbp]
+\centering\small
+\caption{Prespecified paired T1\_TASK terminal-accuracy contrasts in percentage points. The 98.75\% ROI-cluster intervals adjust for four comparisons.}
+\label{tab:final-contrasts}
+\footnotesize
+\begin{tabularx}{\linewidth}{@{}Xrr@{}}
+\toprule
+Contrast & Difference & 98.75\% interval\\
+\midrule
+T1 minus A0\_NO\_RECHECK & $+2.71$ & $[-2.04,+7.50]$\\
+T1 minus A1\_RANDOM & $+7.08$ & $[+0.01,+14.69]$\\
+T1 minus A2\_ALWAYS & $+11.04$ & $[+0.86,+21.38]$\\
+T1 minus A3U\_RAW\_ENTROPY & $+4.38$ & $[-4.33,+12.96]$\\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+At the terminal-episode level, presence is unchanged between T1 and A0\_NO\_RECHECK, damage and count are numerically higher for T1, and spatial accuracy is lower (Table~\ref{tab:shortcut-controls}). Performance also varies by event: T1 versus A0 is 54.86\% versus 58.33\% in Hurricane Michael, 84.31\% versus 77.12\% in Moore, and 83.06\% versus 79.23\% in Nepal. Together, the matched-call results and complete-policy comparisons characterize task-dependent corrections and harms. The interval for the A0 contrast and incomplete cost measurements limit conclusions about the overall effectiveness and efficiency of the recheck policy.
+
+The supplementary archive audit quantifies this cost limitation (Table~\ref{tab:cost-audit}). T1 records 802 observations and generation attempts, versus 647 for A0\_NO\_RECHECK, while their mean software episode times are 17.92 and 17.03~s. T1 also logs 165 search actions in addition to its 161 dedicated rechecks. Across all seven archived policies, 42 of 3,360 episodes lack a state following the final action; movement means therefore use the explicitly reported complete-trajectory subsets. These descriptive runtime and movement summaries do not constitute a matched flight-cost comparison. Rendering, perception, generation, and controller times cannot be separated from the available episode wall times.
+
+\input{tables/cost_audit}
 
 \subsection{Case study: Re-observation using real UAV imagery}
 \label{sec:messi-case}
@@ -223,7 +270,7 @@ Combined & 409 & 309 & 329 & 198 & 44/24\\
 
 \subsubsection{Single-temporal replay with DisasterClaw's legacy perception models}
 \label{sec:messi-native-agent}
-We then evaluated the repository's existing perception models and closed-loop controller on the same 409 eligible regions. The RescueNet YOLO checkpoint (six building-damage, vehicle, and water classes) has no vegetation category; we retain its detections as scene context and do not use them as vegetation evidence. Vegetation presence comes from the ADE20K SegFormer-B2 model, using tree (class 4), grass (9), plant (17), and palm (72). For a region, we map its mean soft vegetation occupancy $f$ to the task score $p=\mathrm{clip}[(f-0.005)/(0.05-0.005),0,1]$ and answer YES at $p\geq0.5$. This is a task-specific score mapping, not a calibration claim.
+The final MESSI controller evaluation uses the repository's existing perception models and closed-loop controller on the same 409 eligible regions. The RescueNet YOLO checkpoint (six building-damage, vehicle, and water classes) has no vegetation category; we retain its detections as scene context and do not use them as vegetation evidence. Vegetation presence comes from the ADE20K SegFormer-B2 model, using tree (class 4), grass (9), plant (17), and palm (72). For a region, we map its mean soft vegetation occupancy $f$ to the task score $p=\mathrm{clip}[(f-0.005)/(0.05-0.005),0,1]$ and answer YES at $p\geq0.5$. The endpoints 0.005 and 0.05 are inherited from the earlier MESSI cohort-construction protocols: a negative region has at most 0.5\% annotated vegetation at both heights, whereas a positive region has at least 5\%. The adapter reuses these protocol boundaries as a linear heuristic, giving a YES threshold of $f=0.0275$; they are not fitted calibration parameters. The mapping therefore incorporates prior knowledge of the benchmark selection rule, although individual annotation masks and reference answers are not supplied at runtime. These endpoints were already specified in the earlier descend/path protocols and carried into the single-temporal protocol; this is a documented design history, not an independently preregistered calibration study.
 
 The model sees an unmarked registered ROI crop at each height. Each paired hold/agent run shares the exact high-view model output. The repository's \texttt{AgentVqaController} retains its evidence memory, answer and stop path, action budget, and trajectory; a narrow single-temporal adapter supplies the vegetation evidence and deterministic presence answer. The \texttt{RecheckController} retains its normalized two-class entropy gate; the 0.50 threshold is inherited from its existing default and was not fitted on MESSI. It is allowed one action. If it triggers, the offline environment releases the pre-registered 30-m crop and records a descend-only action matching the observed relative height difference. It does not execute horizontal recentering, search, or physical motion. The low image is not made available to either the perception callback or the controller before that action.
 
@@ -271,7 +318,7 @@ All regions & 20 & 12 & 12 & 15 & 6 & 3 & 9 / 2\\
 
 \begin{table*}[!t]
 \centering\small
-\caption{Representative complete decision traces from the matched triggered cohort. Both branches use two answer calls, one controller-authorized descend request with zero horizontal displacement, and terminate with \texttt{sufficient\_evidence} after the one-action budget is consumed.}
+\caption{Representative complete decision traces from the matched triggered cohort. Both branches use two answer calls, one controller-authorized descend request with zero horizontal displacement, and retain the logged terminal code \texttt{sufficient\_evidence}. After the single action, no further recheck is permitted; this code denotes the controller's answer-return path, not a separate confidence test. Scores are rounded to three decimals.}
 \label{tab:messi-trigger-examples}
 \footnotesize
 \begin{tabularx}{\textwidth}{@{}l*{6}{>{\centering\arraybackslash}X}@{}}
@@ -284,6 +331,8 @@ Case / truth & High: score / answer & Gate: entropy / descent & Repeat-high: sco
 \end{tabularx}
 \end{table*}
 
+The stopping implementation first forms a deterministic YES/NO answer and assigns the default answer-path code \texttt{sufficient\_evidence}. It then consults the recheck gate only while an action remains. After one recheck, it returns the answer without another entropy test or a confidence-based abstention rule. Thus the near-boundary harmed example in Table~\ref{tab:messi-trigger-examples} is a budget-constrained terminal answer, not evidence that uncertainty was resolved. We preserve the recorded code rather than relabeling the historical trace as \texttt{budget\_exhausted}, which is a different controller exit path.
+
 The 34 IrYamim regions belong to the MESSI Test split, but the same source
 regions had already appeared in earlier Qwen-only MESSI explorations. The
 RescueNet checkpoint, SegFormer checkpoint and class mapping, and inherited
@@ -291,44 +340,28 @@ RescueNet checkpoint, SegFormer checkpoint and class mapping, and inherited
 used to tune them. We therefore report IrYamim as a test-path stratum but do
 not treat it as a data-naive untouched holdout.
 
-\subsection{Complete-policy performance}
-Table~\ref{tab:final-policies} reports the prespecified complete-policy runs. T1\_TASK has the highest observed terminal accuracy, 360/480 question--repeat instances (75.00\%), with 161 executed dedicated rechecks. A0\_NO\_RECHECK (the internal configuration identifier is A0\_HOLD) forbids dedicated rechecks but permits search and answers 347/480 (72.29\%). A2\_ALWAYS makes 923 rechecks and answers 307/480 (63.96\%). Active policies share a maximum of two dedicated rechecks. Their realized operating points differ in actions, model calls, and total cost, which are not matched in this comparison.
+
+
+\paragraph{Random selection under the same recheck budget}
+To assess whether the selected regions offer more value than an arbitrary allocation of the same observation budget, we added a supplementary uniform-random comparator (Table~\ref{tab:messi-random-budget}). Before supplementary inference, seeds 0--19 were fixed; each sampled 20 of the 409 eligible regions without replacement, using only region identifiers. The same archived high-view predictions, model checkpoints, vegetation-score mapping, controller evidence and answer paths, and registered lower frames were retained. Only the recheck selection rule changed. Both active policies therefore use 429 observations and deterministic answer evaluations per 409-region allocation, including exactly 20 lower views; this matches observation counts, not maneuvering time or energy. Unselected regions retain their first answer.
+
+The 20 random allocations selected 265 distinct regions. Including the original entropy-triggered cohort gave 274 unique regions, each evaluated through a one-action controller episode on the same GPU. Lower crops were accessed only after the action callback. Deterministic per-region outcomes were reused across seeds, without cross-region evidence sharing; these allocations are not 20 independent model reruns. All 20 original triggered answers agreed with their archived outcomes in the same-device check.
+
+Uniform random selection yielded a mean of 369.20 correct answers (sample standard deviation 0.95; range 367--371), compared with 372 for entropy selection and 369 for the initial high view. Random selection averaged 0.55 corrections and 0.35 harms, versus six and three for entropy selection. Thus entropy selection produced 2.80 more correct answers than the random mean, or 0.68 percentage points over the full cohort. None of the 20 sampled allocations reached 372. This descriptive comparison supports the value of the trigger's allocation on the current cohort, while also showing that it selects opportunities for both correction and harm. Seed variation on these shared, spatially correlated regions is not a generalization confidence interval or evidence of a universally superior policy.
 
 \begin{table}[htbp]
 \centering\small
-\caption{Primary frozen policy operating points on the same 160 questions under three generation repeats. Rechecks are executed dedicated actions and exclude search.}
-\label{tab:final-policies}
-\footnotesize
+\caption{MESSI random-selection control with the same 20-recheck budget. Random values are means over all 20 frozen seeds; SD and range describe correct-answer counts across allocations. Each active allocation has 429 observations and deterministic answers.}
+\label{tab:messi-random-budget}
 \begin{tabularx}{\linewidth}{@{}Xrrr@{}}
 \toprule
-Policy & Correct / 480 & Accuracy (\%) & Rechecks\\
+Selection & Correct / 409 & Corrected & Harmed\\
 \midrule
-A0\_NO\_RECHECK & 347 & 72.29 & 0\\
-A1\_RANDOM & 326 & 67.92 & 419\\
-A2\_ALWAYS & 307 & 63.96 & 923\\
-A3U\_RAW\_ENTROPY & 339 & 70.63 & 626\\
-T1\_TASK & 360 & 75.00 & 161\\
+Entropy trigger & 372 & 6 & 3\\
+Uniform random & 369.20 & 0.55 & 0.35\\
 \bottomrule
 \end{tabularx}
+\par\smallskip\footnotesize Random SD: 0.95; range: 367--371. Shared initial high-view score: 369/409. No seed was selected for reporting based on its outcome.
 \end{table}
 
-The 2.71-point T1\_TASK advantage over A0\_NO\_RECHECK is an observed difference of 13 correct question--repeat instances, not 13 distinct questions. Its 98.75\% multiplicity-adjusted interval includes zero (Table~\ref{tab:final-contrasts}), as does the comparison with raw entropy. The positive interval against A2\_ALWAYS supports a difference between these complete policies on the sampled ROIs; it does not show that T1's individual changed observations caused that difference.
-
-\begin{table}[htbp]
-\centering\small
-\caption{Prespecified paired T1\_TASK terminal-accuracy contrasts in percentage points. The 98.75\% ROI-cluster intervals adjust for four comparisons.}
-\label{tab:final-contrasts}
-\footnotesize
-\begin{tabularx}{\linewidth}{@{}Xrr@{}}
-\toprule
-Contrast & Difference & 98.75\% interval\\
-\midrule
-T1 minus A0\_NO\_RECHECK & $+2.71$ & $[-2.04,+7.50]$\\
-T1 minus A1\_RANDOM & $+7.08$ & $[+0.01,+14.69]$\\
-T1 minus A2\_ALWAYS & $+11.04$ & $[+0.86,+21.38]$\\
-T1 minus A3U\_RAW\_ENTROPY & $+4.38$ & $[-4.33,+12.96]$\\
-\bottomrule
-\end{tabularx}
-\end{table}
-
-At the terminal-episode level, presence is unchanged between T1 and A0\_NO\_RECHECK, damage and count are numerically higher for T1, and spatial accuracy is lower (Table~\ref{tab:shortcut-controls}). Performance also varies by event: T1 versus A0 is 54.86\% versus 58.33\% in Hurricane Michael, 84.31\% versus 77.12\% in Moore, and 83.06\% versus 79.23\% in Nepal. Together, the matched-call results and complete-policy comparisons characterize task-dependent corrections and harms. The interval for the A0 contrast and incomplete cost measurements limit conclusions about the overall effectiveness and efficiency of the recheck policy.
+For the archived MESSI perception calls, the 409 initial high observations took 79.23~s in total (0.194~s per call), and the 20 triggered low observations took 3.73~s (0.186~s per call). These recorded latencies cover the combined single-temporal perception path, including input preparation; component timings and physical flight time are unavailable. The agent episode timer excludes the reused first-view inference, so its elapsed time cannot be compared directly with the hold timer as an end-to-end policy speed measurement. The random comparator addresses allocation under a fixed observation count rather than computational throughput.

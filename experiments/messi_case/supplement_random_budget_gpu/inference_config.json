@@ -1,0 +1,20 @@
+{
+  "selection_sha256": "357f1558b40ec8c998064da4e190707be5eb0370b1751c5d346ea95904f133bd",
+  "device": "cuda:0",
+  "threads": 4,
+  "model_provenance": {
+    "yolo_weights": "/home/lc/Langchain-Chatchat/tools/mars/results/yolo/runs/train/mars_det_yolov8n4/weights/best.pt",
+    "yolo_weights_sha256": "34f61f5649508e57b3dceb360e281bd03042d9f45d7f71703093454af84c9971",
+    "segformer_model_id": "nvidia/segformer-b2-finetuned-ade-512-512",
+    "segformer_hf_snapshot": "de01bae28967510f9ddd496c60a969357195400c",
+    "segformer_files_sha256": {
+      "config.json": "ee7400840fdb1e5045f0b2eba78bf053df8e33a309c4acec31705a48c8cc5c00",
+      "preprocessor_config.json": "8039d1d210abaa7117ad78e58cdfd6141a2ec72c03dae891b3cd76737e422c6c",
+      "pytorch_model.bin": "187ca07bea003a5717c63d04ea90b07f33cd033c0ebf44b4b89fce5070d6c8f3"
+    }
+  },
+  "n_unique_selected": 265,
+  "n_unique_with_original_triggered": 274,
+  "method": "One controller episode per unique selected region; deterministic per-region outcomes reused across frozen seeds. Shared archived high prediction. Original triggered cohort re-inferred on same device as random comparator.",
+  "source_sha256": "979d5d88245759e86135db1760452d6ea992c64382c1a8e56fbc1d15826d6e7c"
+}

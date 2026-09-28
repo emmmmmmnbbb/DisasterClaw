@@ -1,0 +1,19 @@
+\begin{table*}[!t]
+\centering\small
+\caption{Archived software work and geometric motion for the frozen benchmark (480 episodes per policy). Obs./calls gives both recorded observation count and generation-attempt count, which coincide here. Search and rechecks are logged actions; complete-motion denominators exclude terminal actions without a following state. Motion includes search and reobservation and is a geometric reconstruction, not physical flight. Wall time is measured software episode time; component timings and flight energy are unavailable.}
+\label{tab:cost-audit}
+\begin{tabularx}{\textwidth}{@{}Xrrrrrrr@{}}
+\toprule
+Policy & Obs./calls & Search & Rechecks & Complete $n$ & Horiz. (m) & Vert. (m) & Wall (s)\\
+\midrule
+A0\_NO\_RECHECK & 647 & 173 & 0 & 474 & 52.8 & 0.0 & 17.03\\
+A1\_RANDOM & 1187 & 291 & 419 & 477 & 133.2 & 403.4 & 33.65\\
+A2\_ALWAYS & 1706 & 319 & 923 & 464 & 122.1 & 897.3 & 51.07\\
+A3U\_RAW\_ENTROPY & 1379 & 278 & 626 & 475 & 159.4 & 576.0 & 39.61\\
+A3\_ENTROPY & 1386 & 282 & 628 & 476 & 162.8 & 581.3 & 38.94\\
+A4\_CONFORMAL & 1395 & 291 & 628 & 476 & 161.1 & 577.5 & 38.95\\
+T1\_TASK & 802 & 165 & 161 & 476 & 59.6 & 165.8 & 17.92\\
+\bottomrule
+\end{tabularx}
+\par\smallskip\footnotesize Horizontal/vertical distances are means over complete trajectories; wall time is a mean over all 480 episodes. Action and observation columns are totals. Summed episode wall times are retained in the machine-readable audit; they are not elapsed parallel-job duration.
+\end{table*}

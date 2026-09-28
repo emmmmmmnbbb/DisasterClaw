@@ -1,0 +1,216 @@
+{
+  "selection_sha256": "357f1558b40ec8c998064da4e190707be5eb0370b1751c5d346ea95904f133bd",
+  "episodes_sha256": "019b7f88da0203f00a3ff3d9df72d95cf6aa9b0fa5853bb2aa704e0ad827423d",
+  "baseline_correct": 369,
+  "n": 409,
+  "seeds": [
+    {
+      "seed": 0,
+      "correct": 369,
+      "corrected": 0,
+      "harmed": 0,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    },
+    {
+      "seed": 1,
+      "correct": 369,
+      "corrected": 1,
+      "harmed": 1,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    },
+    {
+      "seed": 2,
+      "correct": 369,
+      "corrected": 0,
+      "harmed": 0,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    },
+    {
+      "seed": 3,
+      "correct": 370,
+      "corrected": 1,
+      "harmed": 0,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    },
+    {
+      "seed": 4,
+      "correct": 370,
+      "corrected": 1,
+      "harmed": 0,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    },
+    {
+      "seed": 5,
+      "correct": 369,
+      "corrected": 1,
+      "harmed": 1,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    },
+    {
+      "seed": 6,
+      "correct": 370,
+      "corrected": 1,
+      "harmed": 0,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    },
+    {
+      "seed": 7,
+      "correct": 368,
+      "corrected": 0,
+      "harmed": 1,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    },
+    {
+      "seed": 8,
+      "correct": 369,
+      "corrected": 0,
+      "harmed": 0,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    },
+    {
+      "seed": 9,
+      "correct": 369,
+      "corrected": 0,
+      "harmed": 0,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    },
+    {
+      "seed": 10,
+      "correct": 370,
+      "corrected": 1,
+      "harmed": 0,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    },
+    {
+      "seed": 11,
+      "correct": 370,
+      "corrected": 1,
+      "harmed": 0,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    },
+    {
+      "seed": 12,
+      "correct": 369,
+      "corrected": 0,
+      "harmed": 0,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    },
+    {
+      "seed": 13,
+      "correct": 368,
+      "corrected": 0,
+      "harmed": 1,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    },
+    {
+      "seed": 14,
+      "correct": 368,
+      "corrected": 0,
+      "harmed": 1,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    },
+    {
+      "seed": 15,
+      "correct": 370,
+      "corrected": 1,
+      "harmed": 0,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    },
+    {
+      "seed": 16,
+      "correct": 371,
+      "corrected": 2,
+      "harmed": 0,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    },
+    {
+      "seed": 17,
+      "correct": 367,
+      "corrected": 0,
+      "harmed": 2,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    },
+    {
+      "seed": 18,
+      "correct": 369,
+      "corrected": 0,
+      "harmed": 0,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    },
+    {
+      "seed": 19,
+      "correct": 370,
+      "corrected": 1,
+      "harmed": 0,
+      "rechecks": 20,
+      "observations": 429,
+      "deterministic_answers": 429
+    }
+  ],
+  "entropy_same_device": {
+    "correct": 372,
+    "corrected": 6,
+    "harmed": 3,
+    "rechecks": 20,
+    "observations": 429,
+    "deterministic_answers": 429
+  },
+  "entropy_disagrees_with_archived_answers": [],
+  "random_correct_mean": 369.2,
+  "random_correct_sd": 0.9514531821875089,
+  "random_correct_min": 367,
+  "random_correct_max": 371,
+  "random_corrected_mean": 0.55,
+  "random_harmed_mean": 0.35,
+  "random_seeds_at_least_entropy": 0,
+  "scope": "Seed variation on same fixed regions, not independent trials or a generalization confidence interval.",
+  "archived_messi_latency": {
+    "high_fresh_calls": 409,
+    "high_perception_s_sum": 79.23299999999992,
+    "high_perception_s_mean": 0.19372371638141808,
+    "triggered_low_fresh_calls": 20,
+    "low_perception_s_sum": 3.7276,
+    "low_perception_s_mean": 0.18638,
+    "hold_episode_wall_s_sum": 79.46559999999997,
+    "agent_episode_wall_s_sum_excludes_cached_high": 3.9747,
+    "note": "Archived prediction latency includes YOLO and SegFormer inference and input preparation, not flight. Agent elapsed time excludes reused high inference, so hold vs agent wall times must not be compared as full policy runtime. No warmup calls excluded."
+  }
+}
